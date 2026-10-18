@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Agent, DeviceCode, Invoice, Subscriber } from '../types';
+import { Agent, DeviceCode, Invoice, Subscriber, SubscriptionDuration } from '../types';
 
 function findRowValue(row: Record<string, unknown>, keys: string[]): unknown {
   const rowKeys = Object.keys(row);
@@ -7,15 +7,11 @@ function findRowValue(row: Record<string, unknown>, keys: string[]): unknown {
     if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
       return row[k];
     }
-    // Normalize target key (remove spaces, slashes, etc.)
     const normalizedTarget = k.toLowerCase().replace(/[\s\-_/]/g, '');
-    
-    // Find matching key in row (normalize row key similarly)
     const foundKey = rowKeys.find((rk) => {
       const normalizedRowKey = rk.toLowerCase().replace(/[\s\-_/]/g, '');
       return normalizedRowKey === normalizedTarget || normalizedRowKey.includes(normalizedTarget) || normalizedTarget.includes(normalizedRowKey);
     });
-    
     if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && String(row[foundKey]).trim() !== '') {
       return row[foundKey];
     }
@@ -46,7 +42,6 @@ function matchAgent(raw: string, agents: Agent[]): { agentId: string; agentName:
   const clean = raw.trim();
   const lower = clean.toLowerCase();
 
-  // 1. Direct match on ID or Code
   const byIdOrCode = agents.find(
     (a) => a.id.toLowerCase() === lower || a.code.toLowerCase() === lower
   );
@@ -62,14 +57,12 @@ function matchAgent(raw: string, agents: Agent[]): { agentId: string; agentName:
 
   const targetNorm = norm(clean);
 
-  // 2. Exact normalized name match
   for (const ag of agents) {
     if (norm(ag.name) === targetNorm || norm(ag.customShopName || '') === targetNorm || norm(ag.username || '') === targetNorm) {
       return { agentId: ag.id, agentName: ag.name };
     }
   }
 
-  // 3. Substring contains match
   for (const ag of agents) {
     const agNameNorm = norm(ag.name);
     if (ag.id !== 'agent-main' && agNameNorm.length > 2 && targetNorm.includes(agNameNorm)) {
@@ -81,7 +74,6 @@ function matchAgent(raw: string, agents: Agent[]): { agentId: string; agentName:
     }
   }
 
-  // 4. Specific agent nickname keywords
   if (targetNorm.includes('ساهر')) {
     const ag = agents.find((a) => a.id === 'agent-01');
     if (ag) return { agentId: ag.id, agentName: ag.name };
@@ -107,7 +99,6 @@ function matchAgent(raw: string, agents: Agent[]): { agentId: string; agentName:
     if (ag) return { agentId: ag.id, agentName: ag.name };
   }
 
-  // Fallback to main center
   const main = agents.find((a) => a.id === 'agent-main') || agents[0];
   return { agentId: main?.id || 'agent-main', agentName: main?.name || 'المركز الرئيسي' };
 }
@@ -135,6 +126,95 @@ function formatPhone(val: unknown): string {
     return s.startsWith('7') ? `0${s}` : s;
   }
   return String(val).trim();
+}
+
+function parseDuration(val: unknown): SubscriptionDuration {
+  if (!val) return '1 شهر';
+  const s = String(val).trim().toLowerCase();
+  if (s.includes('شهرين') || s.includes('2') || s.includes('شهرآن')) return 'شهرين';
+  if (s.includes('3') || s.includes('ثلاث') || s.includes('3 اشهر')) return '3 أشهر';
+  if (s.includes('6') || s.includes('ست') || s.includes('6 اشهر')) return '6 أشهر';
+  if (s.includes('سنة') || s.includes('عام') || s.includes('12') || s.includes('سنه')) return 'سنة';
+  return '1 شهر';
+}
+
+function parseStatus(val: unknown, endDateStr: string): 'active' | 'inactive' | 'expiring_soon' {
+  if (!val) {
+    if (endDateStr) {
+      const today = new Date().getTime();
+      const end = new Date(endDateStr).getTime();
+      if (end < today) return 'inactive';
+      const diffDays = (end - today) / (1000 * 60 * 60 * 24);
+      if (diffDays <= 7 && diffDays >= 0) return 'expiring_soon';
+      if (end > today) return 'active';
+    }
+    return 'inactive';
+  }
+  const s = String(val).trim().toLowerCase();
+  if (s.includes('فعال') || s.includes('نشط') || s.includes('active') || s.includes('ساري')) return 'active';
+  if (s.includes('قريب') || s.includes('expiring')) return 'expiring_soon';
+  return 'inactive';
+}
+
+function parsePaymentStatus(val: unknown): 'paid' | 'debt' {
+  if (!val) return 'paid';
+  const s = String(val).trim().toLowerCase();
+  if (s.includes('دين') || s.includes('متبقي') || s.includes('debt') || s.includes('غير مسدد')) return 'debt';
+  return 'paid';
+}
+
+function calculateDefaultPrice(subscriptionType: string): number {
+  switch (subscriptionType) {
+    case 'شهرين':
+      return 36000;
+    case '3 أشهر':
+      return 54000;
+    case '6 أشهر':
+      return 100000;
+    case 'سنة':
+      return 190000;
+    case '1 شهر':
+    default:
+      return 22000;
+  }
+}
+
+function formatExcelDate(val: unknown, addDays = 0): string {
+  if (!val) return '';
+  try {
+    if (typeof val === 'number') {
+      const dateObj = XLSX.SSF.parse_date_code(val);
+      if (dateObj) {
+        const d = new Date(Date.UTC(dateObj.y, dateObj.m - 1, dateObj.d + addDays));
+        return d.toISOString().split('T')[0];
+      }
+    }
+    const str = String(val).trim();
+    if (str.includes('/')) {
+      const parts = str.split('/');
+      if (parts.length === 3) {
+        let y = parts[2];
+        if (y.length === 2) y = '20' + y;
+        const m = parts[1].padStart(2, '0');
+        const d = parts[0].padStart(2, '0');
+        const dateObj = new Date(`${y}-${m}-${d}`);
+        if (!isNaN(dateObj.getTime())) {
+          if (addDays > 0) {
+            dateObj.setDate(dateObj.getDate() + addDays);
+          }
+          return dateObj.toISOString().split('T')[0];
+        }
+      }
+    }
+    const dateObj = new Date(str);
+    if (!isNaN(dateObj.getTime())) {
+      if (addDays > 0) {
+        dateObj.setDate(dateObj.getDate() + addDays);
+      }
+      return dateObj.toISOString().split('T')[0];
+    }
+  } catch {}
+  return '';
 }
 
 export const excelService = {
@@ -240,12 +320,28 @@ export const excelService = {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          if (!arrayBuffer) {
+            reject(new Error('ملف فارغ أو تالف.'));
+            return;
+          }
+          const data = new Uint8Array(arrayBuffer);
+          let workbook;
+          try {
+            workbook = XLSX.read(data, { type: 'array' });
+          } catch (readErr) {
+            reject(new Error('تعذر قراءة ملف الإكسل. يجدر التأكد من أن الملف بصيغة صالحة (.xlsx أو .xls) وغير تالف.'));
+            return;
+          }
+
+          if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+            reject(new Error('ملف الإكسل لا يحتوي على أي صفحات (Sheets).'));
+            return;
+          }
+
           const allSubscribers: Subscriber[] = [];
           const discoveredAgentsMap = new Map<string, Agent>();
           const knownAgents = [...agents];
-
           const todayStr = new Date().toISOString().split('T')[0];
 
           workbook.SheetNames.forEach((sheetName) => {
@@ -255,11 +351,10 @@ export const excelService = {
             const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
             if (!json || json.length === 0) return;
 
-            // Check if sheetName corresponds to an agent
             const sheetMatch = matchAgent(sheetName, knownAgents);
             const isSheetExplicitAgent = sheetMatch.agentId !== 'agent-main' || isHQName(sheetName);
 
-            json.forEach((row, idx) => {
+            json.forEach((row) => {
               const rawName = findRowValue(row, [
                 'اسم المشترك', 'الاسم', 'اسم الزبون', 'المشترك', 'الزبون', 'العميل',
                 'اسم العميل / المشترك', 'اسم المشترك الثلاثي', 'Name', 'Subscriber', 'Customer'
@@ -273,7 +368,6 @@ export const excelService = {
               ]);
               const deviceId = formatDeviceId(rawDeviceId);
 
-              // Skip row if no name and no device ID
               if (!name && !rawDeviceId) return;
 
               const rawPhone = findRowValue(row, [
@@ -300,10 +394,9 @@ export const excelService = {
                 finalAgentId = matched.agentId;
                 finalAgentName = matched.agentName;
 
-                // If matched to main center but raw text was clearly a specific agent name (not HQ):
                 if (finalAgentId === 'agent-main' && !isHQName(agentStr)) {
                   const existing = Array.from(discoveredAgentsMap.values()).find(
-                    (a) => a.name.toLowerCase() === agentStr.toLowerCase()
+                    (a) => a.name.toLowerCase() === agentStr.toLowerCase() || (a.customShopName && a.customShopName.toLowerCase() === agentStr.toLowerCase())
                   );
                   if (existing) {
                     finalAgentId = existing.id;
@@ -339,6 +432,14 @@ export const excelService = {
                 finalAgentName = sheetMatch.agentName;
               }
 
+              // Validation & Fallback: ensure agentId exists in known agents or discovered agents
+              const allKnown = [...knownAgents, ...Array.from(discoveredAgentsMap.values())];
+              const validAgent = allKnown.find((a) => a.id === finalAgentId);
+              if (!validAgent && finalAgentId !== 'agent-main') {
+                finalAgentId = 'agent-main';
+                finalAgentName = 'المركز الرئيسي';
+              }
+
               const rawAddress = findRowValue(row, ['العنوان / المنطقة', 'العنوان', 'المنطقة', 'رقعة التغطية', 'المحافظة', 'Address', 'Region']);
               const address = String(rawAddress || '').trim();
 
@@ -352,7 +453,6 @@ export const excelService = {
               const rawPayment = findRowValue(row, ['حالة الدفع', 'حالة السداد', 'الدفع', 'السداد', 'Payment', 'Payment Status']);
               const rawAmount = findRowValue(row, ['المبلغ', 'المبلغ (د.ع)', 'السعر', 'القيمة', 'Amount', 'Price']);
 
-              // Populate fields from parsed values
               const subscriptionType = parseDuration(rawDuration) || '1 شهر';
               const startDate = formatExcelDate(rawStartDate, 0) || todayStr;
               
@@ -363,9 +463,7 @@ export const excelService = {
               else if (subscriptionType === 'سنة') durationDays = 365;
 
               const endDate = formatExcelDate(rawEndDate, durationDays);
-              // Default to 'active' if status parsing fails
               const status = parseStatus(rawStatus, endDate) || 'active';
-              // Default to 'paid' if payment status parsing fails
               const paymentStatus = parsePaymentStatus(rawPayment) || 'paid';
               
               const amount = typeof rawAmount === 'number' && rawAmount > 0
@@ -394,15 +492,20 @@ export const excelService = {
             });
           });
 
+          if (allSubscribers.length === 0) {
+            reject(new Error('لم يتم العثور على أي بيانات مشتركين صالحة في ملف الإكسل. يرجى التأكد من تطابق أسماء الأعمدة (مثل: اسم المشترك، رقم الجهاز).'));
+            return;
+          }
+
           resolve({
             subscribers: allSubscribers,
             newAgents: Array.from(discoveredAgentsMap.values())
           });
-        } catch (err) {
-          reject(err);
+        } catch (err: any) {
+          reject(new Error(err?.message || 'حدث خطأ غير متوقع أثناء معالجة ملف الإكسل.'));
         }
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('فشل قراءة ملف الإكسل من القرص.'));
       reader.readAsArrayBuffer(file);
     });
   }
