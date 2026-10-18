@@ -37,13 +37,24 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>('all');
   const [debtSearchTerm, setDebtSearchTerm] = useState<string>('');
 
-  const totalAgentDebts = agents.reduce((sum, ag) => sum + ag.totalDebt, 0);
+  const computedAgents = agents.map((ag) => {
+    const agentDebtSubs = subscribers.filter(
+      (s) => s.paymentStatus === 'debt' && (s.agentId === ag.id || s.agentName === ag.name)
+    );
+    const calculatedDebt = agentDebtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+    return {
+      ...ag,
+      totalDebt: calculatedDebt,
+      hasDebt: calculatedDebt > 0
+    };
+  });
+
+  const totalAgentDebts = computedAgents.reduce((sum, ag) => sum + ag.totalDebt, 0);
   const debtSubscribers = subscribers.filter((s) => s.paymentStatus === 'debt');
-  const totalSubscribersDebt = debtSubscribers.reduce((sum, s) => sum + s.amount, 0);
-  const grandTotalDebt = totalAgentDebts + totalSubscribersDebt;
+  const grandTotalDebt = totalAgentDebts;
 
   // Filter Agents Table
-  const filteredAgents = agents.filter((ag) => {
+  const filteredAgents = computedAgents.filter((ag) => {
     if (selectedAgentFilter !== 'all' && ag.id !== selectedAgentFilter && ag.name !== selectedAgentFilter) {
       return false;
     }
