@@ -32,11 +32,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [activeChartPoint, setActiveChartPoint] = useState<number | null>(null);
 
-  // Calculations
-  const totalSales = invoices.reduce((sum, inv) => sum + inv.amount, 0) || 550000;
-  const totalDebts = agents.reduce((sum, ag) => sum + ag.totalDebt, 0) || 325000;
+  // Calculations - System-wide total sales & debts across ALL agents and HQ (المركز الرئيسي)
+  const totalSales = invoices.reduce((sum, inv) => sum + inv.amount, 0);
+
+  // Total system debt: Sum of debts for all agents including HQ ('agent-main') and all debt subscribers
+  const agentDebtsTotal = agents.reduce((sum, ag) => sum + (ag.totalDebt || 0), 0);
+  const subscriberDebtsTotal = subscribers
+    .filter((s) => s.paymentStatus === 'debt')
+    .reduce((sum, s) => sum + (s.amount || 0), 0);
+
+  const totalDebts = Math.max(agentDebtsTotal, subscriberDebtsTotal);
+
+  // Count of debt records across HQ and all agents in the system
+  const debtSubscribersCount = subscribers.filter((s) => s.paymentStatus === 'debt').length;
+  const debtAgentsCount = agents.filter((a) => a.totalDebt > 0).length;
+  const totalDebtRecordsCount = debtSubscribersCount > 0 ? debtSubscribersCount : debtAgentsCount;
+
   const activeAgentsCount = agents.filter((a) => a.id !== 'agent-main').length;
-  const totalOperations = invoices.length >= 22 ? invoices.length : 22;
+  const totalOperations = invoices.length;
 
   // Chart data points matching Screenshot 1
   const chartDays = [
@@ -148,10 +161,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Card 4: الديون المستحقة */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col justify-between hover:border-red-300 transition-all">
+        {/* Card 4: الديون المستحقة (شاملة كل الوكلاء والرئيسية) */}
+        <div
+          onClick={() => onNavigate('debts')}
+          className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col justify-between hover:border-red-300 transition-all cursor-pointer group"
+          title="اضغط للانتقال إلى تفاصيل الديون والمستحقات بالسستم"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">الديون المستحقة</span>
+            <span className="text-xs font-bold text-slate-500 group-hover:text-red-600 transition-colors">
+              الديون المستحقة (الوكلاء والرئيسية)
+            </span>
             <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
               <Hourglass className="w-5 h-5 text-red-500" />
             </div>
@@ -163,8 +182,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-            <span>الديون غير المسددة:</span>
-            <span className="font-bold text-red-600">13 سجل</span>
+            <span>إجمالي الديون غير المسددة:</span>
+            <span className="font-bold text-red-600">{totalDebtRecordsCount} سجل</span>
           </div>
         </div>
       </div>
