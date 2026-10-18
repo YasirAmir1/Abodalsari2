@@ -502,36 +502,6 @@ export const excelService = {
                 finalAgentName = 'المركز الرئيسي';
               }
 
-              const rawAddress = findRowValue(row, ['العنوان / المنطقة', 'العنوان', 'المنطقة', 'رقعة التغطية', 'المحافظة', 'Address', 'Region']);
-              const address = String(rawAddress || '').trim();
-
-              const rawNotes = findRowValue(row, ['الملاحظات', 'الملاحظة', 'ملاحظات', 'ملاحظة', 'Notes']);
-              const notes = String(rawNotes || '').trim();
-
-              const rawDuration = findRowValue(row, ['نوع الباقة', 'الباقة', 'نوع الاشتراك', 'مدة الاشتراك', 'الاشتراك', 'الفترة', 'Package', 'Subscription', 'Duration']);
-              const rawStartDate = findRowValue(row, ['تاريخ البدء', 'تاريخ التفعيل', 'تاريخ الاشتراك', 'البدء', 'التفعيل', 'Start Date', 'StartDate']);
-              const rawEndDate = findRowValue(row, ['تاريخ الانتهاء', 'تاريخ النفاذ', 'الانتهاء', 'النفاذ', 'End Date', 'EndDate']);
-              const rawStatus = findRowValue(row, ['الحالة', 'حالة البث', 'حالة الاشتراك', 'Status']);
-              const rawPayment = findRowValue(row, ['حالة الدفع', 'حالة السداد', 'الدفع', 'السداد', 'Payment', 'Payment Status']);
-              const rawAmount = findRowValue(row, ['المبلغ', 'المبلغ (د.ع)', 'السعر', 'القيمة', 'Amount', 'Price']);
-
-              const subscriptionType = rawDuration ? parseDuration(rawDuration) : '-';
-              const startDate = rawStartDate ? formatExcelDate(rawStartDate, 0) : '-';
-              
-              let durationDays = 30;
-              if (subscriptionType === 'شهرين') durationDays = 60;
-              else if (subscriptionType === '3 أشهر') durationDays = 90;
-              else if (subscriptionType === '6 أشهر') durationDays = 180;
-              else if (subscriptionType === 'سنة') durationDays = 365;
-
-              const endDate = rawEndDate ? formatExcelDate(rawEndDate, durationDays) : '-';
-              const status = rawStatus ? parseStatus(rawStatus, endDate) : 'inactive';
-              const paymentStatus = rawPayment ? parsePaymentStatus(rawPayment) : '-';
-              
-              const amount = rawAmount !== undefined && rawAmount !== null && Number(rawAmount) > 0
-                ? Number(rawAmount)
-                : 0;
-
               allSubscribers.push({
                 id: `imported-${deviceId}-${allSubscribers.length + 1}`,
                 name: name || `مشترك جديد ${allSubscribers.length + 1}`,
@@ -539,14 +509,14 @@ export const excelService = {
                 deviceId,
                 agentId: finalAgentId,
                 agentName: finalAgentName,
-                subscriptionType,
-                status,
-                paymentStatus,
-                amount,
-                startDate,
-                endDate,
-                address,
-                notes,
+                subscriptionType: '-',
+                status: 'inactive',
+                paymentStatus: '-',
+                amount: 0,
+                startDate: '-',
+                endDate: '-',
+                address: '',
+                notes: '',
                 createdAt: todayStr
               });
             });

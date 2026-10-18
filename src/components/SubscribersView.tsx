@@ -59,7 +59,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || (isMainCenterView ? 'agent-main' : 'all'));
+  const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
