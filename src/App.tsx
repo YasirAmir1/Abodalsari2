@@ -32,7 +32,6 @@ import { AgentsView } from './components/AgentsView';
 import { ProductsView } from './components/ProductsView';
 import { QrCodesView } from './components/QrCodesView';
 import { PricingView } from './components/PricingView';
-import { AdminAccountsView } from './components/AdminAccountsView';
 import { SalesInvoicesView } from './components/SalesInvoicesView';
 import { DebtsView } from './components/DebtsView';
 import { ReportsView } from './components/ReportsView';
@@ -819,73 +818,6 @@ export default function App() {
     soundService.playSuccess();
   };
 
-  // User Accounts & Security Handlers
-  const handleAddUser = (userData: Omit<SystemUser, 'id'>) => {
-    const newUser: SystemUser = {
-      ...userData,
-      id: `user-${Date.now()}`
-    };
-    setState({
-      ...state,
-      users: [...state.users, newUser]
-    });
-  };
-
-  const handleUpdateUser = (updated: SystemUser) => {
-    setState({
-      ...state,
-      users: state.users.map((u) => (u.id === updated.id ? updated : u))
-    });
-  };
-
-  const handleDeleteUser = (id: string) => {
-    setState({
-      ...state,
-      users: state.users.filter((u) => u.id !== id)
-    });
-  };
-
-  const handleTriggerSecurityTest = () => {
-    const alert: SecurityAlert = {
-      id: `sec-${Date.now()}`,
-      type: 'mass_delete',
-      title: 'رصد محاولة تعديل أسعار خارج النطاق',
-      description: 'نظام المراقبة الأمني سجل نشاطاً غير مألوف في جدول تسعير الوكلاء، وتم حفظ نسخة أمان احترازية.',
-      timestamp: new Date().toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
-      severity: 'high',
-      read: false
-    };
-
-    setState((prev) => ({
-      ...prev,
-      securityAlerts: [alert, ...prev.securityAlerts]
-    }));
-
-    soundService.playPendingAlert();
-  };
-
-  // Backup & Restore Handlers
-  const handleDownloadBackup = () => {
-    storageService.exportBackupJson(state);
-  };
-
-  const handleRestoreBackup = async (file: File) => {
-    try {
-      const restored = await storageService.importBackupJson(file);
-      setState(restored);
-      soundService.playSuccess();
-      alert('تم استعادة النسخة الاحتياطية بنجاح!');
-    } catch {
-      alert('فشل في قراءة ملف النسخة الاحتياطية');
-    }
-  };
-
-  const handleResetData = () => {
-    localStorage.removeItem('alsari_broadcasting_v1');
-    setState(storageService.loadState());
-    soundService.playSuccess();
-  };
-
   // If not logged in, display Login Page matching Screenshot 1!
   if (!currentUser) {
     return <LoginView users={state.users} onLogin={handleLogin} />;
@@ -903,7 +835,6 @@ export default function App() {
     reports: 'التقارير التحليلية وأبراج البث',
     products: 'إدارة المنتجات والمعدات والمخزن',
     pricing: 'جدول أسعار الوكلاء والمركز',
-    admin: 'حساب الادمن والأمان والنسخ الاحتياطي',
     agent_portal: `بوابة الوكيل (${currentAgent.name})`
   };
 
@@ -1052,21 +983,6 @@ export default function App() {
             <PricingView
               pricing={state.pricing}
               onSavePricing={handleSavePricing}
-            />
-          )}
-
-          {currentTab === 'admin' && (
-            <AdminAccountsView
-              users={state.users}
-              securityAlerts={state.securityAlerts}
-              lastBackupDate={state.lastBackupDate}
-              onAddUser={handleAddUser}
-              onUpdateUser={handleUpdateUser}
-              onDeleteUser={handleDeleteUser}
-              onDownloadBackup={handleDownloadBackup}
-              onRestoreBackup={handleRestoreBackup}
-              onResetData={handleResetData}
-              onTriggerSecurityTest={handleTriggerSecurityTest}
             />
           )}
 

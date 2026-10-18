@@ -10,7 +10,6 @@ import {
   FileText,
   Package,
   DollarSign,
-  UserCheck,
   LogOut
 } from 'lucide-react';
 import { Logo } from './Logo';
@@ -26,7 +25,6 @@ export type NavTab =
   | 'reports'
   | 'products'
   | 'pricing'
-  | 'admin'
   | 'agent_portal';
 
 interface SidebarProps {
@@ -66,8 +64,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'barcodes' as NavTab, label: 'أكواد وأجهزة QR', icon: QrCode },
     { id: 'reports' as NavTab, label: 'التقارير والاهداف', icon: FileText },
     { id: 'products' as NavTab, label: 'المنتجات', icon: Package },
-    { id: 'pricing' as NavTab, label: 'الأسعار', icon: DollarSign },
-    { id: 'admin' as NavTab, label: 'حساب الادمن', icon: UserCheck }
+    { id: 'pricing' as NavTab, label: 'الأسعار', icon: DollarSign }
   ];
 
   return (

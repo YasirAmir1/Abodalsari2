@@ -4,7 +4,6 @@ import {
   INITIAL_INVOICES,
   INITIAL_PRICING,
   INITIAL_PRODUCTS,
-  INITIAL_SECURITY_ALERTS,
   INITIAL_SUBSCRIBERS,
   INITIAL_USERS
 } from '../data/mockData';
@@ -15,7 +14,6 @@ import {
   PendingRenewalRequest,
   PricingRow,
   Product,
-  SecurityAlert,
   Subscriber,
   SystemUser
 } from '../types';
@@ -29,8 +27,6 @@ export interface AppState {
   codes: DeviceCode[];
   users: SystemUser[];
   pendingRequests: PendingRenewalRequest[];
-  securityAlerts: SecurityAlert[];
-  lastBackupDate: string;
   deletedSubscriberIds?: string[];
   lastUpdatedTimestamp?: number;
 }
@@ -138,8 +134,6 @@ export const storageService = {
       codes: INITIAL_CODES,
       users: INITIAL_USERS,
       pendingRequests: [],
-      securityAlerts: INITIAL_SECURITY_ALERTS,
-      lastBackupDate: new Date().toISOString(),
       lastUpdatedTimestamp: Date.now()
     };
   },
@@ -154,44 +148,6 @@ export const storageService = {
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);
     }
-  },
-
-  exportBackupJson(state: AppState) {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(state, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `alsari_broadcasting_backup_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-  },
-
-  async importBackupJson(file: File): Promise<AppState> {
-    const deletedSet = this.getDeletedSubscriberIds();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const parsed = JSON.parse(e.target?.result as string);
-          if (parsed && Array.isArray(parsed.subscribers)) {
-            parsed.subscribers = parsed.subscribers
-              .filter((s: Subscriber) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId))
-              .map((s: Subscriber) => {
-                const raw = (s.deviceId || '').trim();
-                const clean = raw ? (raw.startsWith('00') ? raw : `00${raw}`) : `00123456`;
-                return { ...s, deviceId: clean };
-              });
-            resolve(parsed);
-          } else {
-            reject(new Error('ملف النسخة الاحتياطية غير صالح'));
-          }
-        } catch {
-          reject(new Error('تعذر قراءة ملف JSON'));
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
   },
 
   createWhatsAppLink(phone: string, message: string): string {
