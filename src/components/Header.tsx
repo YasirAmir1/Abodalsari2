@@ -9,6 +9,7 @@ import {
 
 interface HeaderProps {
   pageTitle: string;
+  currentTab?: string;
   onRefresh: () => void;
   isAgentMode: boolean;
   agentsList: { id: string; name: string }[];
@@ -22,6 +23,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   pageTitle,
+  currentTab,
   onRefresh,
   isAgentMode,
   agentsList,
@@ -46,7 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <h2 className="text-base md:text-xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight truncate">{pageTitle}</h2>
-        {isAgentMode && (
+        {isAgentMode && currentTab !== 'agents' && (
           <div className="hidden sm:flex items-center gap-2 mr-2">
             <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 px-2.5 py-0.5 rounded-full font-bold border border-amber-300 dark:border-amber-700">
               تطبيق الوكيل

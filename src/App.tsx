@@ -860,6 +860,7 @@ export default function App() {
         {/* Top Header */}
         <Header
           pageTitle={pageTitles[currentTab]}
+          currentTab={currentTab}
           onRefresh={() => setState(storageService.loadState())}
           isAgentMode={isAgentMode}
           agentsList={state.agents.filter((a) => a.id !== 'agent-main')}
