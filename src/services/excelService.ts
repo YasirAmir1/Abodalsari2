@@ -217,28 +217,93 @@ function formatExcelDate(val: unknown, addDays = 0): string {
   return '';
 }
 
+function formatAndWriteWorkbook(
+  workbook: XLSX.WorkBook,
+  worksheet: XLSX.WorkSheet,
+  data: Record<string, unknown>[],
+  sheetName: string,
+  fileName: string
+) {
+  // Set Right-To-Left layout for Arabic support
+  worksheet['!dir'] = 'rtl';
+  worksheet['!views'] = [{ RTL: true }];
+
+  // Auto-calculate column widths
+  if (data.length > 0) {
+    const keys = Object.keys(data[0]);
+    const colWidths = keys.map((key) => {
+      let maxLen = String(key).length;
+      data.forEach((row) => {
+        const val = String(row[key] ?? '');
+        if (val.length > maxLen) {
+          maxLen = val.length;
+        }
+      });
+      return { wch: Math.max(maxLen + 4, 12) };
+    });
+    worksheet['!cols'] = colWidths;
+
+    // Enable auto filter on table headers
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    worksheet['!autofilter'] = {
+      ref: XLSX.utils.encode_range({
+        s: { r: 0, c: 0 },
+        e: { r: range.e.r, c: range.e.c }
+      })
+    };
+  }
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+  XLSX.writeFile(workbook, fileName);
+}
+
 export const excelService = {
-  exportSubscribers(subscribers: Subscriber[], fileName = 'تقرير_مشتركي_الساري_للبث_الارضي.xlsx') {
-    const data = subscribers.map((sub, index) => ({
+  exportSubscribers(
+    subscribers: Subscriber[],
+    fileName = `تقرير_مشتركي_الساري_${new Date().toISOString().split('T')[0]}.xlsx`
+  ) {
+    const activeCount = subscribers.filter((s) => s.status === 'active').length;
+    const expiringCount = subscribers.filter((s) => s.status === 'expiring_soon').length;
+    const inactiveCount = subscribers.filter((s) => s.status === 'inactive').length;
+    const totalAmount = subscribers.reduce((sum, s) => sum + (s.amount || 0), 0);
+
+    const data: Record<string, unknown>[] = subscribers.map((sub, index) => ({
       'ت': index + 1,
-      'اسم المشترك': sub.name,
-      'رقم الهاتف': sub.phone,
-      'رقم الجهاز': sub.deviceId,
-      'الوكيل المسؤول': sub.agentName,
-      'نوع الباقة': sub.status === 'active' && sub.amount > 0 ? sub.subscriptionType : '-',
+      'اسم المشترك': sub.name || '-',
+      'رقم الهاتف': sub.phone || '-',
+      'رقم الجهاز': sub.deviceId || '-',
+      'الوكيل المسؤول': sub.agentName || 'المركز الرئيسي',
+      'نوع الباقة': sub.status === 'active' && sub.amount > 0 ? sub.subscriptionType : (sub.subscriptionType || '-'),
       'الحالة': sub.status === 'active' ? 'فعال' : sub.status === 'expiring_soon' ? 'منتهي قريباً' : 'غير فعال',
-      'حالة الدفع': sub.status === 'active' ? (sub.paymentStatus === 'paid' ? 'مسدد' : 'دين') : '-',
+      'حالة الدفع': sub.paymentStatus === 'paid' ? 'مسدد بالكامل' : sub.paymentStatus === 'debt' ? 'دين قائم' : 'سداد جزئي',
       'المبلغ (د.ع)': sub.amount > 0 ? sub.amount : 0,
-      'تاريخ البدء': sub.startDate,
-      'تاريخ الانتهاء': sub.endDate,
-      'العنوان / المنطقة': sub.address || '',
-      'الملاحظات': sub.notes || ''
+      'تاريخ البدء': sub.startDate || '-',
+      'تاريخ الانتهاء': sub.endDate || '-',
+      'العنوان / المنطقة': sub.address || '-',
+      'الملاحظات': sub.notes || '-'
     }));
+
+    if (subscribers.length > 0) {
+      data.push({
+        'ت': 'Σ',
+        'اسم المشترك': `الإجمالي: ${subscribers.length} مشترك`,
+        'رقم الهاتف': '-',
+        'رقم الجهاز': '-',
+        'الوكيل المسؤول': '-',
+        'نوع الباقة': '-',
+        'الحالة': `فعال (${activeCount}) | منتهي قريباً (${expiringCount}) | غير فعال (${inactiveCount})`,
+        'حالة الدفع': '-',
+        'المبلغ (د.ع)': totalAmount,
+        'تاريخ البدء': '-',
+        'تاريخ الانتهاء': '-',
+        'العنوان / المنطقة': '-',
+        'الملاحظات': 'تقرير مالي وإداري معتمد من منظومة الساري'
+      });
+    }
 
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'المشتركون');
-    XLSX.writeFile(workbook, fileName);
+    formatAndWriteWorkbook(workbook, worksheet, data, 'المشتركون', fileName);
   },
 
   exportInvoices(invoices: Invoice[], fileName = 'تقرير_مبيعات_وفواتير_الساري.xlsx') {
@@ -259,8 +324,7 @@ export const excelService = {
 
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'الفواتير والمبيعات');
-    XLSX.writeFile(workbook, fileName);
+    formatAndWriteWorkbook(workbook, worksheet, data, 'الفواتير والمبيعات', fileName);
   },
 
   exportDebts(
@@ -292,12 +356,23 @@ export const excelService = {
 
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'الديون والمستحقات');
-    XLSX.writeFile(workbook, fileName);
+    formatAndWriteWorkbook(workbook, worksheet, data, 'الديون والمستحقات', fileName);
   },
 
   exportBarcodes(codes: DeviceCode[], fileName = 'أكواد_وباركود_أجهزة_الساري.xlsx') {
     const data = codes.map((c, index) => ({
+      'ت': index + 1,
+      'كود الجهاز / السيريال (16 رقم)': c.code,
+      'الحالة': c.status === 'available' ? 'متاح' : c.status === 'assigned' ? 'مخصص لمشترك' : 'معطل',
+      'المشترك المخصص له': c.assignedToSubscriber || '-',
+      'الوكيل': c.assignedToAgent || '-',
+      'تاريخ التوليد': c.generatedDate
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    formatAndWriteWorkbook(workbook, worksheet, data, 'الأكواد', fileName);
+  },
       'ت': index + 1,
       'كود الجهاز / السيريال (16 رقم)': c.code,
       'الحالة': c.status === 'available' ? 'متاح' : c.status === 'assigned' ? 'مخصص لمشترك' : 'معطل',

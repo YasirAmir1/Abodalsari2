@@ -302,11 +302,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           </button>
 
           <button
-            onClick={() => excelService.exportSubscribers(subscribers)}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
-            title="تصدير إلى ملف إكسل"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
           </button>
 
           <label
@@ -369,9 +365,9 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
 
       {/* Sub Header: Counter & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
-        <div className="text-xs text-slate-500 font-bold">
-          عرض {filteredSubscribers.length} من إجمالي {subscribers.length} مشترك
-        </div>
+          <div className="text-xs text-slate-500 font-bold">
+            عرض {filteredSubscribers.length} من إجمالي {subscribers.length} مشترك
+          </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* Agent Filter Dropdown */}
