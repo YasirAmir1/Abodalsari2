@@ -3,7 +3,8 @@ import {
   Calendar,
   Contrast,
   RefreshCw,
-  LogOut
+  LogOut,
+  Menu
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -16,6 +17,7 @@ interface HeaderProps {
   onLogout?: () => void;
   isDark?: boolean;
   onToggleDark?: () => void;
+  onToggleSidebar?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -27,15 +29,25 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectAgent,
   onLogout,
   isDark = false,
-  onToggleDark
+  onToggleDark,
+  onToggleSidebar
 }) => {
   return (
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20 select-none transition-colors">
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 select-none transition-colors">
       {/* Page Title / Breadcrumb (Right in RTL) */}
-      <div className="flex items-center gap-3">
-        <h2 className="text-xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">{pageTitle}</h2>
+      <div className="flex items-center gap-2.5 md:gap-3 min-w-0">
+        {/* Mobile Hamburger Menu Button (3 lines) */}
+        <button
+          onClick={onToggleSidebar}
+          className="md:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer shrink-0 shadow-xs"
+          title="فتح القائمة الجانبية"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <h2 className="text-base md:text-xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight truncate">{pageTitle}</h2>
         {isAgentMode && (
-          <div className="flex items-center gap-2 mr-2">
+          <div className="hidden sm:flex items-center gap-2 mr-2">
             <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 px-2.5 py-0.5 rounded-full font-bold border border-amber-300 dark:border-amber-700">
               تطبيق الوكيل
             </span>

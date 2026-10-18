@@ -58,6 +58,17 @@ export const storageService = {
     } catch {}
   },
 
+  markAllSubscribersAsDeleted(subscribers: Subscriber[]) {
+    try {
+      const set = this.getDeletedSubscriberIds();
+      subscribers.forEach((s) => {
+        if (s.id) set.add(s.id);
+        if (s.deviceId) set.add(s.deviceId);
+      });
+      localStorage.setItem(DELETED_SUBS_KEY, JSON.stringify(Array.from(set)));
+    } catch {}
+  },
+
   filterOutDeleted(state: AppState): AppState {
     const deletedSet = this.getDeletedSubscriberIds();
     if (deletedSet.size === 0) return state;

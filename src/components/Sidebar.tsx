@@ -39,6 +39,8 @@ interface SidebarProps {
   selectedAgentName?: string;
   onLogout?: () => void;
   isDark?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -50,7 +52,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleAgentMode,
   selectedAgentName,
   onLogout,
-  isDark = false
+  isDark = false,
+  isOpen = false,
+  onClose
 }) => {
   const menuItems = [
     { id: 'dashboard' as NavTab, label: 'الداشبورد', icon: LayoutDashboard },
@@ -67,7 +71,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-64 bg-white dark:bg-[#070D1E] border-l border-slate-200 dark:border-[#141D34] flex flex-col shrink-0 select-none shadow-sm z-20 h-screen sticky top-0 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden transition-colors">
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isOpen && (
+        <div
+          onClick={onClose}
+          className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-xs transition-opacity"
+        />
+      )}
+
+      <aside
+        className={`fixed md:sticky top-0 inset-y-0 right-0 z-50 w-64 bg-white dark:bg-[#070D1E] border-l border-slate-200 dark:border-[#141D34] flex flex-col shrink-0 select-none shadow-2xl md:shadow-sm h-screen overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
+        }`}
+      >
       {/* Brand Header */}
       <div className="px-3.5 py-3 border-b border-slate-100 dark:border-[#141D34] flex flex-col items-center text-center shrink-0">
         <div className="flex items-center gap-2.5">
@@ -104,7 +121,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="space-y-2">
             <div className="px-2.5 py-1 text-[11px] font-bold text-slate-400">قائمة تطبيق الوكيل</div>
             <button
-              onClick={() => onSelectTab('agent_portal')}
+              onClick={() => {
+                onSelectTab('agent_portal');
+                if (onClose) onClose();
+              }}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 currentTab === 'agent_portal'
                   ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'
@@ -124,7 +144,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectTab(item.id)}
+                onClick={() => {
+                  onSelectTab(item.id);
+                  if (onClose) onClose();
+                }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                   isActive
                     ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'

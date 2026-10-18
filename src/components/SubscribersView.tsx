@@ -23,6 +23,7 @@ import { getPriceByDuration } from '../utils/pricingUtils';
 import { RenewSubscriptionModal } from './RenewSubscriptionModal';
 import { DeactivateSubscriberModal } from './DeactivateSubscriberModal';
 import { DeleteSubscriberModal } from './DeleteSubscriberModal';
+import { DeleteAllSubscribersModal } from './DeleteAllSubscribersModal';
 
 interface SubscribersViewProps {
   subscribers: Subscriber[];
@@ -33,6 +34,7 @@ interface SubscribersViewProps {
   onDeleteSubscriber: (id: string) => void;
   onRenewSubscriber: (updatedSubscriber: Subscriber, isDebt: boolean, amount: number) => void;
   onDeactivateSubscriber: (subscriberId: string) => void;
+  onDeleteAllSubscribers?: () => void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr: (deviceId: string, subscriberName?: string, agentName?: string) => void;
   onImportSubscribers?: (data: { subscribers: Subscriber[], newAgents: Agent[] }) => void;
@@ -65,6 +67,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   const [deactivatingSubscriber, setDeactivatingSubscriber] = useState<Subscriber | null>(null);
   const [deletingSubscriber, setDeletingSubscriber] = useState<Subscriber | null>(null);
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
 
   // Helper to calculate end date from start date & duration
   const calculateEndDate = (startDateStr: string, duration: SubscriptionDuration): string => {
@@ -291,8 +294,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           </button>
         </div>
 
-        {/* Action Buttons: New Sale + Excel Export/Import */}
-        <div className="flex items-center gap-2">
+        {/* Action Buttons: New Sale + Excel Export/Import + Delete All */}
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setShowAddModal(true)}
             className="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2"
@@ -302,7 +305,30 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           </button>
 
           <button
+            onClick={() => {
+              const filterTag = agentFilter !== 'all' || statusFilter !== 'all' || searchTerm ? '_المفلترة' : '';
+              const dateStr = new Date().toISOString().split('T')[0];
+              excelService.exportSubscribers(
+                filteredSubscribers,
+                `قائمة_المشتركين${filterTag}_${dateStr}.xlsx`
+              );
+            }}
+            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+            title="تصدير قائمة المشتركين المعروضة حالياً إلى ملف إكسل منسق"
           >
+            <FileSpreadsheet className="w-4 h-4 text-white" />
+            <span className="hidden sm:inline">تصدير قائمة المشتركين (Excel)</span>
+            <span className="sm:hidden">تصدير Excel</span>
+          </button>
+
+          <button
+            onClick={() => setShowDeleteAllModal(true)}
+            className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+            title="حذف جميع المشتركين نهائياً (تصفير شامل)"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span className="hidden sm:inline">حذف جميع المشتركين</span>
+            <span className="sm:hidden">حذف الكل</span>
           </button>
 
           <label
@@ -1005,6 +1031,20 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           onConfirmDelete={(id) => {
             onDeleteSubscriber(id);
             setDeletingSubscriber(null);
+          }}
+        />
+      )}
+
+      {/* Modal: Delete All Subscribers Confirmation */}
+      {showDeleteAllModal && (
+        <DeleteAllSubscribersModal
+          subscribersCount={subscribers.length}
+          onClose={() => setShowDeleteAllModal(false)}
+          onConfirmDeleteAll={() => {
+            if (onDeleteAllSubscribers) {
+              onDeleteAllSubscribers();
+            }
+            setShowDeleteAllModal(false);
           }}
         />
       )}

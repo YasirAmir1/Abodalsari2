@@ -80,6 +80,7 @@ export default function App() {
 
   // Filter pass-through
   const [subscribersAgentFilter, setSubscribersAgentFilter] = useState<string | undefined>(undefined);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Dark mode state matching reference image
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -458,6 +459,33 @@ export default function App() {
       invoices: remainingInvoices,
       pendingRequests: remainingPendingRequests,
       agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    storageService.saveState(newState);
+    setState(newState);
+    soundService.playSuccess();
+  };
+
+  const handleDeleteAllSubscribers = () => {
+    storageService.markAllSubscribersAsDeleted(state.subscribers);
+
+    const resetAgents = state.agents.map((ag) => ({
+      ...ag,
+      devicesCount: 0,
+      activeSubscriptions: 0,
+      inactiveSubscriptions: 0,
+      totalDebt: 0,
+      totalSales: 0,
+      hasDebt: false
+    }));
+
+    const newState: AppState = {
+      ...state,
+      subscribers: [],
+      invoices: [],
+      pendingRequests: [],
+      agents: resetAgents,
       lastUpdatedTimestamp: Date.now()
     };
 
@@ -892,6 +920,8 @@ export default function App() {
         selectedAgentName={currentAgent.name}
         onLogout={handleLogout}
         isDark={isDarkMode}
+        isOpen={isMobileSidebarOpen}
+        onClose={() => setIsMobileSidebarOpen(false)}
       />
 
       {/* Main Content Area */}
@@ -907,10 +937,11 @@ export default function App() {
           onLogout={handleLogout}
           isDark={isDarkMode}
           onToggleDark={handleToggleDarkMode}
+          onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
         />
 
         {/* Dynamic Views */}
-        <main className="p-6 max-w-7xl w-full mx-auto flex-1">
+        <main className="p-4 md:p-6 max-w-7xl w-full mx-auto flex-1">
           {currentTab === 'dashboard' && (
             <DashboardView
               agents={state.agents}
@@ -932,6 +963,7 @@ export default function App() {
               onDeleteSubscriber={handleDeleteSubscriber}
               onRenewSubscriber={handleRenewSubscriber}
               onDeactivateSubscriber={handleDeactivateSubscriber}
+              onDeleteAllSubscribers={handleDeleteAllSubscribers}
               onOpenWhatsApp={setActiveWhatsAppSub}
               onSelectDeviceQr={handleOpenDeviceQr}
               onImportSubscribers={handleImportSubscribers}

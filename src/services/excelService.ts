@@ -515,8 +515,8 @@ export const excelService = {
               const rawPayment = findRowValue(row, ['حالة الدفع', 'حالة السداد', 'الدفع', 'السداد', 'Payment', 'Payment Status']);
               const rawAmount = findRowValue(row, ['المبلغ', 'المبلغ (د.ع)', 'السعر', 'القيمة', 'Amount', 'Price']);
 
-              const subscriptionType = parseDuration(rawDuration) || '1 شهر';
-              const startDate = formatExcelDate(rawStartDate, 0) || todayStr;
+              const subscriptionType = rawDuration ? parseDuration(rawDuration) : '-';
+              const startDate = rawStartDate ? formatExcelDate(rawStartDate, 0) : '-';
               
               let durationDays = 30;
               if (subscriptionType === 'شهرين') durationDays = 60;
@@ -524,15 +524,13 @@ export const excelService = {
               else if (subscriptionType === '6 أشهر') durationDays = 180;
               else if (subscriptionType === 'سنة') durationDays = 365;
 
-              const endDate = formatExcelDate(rawEndDate, durationDays);
-              const status = parseStatus(rawStatus, endDate) || 'active';
-              const paymentStatus = parsePaymentStatus(rawPayment) || 'paid';
+              const endDate = rawEndDate ? formatExcelDate(rawEndDate, durationDays) : '-';
+              const status = rawStatus ? parseStatus(rawStatus, endDate) : 'inactive';
+              const paymentStatus = rawPayment ? parsePaymentStatus(rawPayment) : '-';
               
-              const amount = typeof rawAmount === 'number' && rawAmount > 0
-                ? rawAmount
-                : Number(rawAmount) > 0
+              const amount = rawAmount !== undefined && rawAmount !== null && Number(rawAmount) > 0
                 ? Number(rawAmount)
-                : calculateDefaultPrice(subscriptionType);
+                : 0;
 
               allSubscribers.push({
                 id: `imported-${deviceId}-${allSubscribers.length + 1}`,
