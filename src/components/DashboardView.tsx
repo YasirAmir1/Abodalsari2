@@ -33,7 +33,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [activeChartPoint, setActiveChartPoint] = useState<number | null>(null);
 
   // Calculations - System-wide total sales & debts across ALL agents and HQ (المركز الرئيسي)
-  const totalSales = invoices.reduce((sum, inv) => sum + inv.amount, 0);
+  const totalSalesFromAgents = agents.reduce((sum, ag) => sum + (ag.totalSales || 0), 0);
+  const totalSalesFromInvoices = invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+  const totalSales = Math.max(totalSalesFromAgents, totalSalesFromInvoices);
 
   // Total system debt: Sum of debts for all agents including HQ ('agent-main') and all debt subscribers
   const agentDebtsTotal = agents.reduce((sum, ag) => sum + (ag.totalDebt || 0), 0);
