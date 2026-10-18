@@ -9,7 +9,6 @@ import {
   RefreshCw,
   Send,
   Package,
-  Settings,
   CheckCircle,
   AlertCircle
 } from 'lucide-react';
@@ -38,7 +37,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   onSelectDeviceQr
 }) => {
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [orderSentToast, setOrderSentToast] = useState(false);
 
   // Order form state
@@ -64,10 +62,13 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
 
     const price = getPriceByDuration(currentAgent.id, orderDuration, pricing);
 
+    const rawDev = (sub.deviceId || '').trim();
+    const finalDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
+
     onSubmitRenewalOrder({
       subscriberId: sub.id,
       subscriberName: sub.name,
-      deviceId: sub.deviceId,
+      deviceId: finalDev,
       subscriberPhone: sub.phone,
       agentId: currentAgent.id,
       agentName: currentAgent.name,
@@ -117,15 +118,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
           >
             <Sparkles className="w-4 h-4" />
             <span>+ طلب تجديد إلكتروني فوري</span>
-          </button>
-
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="px-3 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold border border-white/20 transition-all flex items-center gap-1.5 cursor-pointer"
-            title="تخصيص هوية المتجر"
-          >
-            <Settings className="w-4 h-4" />
-            <span>هوية الوكيل</span>
           </button>
         </div>
       </div>
@@ -188,6 +180,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                 <th className="py-3 px-3">رقم الجهاز</th>
                 <th className="py-3 px-3">الهاتف</th>
                 <th className="py-3 px-3">نوع الباقة</th>
+                <th className="py-3 px-3">المبلغ</th>
                 <th className="py-3 px-3">حالة البث</th>
                 <th className="py-3 px-3">تاريخ الانتهاء</th>
                 <th className="py-3 px-4 text-center">إجراءات سريعة</th>
@@ -196,7 +189,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {agentSubs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     لا يوجد مشتركون مسجلون لهذا الوكيل حالياً.
                   </td>
                 </tr>
@@ -215,6 +208,9 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                     </td>
                     <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-400">{sub.phone}</td>
                     <td className="py-3 px-3 font-semibold text-slate-700 dark:text-slate-300">{sub.subscriptionType}</td>
+                    <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-slate-100">
+                      {(sub.amount || 0).toLocaleString()} <span className="text-[10px] text-slate-400">د.ع</span>
+                    </td>
                     <td className="py-3 px-3">
                       <span
                         className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${

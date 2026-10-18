@@ -384,31 +384,19 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">طريقة السداد</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditPaymentStatus('paid')}
-                    className={`py-2 px-3 rounded-xl border font-bold text-center transition-all cursor-pointer ${
-                      editPaymentStatus === 'paid'
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    مسدد نقدياً
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditPaymentStatus('debt')}
-                    className={`py-2 px-3 rounded-xl border font-bold text-center transition-all cursor-pointer ${
-                      editPaymentStatus === 'debt'
-                        ? 'bg-red-600 text-white border-red-600'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    تسجيل كـ دين
-                  </button>
-                </div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">طريقة السداد *</label>
+                <select
+                  value={editPaymentStatus}
+                  onChange={(e) => setEditPaymentStatus(e.target.value as any)}
+                  className={`w-full px-3 py-2 rounded-xl border-2 bg-white dark:bg-slate-800 font-bold focus:ring-2 ${
+                    editPaymentStatus === 'paid'
+                      ? 'border-emerald-500 text-emerald-700 dark:text-emerald-300 focus:ring-emerald-500'
+                      : 'border-red-400 text-red-600 dark:text-red-300 focus:ring-red-500'
+                  }`}
+                >
+                  <option value="paid" className="text-emerald-700 font-bold">نقد (مسدد نقدياً)</option>
+                  <option value="debt" className="text-red-600 font-bold">دين (تسجيل كـ دين)</option>
+                </select>
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">

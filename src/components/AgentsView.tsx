@@ -15,7 +15,9 @@ import {
   LayoutGrid,
   Table as TableIcon,
   ArrowUpDown,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Agent, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
@@ -42,6 +44,11 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
   const [toDate, setToDate] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | null>(null);
+  const [visiblePasswords, setVisiblePasswords] = useState<{ [id: string]: boolean }>({});
+
+  const togglePasswordVisibility = (agentId: string) => {
+    setVisiblePasswords((prev) => ({ ...prev, [agentId]: !prev[agentId] }));
+  };
 
   // Modals
   const [settlingAgent, setSettlingAgent] = useState<Agent | null>(null);
@@ -331,7 +338,19 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
                     </div>
                     <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
                       <span className="font-semibold">الرمز السري:</span>
-                      <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{ag.password || '••••••'}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {visiblePasswords[ag.id] ? (ag.password || '123456') : '••••••'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => togglePasswordVisibility(ag.id)}
+                          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 transition-colors cursor-pointer"
+                          title={visiblePasswords[ag.id] ? 'إخفاء الرمز' : 'إظهار الرمز'}
+                        >
+                          {visiblePasswords[ag.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

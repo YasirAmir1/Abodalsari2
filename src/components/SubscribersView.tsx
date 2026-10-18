@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Search,
   Plus,
@@ -34,6 +35,7 @@ interface SubscribersViewProps {
   onDeactivateSubscriber: (subscriberId: string) => void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr: (deviceId: string, subscriberName?: string, agentName?: string) => void;
+  onImportSubscribers?: (data: { subscribers: Subscriber[], newAgents: Agent[] }) => void;
   currentAgentFilter?: string;
   isMainCenterView?: boolean;
 }
@@ -49,6 +51,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   onDeactivateSubscriber,
   onOpenWhatsApp,
   onSelectDeviceQr,
+  onImportSubscribers,
   currentAgentFilter,
   isMainCenterView = true
 }) => {
@@ -164,12 +167,14 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     const currentAgent = agents.find((a) => a.id === newSubAgentId) || agents[0];
     const sDate = newSubStartDate || todayStr;
     const eDate = newSubEndDate || calculateEndDate(sDate, newSubType);
+    const rawDev = newSubDeviceId.trim();
+    const cleanDeviceId = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
 
     onAddSubscriber(
       {
         name: newSubName.trim(),
         phone: newSubPhone.trim(),
-        deviceId: newSubDeviceId.trim(),
+        deviceId: cleanDeviceId,
         agentId: currentAgent.id,
         agentName: currentAgent.name,
         subscriptionType: newSubType,
@@ -200,13 +205,25 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       try {
-        const imported = await excelService.importSubscribersFromExcel(e.target.files[0]);
-        imported.forEach((sub) => {
-          onAddSubscriber(sub, false, true);
-        });
-        alert(`تم استيراد ${imported.length} مشترك بنجاح من ملف الإكسل`);
-      } catch {
-        alert('حدث خطأ أثناء استيراد الملف');
+        const file = e.target.files[0];
+        const imported = await excelService.importSubscribersFromExcel(file, agents);
+        if (imported.subscribers.length === 0) {
+          alert('لم يتم العثور على أي بيانات مشتركين صالحة في ملف الإكسل.');
+          return;
+        }
+
+        if (onImportSubscribers) {
+          onImportSubscribers(imported);
+        } else {
+          imported.subscribers.forEach((sub) => {
+            onAddSubscriber(sub, false, true);
+          });
+        }
+        alert(`تم بنجاح استيراد ${imported.subscribers.length} مشترك وربطهم بوكلائهم بنجاح!`);
+        e.target.value = '';
+      } catch (err: any) {
+        console.error('Import error:', err);
+        alert('حدث خطأ أثناء استيراد الملف. يرجى التأكد من أن الملف بصيغة إكسل (.xlsx أو .xls) ويحتوي على الأعمدة المطلوبة.');
       }
     }
   };
@@ -688,6 +705,12 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                       required
                       value={newSubDeviceId}
                       onChange={(e) => setNewSubDeviceId(e.target.value)}
+                      onBlur={() => {
+                        const trimmed = newSubDeviceId.trim();
+                        if (trimmed && !trimmed.startsWith('00')) {
+                          setNewSubDeviceId('00' + trimmed);
+                        }
+                      }}
                       placeholder="مثال: 00217875"
                       className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 text-sm font-mono"
                     />
@@ -800,31 +823,19 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">طريقة السداد</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setNewSubPaymentStatus('paid')}
-                    className={`py-2 px-3 rounded-xl border font-bold text-center transition-all ${
-                      newSubPaymentStatus === 'paid'
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    مسدد نقدياً
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewSubPaymentStatus('debt')}
-                    className={`py-2 px-3 rounded-xl border font-bold text-center transition-all ${
-                      newSubPaymentStatus === 'debt'
-                        ? 'bg-red-600 text-white border-red-600'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    تسجيل كـ دين
-                  </button>
-                </div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">طريقة السداد *</label>
+                <select
+                  value={newSubPaymentStatus}
+                  onChange={(e) => setNewSubPaymentStatus(e.target.value as 'paid' | 'debt')}
+                  className={`w-full px-3 py-2 rounded-xl border-2 bg-white dark:bg-slate-800 font-bold focus:ring-2 ${
+                    newSubPaymentStatus === 'paid'
+                      ? 'border-emerald-500 text-emerald-700 dark:text-emerald-300 focus:ring-emerald-500'
+                      : 'border-red-400 text-red-600 dark:text-red-300 focus:ring-red-500'
+                  }`}
+                >
+                  <option value="paid" className="text-emerald-700 font-bold">نقد (مسدد نقدياً)</option>
+                  <option value="debt" className="text-red-600 font-bold">دين (تسجيل كـ دين)</option>
+                </select>
               </div>
 
               {/* Note: Region field has been hidden as requested */}
@@ -920,13 +931,39 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">رقم الجهاز</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-bold text-slate-700">رقم الجهاز *</label>
+                  <button
+                    type="button"
+                    onClick={() => onSelectDeviceQr(editingSubscriber.deviceId, editingSubscriber.name, editingSubscriber.agentName)}
+                    className="text-[11px] text-sky-700 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>عرض QR كود كامل</span>
+                  </button>
+                </div>
                 <input
                   type="text"
+                  required
                   value={editingSubscriber.deviceId}
                   onChange={(e) => setEditingSubscriber({ ...editingSubscriber, deviceId: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono text-xs"
                 />
+
+                {/* QR Code preview box */}
+                <div className="mt-2.5 p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-slate-800 block text-[11px]">رمز الاستجابة السريعة (QR Code)</span>
+                    <span className="text-[10px] text-slate-500">يمثل رمز الجهاز المعتمد في المنظومة</span>
+                  </div>
+                  <div className="p-1.5 bg-white border border-slate-300 rounded-xl shadow-xs">
+                    <QRCodeSVG
+                      value={editingSubscriber.deviceId}
+                      size={64}
+                      level="M"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -950,7 +987,9 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    onUpdateSubscriber(editingSubscriber);
+                    const rawDev = editingSubscriber.deviceId.trim();
+                    const cleanDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
+                    onUpdateSubscriber({ ...editingSubscriber, deviceId: cleanDev });
                     setEditingSubscriber(null);
                   }}
                   className="px-5 py-2 rounded-xl bg-sky-700 text-white font-bold hover:bg-sky-800"

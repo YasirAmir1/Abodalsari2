@@ -40,8 +40,15 @@ export const DeviceQrModal: React.FC<DeviceQrModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
-      <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 text-center animate-in zoom-in-95">
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in"
+      dir="rtl"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 text-center animate-in zoom-in-95"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2 text-sky-900 font-extrabold text-sm">
@@ -58,7 +65,7 @@ export const DeviceQrModal: React.FC<DeviceQrModalProps> = ({
           <div className="p-4 bg-white border-2 border-slate-900 rounded-2xl shadow-inner">
             <QRCodeSVG
               id="device-qr-code-svg"
-              value={`https://alsari.iq/device/${deviceId}`}
+              value={deviceId}
               size={180}
               level="H"
               includeMargin={true}

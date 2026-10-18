@@ -31,23 +31,95 @@ export interface AppState {
   pendingRequests: PendingRenewalRequest[];
   securityAlerts: SecurityAlert[];
   lastBackupDate: string;
+  deletedSubscriberIds?: string[];
+  lastUpdatedTimestamp?: number;
 }
 
 const STORAGE_KEY = 'alsari_broadcasting_v1';
+const DELETED_SUBS_KEY = 'alsari_deleted_subscribers_v1';
 
 export const storageService = {
+  getDeletedSubscriberIds(): Set<string> {
+    try {
+      const data = localStorage.getItem(DELETED_SUBS_KEY);
+      if (data) {
+        return new Set(JSON.parse(data));
+      }
+    } catch {}
+    return new Set<string>();
+  },
+
+  addDeletedSubscriberId(idOrDeviceId: string) {
+    if (!idOrDeviceId) return;
+    try {
+      const set = this.getDeletedSubscriberIds();
+      set.add(idOrDeviceId);
+      localStorage.setItem(DELETED_SUBS_KEY, JSON.stringify(Array.from(set)));
+    } catch {}
+  },
+
+  filterOutDeleted(state: AppState): AppState {
+    const deletedSet = this.getDeletedSubscriberIds();
+    if (deletedSet.size === 0) return state;
+
+    const filteredSubs = (state.subscribers || []).filter(
+      (s) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId)
+    );
+
+    const filteredInvoices = (state.invoices || []).filter(
+      (inv) => !deletedSet.has(inv.subscriberId) && !deletedSet.has(inv.deviceId)
+    );
+
+    const filteredRequests = (state.pendingRequests || []).filter(
+      (req) => !deletedSet.has(req.subscriberId) && !deletedSet.has(req.deviceId)
+    );
+
+    return {
+      ...state,
+      subscribers: filteredSubs,
+      invoices: filteredInvoices,
+      pendingRequests: filteredRequests
+    };
+  },
+
   loadState(): AppState {
+    const deletedSet = this.getDeletedSubscriberIds();
+
     try {
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
-        return JSON.parse(data);
+        const parsed: AppState = JSON.parse(data);
+        if (parsed.subscribers && Array.isArray(parsed.subscribers)) {
+          parsed.subscribers = parsed.subscribers
+            .filter((s) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId))
+            .map((s) => {
+              const raw = (s.deviceId || '').trim();
+              const clean = raw ? (raw.startsWith('00') ? raw : `00${raw}`) : `00123456`;
+              return { ...s, deviceId: clean };
+            });
+        }
+        if (parsed.invoices && Array.isArray(parsed.invoices)) {
+          parsed.invoices = parsed.invoices.filter(
+            (inv) => !deletedSet.has(inv.subscriberId) && !deletedSet.has(inv.deviceId)
+          );
+        }
+        if (parsed.pendingRequests && Array.isArray(parsed.pendingRequests)) {
+          parsed.pendingRequests = parsed.pendingRequests.filter(
+            (req) => !deletedSet.has(req.subscriberId) && !deletedSet.has(req.deviceId)
+          );
+        }
+        return parsed;
       }
     } catch (e) {
       console.error('Failed to load state from localStorage:', e);
     }
 
+    const initialFilteredSubs = INITIAL_SUBSCRIBERS.filter(
+      (s) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId)
+    );
+
     return {
-      subscribers: INITIAL_SUBSCRIBERS,
+      subscribers: initialFilteredSubs,
       agents: INITIAL_AGENTS,
       products: INITIAL_PRODUCTS,
       pricing: INITIAL_PRICING,
@@ -56,13 +128,18 @@ export const storageService = {
       users: INITIAL_USERS,
       pendingRequests: [],
       securityAlerts: INITIAL_SECURITY_ALERTS,
-      lastBackupDate: new Date().toISOString()
+      lastBackupDate: new Date().toISOString(),
+      lastUpdatedTimestamp: Date.now()
     };
   },
 
   saveState(state: AppState) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const toSave: AppState = {
+        ...state,
+        lastUpdatedTimestamp: state.lastUpdatedTimestamp || Date.now()
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);
     }
@@ -79,12 +156,20 @@ export const storageService = {
   },
 
   async importBackupJson(file: File): Promise<AppState> {
+    const deletedSet = this.getDeletedSubscriberIds();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
           const parsed = JSON.parse(e.target?.result as string);
           if (parsed && Array.isArray(parsed.subscribers)) {
+            parsed.subscribers = parsed.subscribers
+              .filter((s: Subscriber) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId))
+              .map((s: Subscriber) => {
+                const raw = (s.deviceId || '').trim();
+                const clean = raw ? (raw.startsWith('00') ? raw : `00${raw}`) : `00123456`;
+                return { ...s, deviceId: clean };
+              });
             resolve(parsed);
           } else {
             reject(new Error('ملف النسخة الاحتياطية غير صالح'));

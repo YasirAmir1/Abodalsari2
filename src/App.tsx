@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Agent,
   DeviceCode,
@@ -18,6 +18,7 @@ import {
   PaymentStatus
 } from './types';
 import { AppState, storageService } from './services/storageService';
+import { firebaseService } from './services/firebaseService';
 import { soundService } from './services/soundService';
 import { excelService } from './services/excelService';
 
@@ -109,10 +110,58 @@ export default function App() {
     });
   };
 
-  // Auto persist on state change
+  const isRemoteUpdateRef = useRef(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto persist on state change & sync with cloud (Firebase Firestore)
   useEffect(() => {
     storageService.saveState(state);
+
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    if (firebaseService.isQuotaExceeded()) {
+      return;
+    }
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      firebaseService.saveRemoteState(state);
+    }, 1500);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [state]);
+
+  // Subscribe to real-time remote state changes from other devices
+  useEffect(() => {
+    const unsubscribe = firebaseService.subscribeToRemoteState((remoteState) => {
+      if (remoteState) {
+        const currentLocal = storageService.loadState();
+        const remoteTime = remoteState.lastUpdatedTimestamp || 0;
+        const localTime = currentLocal.lastUpdatedTimestamp || 0;
+
+        // If local state has newer updates or deletions, don't overwrite with older remote snapshot
+        if (localTime > remoteTime) {
+          return;
+        }
+
+        const filteredState = storageService.filterOutDeleted(remoteState);
+        isRemoteUpdateRef.current = true;
+        setState(filteredState);
+      }
+    });
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   // Current selected agent
   const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents[1];
@@ -177,11 +226,25 @@ export default function App() {
   // Add Subscriber / New Sale
   const handleAddSubscriber = (subData: Partial<Subscriber>, isSale = true, isPaid = false) => {
     const newId = `sub-${Date.now()}`;
+    const rawDevId = (subData.deviceId || '').trim();
+    const cleanDevId = rawDevId
+      ? (rawDevId.startsWith('00') ? rawDevId : `00${rawDevId}`)
+      : `00${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const deletedSet = storageService.getDeletedSubscriberIds();
+    if (deletedSet.has(newId) || deletedSet.has(cleanDevId)) {
+      deletedSet.delete(newId);
+      deletedSet.delete(cleanDevId);
+      try {
+        localStorage.setItem('alsari_deleted_subscribers_v1', JSON.stringify(Array.from(deletedSet)));
+      } catch {}
+    }
+
     const newSub: Subscriber = {
       id: newId,
       name: subData.name || 'مشترك جديد',
       phone: subData.phone || '',
-      deviceId: subData.deviceId || `00${Math.floor(100000 + Math.random() * 900000)}`,
+      deviceId: cleanDevId,
       agentId: subData.agentId || 'agent-main',
       agentName: subData.agentName || 'المركز الرئيسي',
       subscriptionType: subData.subscriptionType || '1 شهر',
@@ -257,32 +320,149 @@ export default function App() {
   };
 
   const handleUpdateSubscriber = (updated: Subscriber) => {
+    let cleanDevId = (updated.deviceId || '').trim();
+    if (cleanDevId && !cleanDevId.startsWith('00')) {
+      cleanDevId = '00' + cleanDevId;
+    }
+    const fixedSub = { ...updated, deviceId: cleanDevId };
     setState({
       ...state,
-      subscribers: state.subscribers.map((s) => (s.id === updated.id ? updated : s))
+      subscribers: state.subscribers.map((s) => (s.id === updated.id ? fixedSub : s))
     });
+  };
+
+  const handleImportSubscribers = ({ subscribers: importedSubs, newAgents = [] }: { subscribers: Subscriber[], newAgents: Agent[] }) => {
+    const deletedSet = storageService.getDeletedSubscriberIds();
+    importedSubs.forEach((sub) => {
+      deletedSet.delete(sub.id);
+      if (sub.deviceId) {
+        deletedSet.delete(sub.deviceId);
+        if (!sub.deviceId.startsWith('00')) {
+          deletedSet.delete('00' + sub.deviceId);
+        }
+      }
+    });
+    try {
+      localStorage.setItem('alsari_deleted_subscribers_v1', JSON.stringify(Array.from(deletedSet)));
+    } catch {}
+
+    setState((prev) => {
+      const deletedSet = storageService.getDeletedSubscriberIds();
+      const existingMap = new Map<string, Subscriber>();
+      
+      prev.subscribers.forEach((s) => {
+        if (!deletedSet.has(s.id) && !deletedSet.has(s.deviceId)) {
+          existingMap.set(s.deviceId, s);
+        }
+      });
+
+      importedSubs.forEach((sub) => {
+        if (!deletedSet.has(sub.id) && !deletedSet.has(sub.deviceId)) {
+          let devId = (sub.deviceId || '').trim();
+          if (devId && !devId.startsWith('00')) {
+            devId = '00' + devId;
+          }
+          const fixedSub = { ...sub, deviceId: devId };
+          existingMap.set(devId, fixedSub);
+        }
+      });
+
+      const updatedSubscribers = Array.from(existingMap.values());
+
+      let currentAgents = [...prev.agents];
+      newAgents.forEach((na) => {
+        if (!currentAgents.some((a) => a.id === na.id || a.name.toLowerCase() === na.name.toLowerCase())) {
+          currentAgents.push(na);
+        }
+      });
+
+      const updatedAgents = currentAgents.map((ag) => {
+        const agSubs = updatedSubscribers.filter((s) =>
+          s.agentId === ag.id ||
+          (s.agentName && ag.name && (
+            s.agentName.trim().toLowerCase() === ag.name.trim().toLowerCase() ||
+            s.agentName.includes(ag.name) ||
+            ag.name.includes(s.agentName)
+          ))
+        );
+        const activeSubs = agSubs.filter((s) => s.status === 'active');
+        return {
+          ...ag,
+          devicesCount: agSubs.length,
+          activeSubscriptions: activeSubs.length,
+          inactiveSubscriptions: agSubs.length - activeSubs.length
+        };
+      });
+
+      const newState: AppState = {
+        ...prev,
+        subscribers: updatedSubscribers,
+        agents: updatedAgents,
+        lastUpdatedTimestamp: Date.now()
+      };
+      storageService.saveState(newState);
+      return newState;
+    });
+    soundService.playSuccess();
   };
 
   const handleDeleteSubscriber = (id: string) => {
     const sub = state.subscribers.find((s) => s.id === id);
-    const updatedAgents = state.agents.map((ag) => {
-      if (sub && (ag.id === sub.agentId || ag.name === sub.agentName)) {
-        return {
-          ...ag,
-          activeSubscriptions: sub.status === 'active' ? Math.max(0, ag.activeSubscriptions - 1) : ag.activeSubscriptions,
-          inactiveSubscriptions: sub.status === 'inactive' ? Math.max(0, ag.inactiveSubscriptions - 1) : ag.inactiveSubscriptions,
-          totalDebt: sub.paymentStatus === 'debt' ? Math.max(0, ag.totalDebt - sub.amount) : ag.totalDebt,
-          totalSales: Math.max(0, ag.totalSales - sub.amount)
-        };
+    if (sub) {
+      storageService.addDeletedSubscriberId(sub.id);
+      if (sub.deviceId) {
+        storageService.addDeletedSubscriberId(sub.deviceId);
       }
-      return ag;
+    } else {
+      storageService.addDeletedSubscriberId(id);
+    }
+
+    const subDeviceId = sub?.deviceId;
+
+    const remainingSubscribers = state.subscribers.filter(
+      (s) => s.id !== id && (subDeviceId ? s.deviceId !== subDeviceId : true)
+    );
+
+    // Completely remove invoices of deleted subscriber
+    const remainingInvoices = state.invoices.filter(
+      (inv) => inv.subscriberId !== id && (subDeviceId ? inv.deviceId !== subDeviceId : true)
+    );
+
+    // Completely remove pending requests of deleted subscriber
+    const remainingPendingRequests = state.pendingRequests.filter(
+      (req) => req.subscriberId !== id && (subDeviceId ? req.deviceId !== subDeviceId : true)
+    );
+
+    // Recalculate agent stats
+    const updatedAgents = state.agents.map((ag) => {
+      const agSubs = remainingSubscribers.filter((s) => s.agentId === ag.id);
+      const activeSubs = agSubs.filter((s) => s.status === 'active');
+      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt');
+      const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+      const totalAgentSales = agSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+
+      return {
+        ...ag,
+        devicesCount: agSubs.length,
+        activeSubscriptions: activeSubs.length,
+        inactiveSubscriptions: agSubs.length - activeSubs.length,
+        totalDebt: totalAgentDebt,
+        totalSales: totalAgentSales,
+        hasDebt: totalAgentDebt > 0
+      };
     });
 
-    setState({
+    const newState: AppState = {
       ...state,
-      subscribers: state.subscribers.filter((s) => s.id !== id),
-      agents: updatedAgents
-    });
+      subscribers: remainingSubscribers,
+      invoices: remainingInvoices,
+      pendingRequests: remainingPendingRequests,
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    storageService.saveState(newState);
+    setState(newState);
     soundService.playSuccess();
   };
 
@@ -327,20 +507,24 @@ export default function App() {
     isDebt: boolean,
     amount: number
   ) => {
+    const rawDev = (updatedSubscriber.deviceId || '').trim();
+    const cleanDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
+    const finalSubscriber = { ...updatedSubscriber, deviceId: cleanDev };
+
     const newInvoice: Invoice = {
       id: `inv-${Date.now()}`,
       invoiceNumber: `INV-2026-${String(state.invoices.length + 1).padStart(3, '0')}`,
-      subscriberId: updatedSubscriber.id,
-      subscriberName: updatedSubscriber.name,
-      deviceId: updatedSubscriber.deviceId,
-      agentId: updatedSubscriber.agentId,
-      agentName: updatedSubscriber.agentName,
-      packageType: `تجديد باقة ${updatedSubscriber.subscriptionType}`,
+      subscriberId: finalSubscriber.id,
+      subscriberName: finalSubscriber.name,
+      deviceId: finalSubscriber.deviceId,
+      agentId: finalSubscriber.agentId,
+      agentName: finalSubscriber.agentName,
+      packageType: `تجديد باقة ${finalSubscriber.subscriptionType}`,
       amount: amount,
       paidAmount: isDebt ? 0 : amount,
       remainingAmount: isDebt ? amount : 0,
       paymentStatus: isDebt ? 'debt' : 'paid',
-      date: updatedSubscriber.startDate,
+      date: finalSubscriber.startDate,
       notes: 'تجديد اشتراك رسمي معتمد'
     };
 
@@ -363,7 +547,7 @@ export default function App() {
 
     setState({
       ...state,
-      subscribers: state.subscribers.map((s) => (s.id === updatedSubscriber.id ? updatedSubscriber : s)),
+      subscribers: state.subscribers.map((s) => (s.id === finalSubscriber.id ? finalSubscriber : s)),
       invoices: [newInvoice, ...state.invoices],
       agents: updatedAgents
     });
@@ -373,9 +557,9 @@ export default function App() {
     // Show Invoice Success Modal matching Screenshot 5!
     setInvoiceSuccessData({
       invoice: newInvoice,
-      startDate: updatedSubscriber.startDate,
-      endDate: updatedSubscriber.endDate,
-      phone: updatedSubscriber.phone
+      startDate: finalSubscriber.startDate,
+      endDate: finalSubscriber.endDate,
+      phone: finalSubscriber.phone
     });
   };
 
@@ -715,12 +899,8 @@ export default function App() {
         {/* Top Header */}
         <Header
           pageTitle={pageTitles[currentTab]}
-          securityAlerts={state.securityAlerts}
-          pendingCount={state.pendingRequests.length}
           onRefresh={() => setState(storageService.loadState())}
-          onDownloadBackup={handleDownloadBackup}
           isAgentMode={isAgentMode}
-          onToggleAgentMode={handleToggleAgentMode}
           agentsList={state.agents.filter((a) => a.id !== 'agent-main')}
           selectedAgentId={selectedAgentId}
           onSelectAgent={setSelectedAgentId}
@@ -754,6 +934,7 @@ export default function App() {
               onDeactivateSubscriber={handleDeactivateSubscriber}
               onOpenWhatsApp={setActiveWhatsAppSub}
               onSelectDeviceQr={handleOpenDeviceQr}
+              onImportSubscribers={handleImportSubscribers}
               currentAgentFilter={subscribersAgentFilter}
               isMainCenterView={!isAgentMode}
             />
@@ -776,6 +957,7 @@ export default function App() {
               onSettleAgentDebt={handleSettleAgentDebt}
               onOpenWhatsApp={setActiveWhatsAppSub}
               onSelectDeviceQr={handleOpenDeviceQr}
+              onDeleteSubscriber={handleDeleteSubscriber}
             />
           )}
 

@@ -21,21 +21,25 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, onClos
 📅 تاريخ الانتهاء: ${subscriber.endDate}
 💰 المبلغ: ${subscriber.amount.toLocaleString()} د.ع
 
-شكراً لثقتكم بشبكة الساري - وكيل قنوات الرابعة في صلاح الدين. لأي استفسار: 07701234567`,
+شكراً لثقتكم بشبكة الساري - وكيل قنوات الرابعة في صلاح الدين.
+لأي استفسار: هاتف الإدارة: 07726218685`,
 
     reminder: `عزيزي المشترك (${subscriber.name})،
 نود تذكيرك بأن اشتراكك في شبكة الساري للبث الأرضي وقنوات الرابعة الرياضية سينتهي بتاريخ (${subscriber.endDate}).
 
 لتفادي انقطاع البث والمباريات، يرجى التجديد عبر زيارة المركز أو أقرب وكيل معتمد في منطقتك.
-رقم الجهاز: ${subscriber.deviceId}`,
+رقم الجهاز: ${subscriber.deviceId}
+
+لأي استفسار: هاتف الإدارة: 07726218685`,
 
     debt: `عزيزي المشترك (${subscriber.name})،
 تحية طيبة من شركة الساري للبث الأرضي.
 يرجى التفضل بمراجعة المركز أو الوكيل لتسديد المبلغ المستحق بذمتكم والبالغ (${subscriber.amount.toLocaleString()} د.ع) الخاص باشتراك جهازك (${subscriber.deviceId}).
 
-شاكرين حسن تعاونكم معنا.`,
+شاكرين حسن تعاونكم معنا.
+لأي استفسار: هاتف الإدارة: 07726218685`,
 
-    custom: `مرحباً بك أستاذ ${subscriber.name}، بخصوص جهاز البث الأرضي رقم (${subscriber.deviceId})...`
+    custom: `مرحباً بك أستاذ ${subscriber.name}، بخصوص جهاز البث الأرضي رقم (${subscriber.deviceId})...\n\nلأي استفسار: هاتف الإدارة: 07726218685`
   };
 
   const [messageText, setMessageText] = useState(defaultTemplates.renew);

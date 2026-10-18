@@ -22,6 +22,7 @@ interface DebtsViewProps {
   onSettleAgentDebt: (agentId: string, amount: number) => void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr?: (deviceId: string, subscriberName?: string, agentName?: string) => void;
+  onDeleteSubscriber: (subscriberId: string) => void;
 }
 
 export const DebtsView: React.FC<DebtsViewProps> = ({
@@ -29,7 +30,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   subscribers,
   onSettleAgentDebt,
   onOpenWhatsApp,
-  onSelectDeviceQr
+  onSelectDeviceQr,
+  onDeleteSubscriber
 }) => {
   const [activeTab, setActiveTab] = useState<'agents' | 'subscribers'>('agents');
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>('all');
@@ -295,10 +297,21 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                               >
                                 تسديد دفعة
                               </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`هل أنت متأكد من حذف/تصفير دين الوكيل ${ag.name} بالكامل؟`)) {
+                                    onSettleAgentDebt(ag.id, ag.totalDebt);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                                title="حذف/تصفير الدين بالكامل"
+                              >
+                                حذف الدين
+                              </button>
                             </div>
                           ) : (
-                            <span className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold">
-                              خالص الذمة
+                            <span className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold">
+                              غير مطلوب
                             </span>
                           )}
                         </td>
@@ -330,13 +343,13 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                   <th className="py-3 px-3">الوكيل المسؤول</th>
                   <th className="py-3 px-3">مبلغ الدين</th>
                   <th className="py-3 px-3">تاريخ الانتهاء</th>
-                  <th className="py-3 px-4 text-center">تذكير واتساب</th>
+                  <th className="py-3 px-4 text-center">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredDebtSubscribers.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
+                    <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
                       لا يوجد مشتركون بديون يطابقون خيار التصنيف المحدد
                     </td>
                   </tr>
@@ -363,13 +376,23 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         {sub.amount.toLocaleString()} د.ع
                       </td>
                       <td className="py-3.5 px-3 font-mono text-slate-500 dark:text-slate-400">{sub.endDate}</td>
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="py-3.5 px-4 text-center flex items-center justify-center gap-2">
                         <button
                           onClick={() => onOpenWhatsApp(sub)}
                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
-                          <span>تذكير بالسداد</span>
+                          <span>تذكير</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('هل أنت متأكد من حذف بيانات هذا المشترك نهائياً؟')) {
+                              onDeleteSubscriber(sub.id);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          حذف
                         </button>
                       </td>
                     </tr>

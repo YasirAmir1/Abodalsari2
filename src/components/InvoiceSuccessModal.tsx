@@ -106,7 +106,7 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
           <div className="p-3 bg-white border-2 border-slate-900 rounded-2xl shadow-sm">
             <QRCodeSVG
               id="success-invoice-qr-svg"
-              value={`https://alsari.iq/device/${invoice.deviceId}`}
+              value={invoice.deviceId}
               size={170}
               level="H"
               includeMargin={true}

@@ -213,7 +213,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                     {/* QR Code thumbnail */}
                     <td className="py-2 px-3 text-center">
                       <div className="p-1 border border-slate-200 rounded-lg inline-block bg-white shadow-xs">
-                        <QRCodeSVG value={`https://alsari.iq/device/${c.code}`} size={36} level="L" />
+                        <QRCodeSVG value={c.code} size={36} level="L" />
                       </div>
                     </td>
 
@@ -439,7 +439,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
                   {/* Visual QR with real SVG */}
                   <div className="my-3 p-2 bg-white border border-slate-300 rounded-xl shadow-xs">
-                    <QRCodeSVG value={`https://alsari.iq/device/${c.code}`} size={110} level="M" />
+                    <QRCodeSVG value={c.code} size={110} level="M" />
                   </div>
 
                   <div className="font-mono font-black text-xs text-slate-900 tracking-wider">{c.code}</div>

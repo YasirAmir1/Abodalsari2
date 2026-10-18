@@ -81,25 +81,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Mode Pill */}
+        {/* Mode Status Badge */}
         <div className="mt-2 w-full">
-          <button
-            onClick={onToggleAgentMode}
-            className={`w-full py-1 px-2.5 rounded-full text-xs font-bold transition-all flex items-center justify-between border ${
+          <div
+            className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold flex items-center justify-between border ${
               isAgentMode
                 ? 'bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-300 shadow-xs'
-                : 'bg-sky-50 border-sky-200 text-sky-800 dark:bg-[#0E1A38] dark:border-sky-800/60 dark:text-sky-300 hover:bg-sky-100'
+                : 'bg-sky-50 border-sky-200 text-sky-800 dark:bg-[#0E1A38] dark:border-sky-800/60 dark:text-sky-300'
             }`}
-            title="انقر للتبديل بين إدارة المركز وتطبيق الوكلاء"
           >
             <span className="flex items-center gap-1.5 truncate">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${isAgentMode ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isAgentMode ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
               <span className="truncate">{isAgentMode ? `بوابة (${selectedAgentName || 'الوكيل'})` : 'نظام إدارة المركز - رئيسي'}</span>
             </span>
-            <span className="text-[10px] text-sky-600 dark:text-sky-400 bg-white/90 dark:bg-sky-950/80 px-1.5 py-0.2 rounded-full border border-sky-200 dark:border-sky-800 shrink-0">
-              تبديل
-            </span>
-          </button>
+          </div>
         </div>
       </div>
 
@@ -119,58 +114,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex items-center gap-2.5">
                 <LayoutDashboard className="w-4.5 h-4.5 text-sky-600 dark:text-sky-400 shrink-0" />
                 <span>لوحة تحكم الوكيل</span>
-              </div>
-            </button>
-            <button
-              onClick={() => onSelectTab('subscribers')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                currentTab === 'subscribers'
-                  ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-[#0D1836] dark:hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Users className="w-4.5 h-4.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span>مشتركي الوكالة</span>
-              </div>
-            </button>
-            <button
-              onClick={() => onSelectTab('products')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                currentTab === 'products'
-                  ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-[#0D1836] dark:hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Package className="w-4.5 h-4.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span>طلب أجهزة ومعدات</span>
-              </div>
-            </button>
-            <button
-              onClick={() => onSelectTab('sales')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                currentTab === 'sales'
-                  ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-[#0D1836] dark:hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <ShoppingCart className="w-4.5 h-4.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span>سجل المبيعات والتجديد</span>
-              </div>
-            </button>
-            <button
-              onClick={() => onSelectTab('debts')}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                currentTab === 'debts'
-                  ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-[#0D1836] dark:hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <Clock className="w-4.5 h-4.5 text-sky-600 dark:text-sky-400 shrink-0" />
-                <span>حساباتي والديون</span>
               </div>
             </button>
           </div>

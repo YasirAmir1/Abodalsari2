@@ -88,8 +88,12 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
     const selectedAgent = agents.find((a) => a.id === agentId) || agents[0];
     const isDebt = paymentMethod === 'دين (تسجيل دين)';
 
+    const rawDev = (subscriber.deviceId || '').trim();
+    const cleanDeviceId = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
+
     const updated: Subscriber = {
       ...subscriber,
+      deviceId: cleanDeviceId,
       name,
       phone,
       agentId: selectedAgent.id,
@@ -106,8 +110,15 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
-      <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 max-h-[92vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in"
+      dir="rtl"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in zoom-in-95 max-h-[92vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header matching Screenshot 3 */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5 text-sky-950">
@@ -189,10 +200,14 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
                   <select
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border-2 border-red-400 bg-white font-bold text-red-600 focus:ring-2 focus:ring-red-500"
+                    className={`w-full px-3 py-2 rounded-xl border-2 bg-white font-bold focus:ring-2 ${
+                      paymentMethod === 'نقد (مسدد)'
+                        ? 'border-emerald-500 text-emerald-700 focus:ring-emerald-500'
+                        : 'border-red-400 text-red-600 focus:ring-red-500'
+                    }`}
                   >
-                    <option value="دين (تسجيل دين)">دين (تسجيل دين)</option>
-                    <option value="نقد (مسدد)">نقد (مسدد نقدياً)</option>
+                    <option value="دين (تسجيل دين)" className="text-red-600 font-bold">دين (تسجيل دين)</option>
+                    <option value="نقد (مسدد)" className="text-emerald-700 font-bold">نقد (مسدد نقدياً)</option>
                   </select>
                 </div>
               </div>
@@ -247,7 +262,7 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
               {/* Real QR Code */}
               <div className="p-2 border border-slate-200 rounded-xl bg-white shadow-xs">
                 <QRCodeSVG
-                  value={`https://alsari.iq/device/${subscriber.deviceId}`}
+                  value={subscriber.deviceId}
                   size={120}
                   level="M"
                 />

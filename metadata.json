@@ -2,5 +2,7 @@
   "name": "شركة الساري للبث الأرضي - وكيل قنوات الرابعة الرياضية",
   "description": "نظام إدارة المشتركين، الاشتراكات، الوكلاء، الفوترة والأكواد لشبكة الساري للبث الأرضي في صلاح الدين",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

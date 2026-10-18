@@ -1,0 +1,21 @@
+{
+  "entities": {
+    "AppState": {
+      "title": "Application State",
+      "description": "Global application state for multi-device sync.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/app_state/{stateId}": {
+      "schema": {
+        "$ref": "#/entities/AppState"
+      },
+      "description": "Global app state document for real-time synchronization across devices."
+    }
+  }
+}

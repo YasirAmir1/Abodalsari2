@@ -85,59 +85,6 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ agents, subscribers, i
         </div>
       </div>
 
-      {/* Terrestrial Transmission Towers Status across Salah al-Din */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Radio className="w-5 h-5 text-sky-700 animate-pulse" />
-            <h3 className="font-extrabold text-sm text-slate-900">
-              حالة وتغطية أبراج شبكة الساري للبث الأرضي - وكيل قنوات الرابعة الرياضية
-            </h3>
-          </div>
-          <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold text-xs border border-emerald-200 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            كافة المحطات تعمل بكفاءة
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {towers.map((tower, idx) => (
-            <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 hover:border-sky-300 transition-all flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-slate-900">{tower.city}</span>
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                    {tower.status}
-                  </span>
-                </div>
-
-                <div className="mt-3 space-y-1 text-xs text-slate-600">
-                  <div className="flex justify-between">
-                    <span>قوة الإشارة الرقمية:</span>
-                    <span className="font-bold text-sky-700 font-mono">{tower.strength}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>تردد البث الهوائي:</span>
-                    <span className="font-mono text-slate-700">{tower.freq}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>القنوات المنقولة:</span>
-                    <span className="text-[11px] text-slate-500 font-medium">{tower.channels}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 pt-2 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Signal className="w-3.5 h-3.5 text-emerald-600" />
-                  إشارة مستقرة DVB-T2
-                </span>
-                <span>تحديث لحظي</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };

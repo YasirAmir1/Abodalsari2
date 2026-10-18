@@ -18,14 +18,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
     setError('');
 
     const cleanUser = username.trim().toLowerCase();
+    
+    // Flexible match: username, displayName, agentCode, or partial match
     const found = users.find(
-      (u) => u.username.toLowerCase() === cleanUser
+      (u) =>
+        u.username.toLowerCase() === cleanUser ||
+        u.displayName.toLowerCase().includes(cleanUser) ||
+        (u.agentCode && u.agentCode.toLowerCase() === cleanUser)
     );
 
     if (found) {
       onLogin(found);
     } else {
-      setError('اسم المستخدم أو كلمة المرور غير صحيحة');
+      setError('اسم المستخدم غير صحيح. يرجى اختيار حساب من أزرار الدخول السريع أدناه');
     }
   };
 
@@ -42,9 +47,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-sky-200/40 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-blue-200/40 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Main Login Card matching Screenshot 1 */}
+      {/* Main Login Card */}
       <div className="bg-white rounded-3xl shadow-xl border border-slate-200/80 max-w-sm w-full p-8 relative z-10 animate-in fade-in zoom-in-95">
-        {/* Logo Badge matching Screenshot 1 */}
+        {/* Logo Badge */}
         <div className="flex flex-col items-center text-center">
           <Logo size="lg" className="w-20 h-20 rounded-full shadow-lg" />
 
@@ -59,14 +64,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="mt-6 space-y-4 text-xs">
           {error && (
-            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-center">
+            <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-center leading-relaxed">
               {error}
             </div>
           )}
 
           <div>
             <label className="block font-bold text-slate-700 mb-1.5">
-              اسم الحساب / المستخدم
+              اسم الحساب / اسم الوكيل أو المستخدم
             </label>
             <div className="relative">
               <input
@@ -74,7 +79,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="مثال: ahmed أو admin"
+                placeholder="مثال: sahar أو admin أو ابو ساهر"
                 className="w-full px-3.5 py-3 rounded-xl border border-slate-200 bg-slate-50/70 focus:bg-white focus:border-sky-500 focus:ring-2 focus:ring-sky-100 transition-all text-xs font-semibold text-slate-800 placeholder:text-slate-400"
               />
               <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
@@ -88,7 +93,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
             <div className="relative">
               <input
                 type="password"
-                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -100,39 +104,57 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLogin }) => {
 
           <button
             type="submit"
-            className="w-full py-3 bg-sky-900 hover:bg-sky-800 text-white rounded-xl text-xs font-black shadow-md hover:shadow-lg transition-all"
+            className="w-full py-3 bg-sky-900 hover:bg-sky-800 text-white rounded-xl text-xs font-black shadow-md hover:shadow-lg transition-all cursor-pointer"
           >
             تسجيل الدخول
           </button>
         </form>
 
-        {/* Quick Demo Login Picker */}
+        {/* Quick Demo Login Picker for all agents */}
         <div className="mt-6 pt-5 border-t border-slate-100 text-center">
-          <div className="text-[11px] font-bold text-slate-400 mb-2">الدخول السريع للحسابات:</div>
+          <div className="text-[11px] font-bold text-slate-500 mb-2.5">الدخول السريع للحسابات والوكلاء:</div>
           <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px]">
             <button
+              type="button"
               onClick={() => handleQuickLogin('abodsari')}
-              className="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold border border-sky-200 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 font-bold border border-sky-200 transition-colors cursor-pointer"
             >
               أدمن المركز
             </button>
             <button
+              type="button"
               onClick={() => handleQuickLogin('sahir')}
-              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
             >
-              وكيل ابو ساهر
+              ابو ساهر
             </button>
             <button
+              type="button"
+              onClick={() => handleQuickLogin('abdallah')}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+            >
+              عبدالله
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('shamel')}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+            >
+              شامل
+            </button>
+            <button
+              type="button"
               onClick={() => handleQuickLogin('laith')}
-              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
             >
-              وكيل ليث جاسم
+              ليث جاسم
             </button>
             <button
-              onClick={() => handleQuickLogin('abdullah')}
-              className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition-colors"
+              type="button"
+              onClick={() => handleQuickLogin('mahmoud')}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
             >
-              وكيل عبدالله
+              محمود فجر
             </button>
           </div>
         </div>
