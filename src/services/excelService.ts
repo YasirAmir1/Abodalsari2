@@ -373,19 +373,6 @@ export const excelService = {
     const workbook = XLSX.utils.book_new();
     formatAndWriteWorkbook(workbook, worksheet, data, 'الأكواد', fileName);
   },
-      'ت': index + 1,
-      'كود الجهاز / السيريال (16 رقم)': c.code,
-      'الحالة': c.status === 'available' ? 'متاح' : c.status === 'assigned' ? 'مخصص لمشترك' : 'معطل',
-      'المشترك المخصص له': c.assignedToSubscriber || '-',
-      'الوكيل': c.assignedToAgent || '-',
-      'تاريخ التوليد': c.generatedDate
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'الأكواد');
-    XLSX.writeFile(workbook, fileName);
-  },
 
   async importSubscribersFromExcel(
     file: File,
