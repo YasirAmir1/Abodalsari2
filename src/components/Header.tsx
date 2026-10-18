@@ -19,6 +19,7 @@ interface HeaderProps {
   isDark?: boolean;
   onToggleDark?: () => void;
   onToggleSidebar?: () => void;
+  isRefreshing?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,7 +33,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   isDark = false,
   onToggleDark,
-  onToggleSidebar
+  onToggleSidebar,
+  isRefreshing = false
 }) => {
   return (
     <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 select-none transition-colors">
@@ -88,10 +90,13 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Refresh Data */}
         <button
           onClick={onRefresh}
-          className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-          title="تحديث البيانات"
+          disabled={isRefreshing}
+          className={`w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors shadow-xs cursor-pointer ${
+            isRefreshing ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+          }`}
+          title="تحديث ومزامنة البيانات من قاعدة البيانات"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-600 dark:text-sky-400' : ''}`} />
         </button>
 
         {/* Logout Button */}

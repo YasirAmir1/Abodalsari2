@@ -80,6 +80,32 @@ export default function App() {
   // Filter pass-through
   const [subscribersAgentFilter, setSubscribersAgentFilter] = useState<string | undefined>(undefined);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [syncToast, setSyncToast] = useState<string | null>(null);
+
+  const handleGlobalRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      const remote = await firebaseService.fetchRemoteState();
+      if (remote) {
+        const filtered = storageService.filterOutDeleted(remote);
+        setState(filtered);
+        storageService.saveState(filtered);
+      } else {
+        const local = storageService.loadState();
+        setState(local);
+      }
+      setSyncToast('تم تحديث ومزامنة البيانات بنجاح 🔄');
+      soundService.playSuccess();
+    } catch (e) {
+      console.error('Refresh sync error:', e);
+      setSyncToast('تعذر مزامنة البيانات، يرجى التحقق من الاتصال');
+    } finally {
+      setIsRefreshing(false);
+      setTimeout(() => setSyncToast(null), 3500);
+    }
+  };
 
   // Dark mode state matching reference image
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -861,7 +887,8 @@ export default function App() {
         <Header
           pageTitle={pageTitles[currentTab]}
           currentTab={currentTab}
-          onRefresh={() => setState(storageService.loadState())}
+          onRefresh={handleGlobalRefresh}
+          isRefreshing={isRefreshing}
           isAgentMode={isAgentMode}
           agentsList={state.agents.filter((a) => a.id !== 'agent-main')}
           selectedAgentId={selectedAgentId}
@@ -1052,6 +1079,14 @@ export default function App() {
             window.open(link, '_blank');
           }}
         />
+      )}
+
+      {/* Toast Notification for Sync & Data Refresh */}
+      {syncToast && (
+        <div className="fixed bottom-6 left-6 z-50 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
+          <span>{syncToast}</span>
+        </div>
       )}
 
       {/* Toast Notification for Theme Toggle matching screenshot bottom-left */}
