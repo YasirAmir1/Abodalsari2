@@ -59,7 +59,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
+  const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || (isMainCenterView ? 'agent-main' : 'all'));
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -147,7 +147,17 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   // Filter logic
   const filteredSubscribers = subscribers.filter((sub) => {
     if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
-    if (agentFilter !== 'all' && sub.agentId !== agentFilter) return false;
+    if (agentFilter !== 'all') {
+      if (agentFilter === 'agent-main') {
+        const isMain = sub.agentId === 'agent-main' || sub.agentName === 'المركز الرئيسي';
+        if (!isMain) return false;
+      } else {
+        const matchAgentId = sub.agentId === agentFilter;
+        const targetAgent = agents.find((a) => a.id === agentFilter);
+        const matchAgentName = targetAgent && sub.agentName === targetAgent.name;
+        if (!matchAgentId && !matchAgentName) return false;
+      }
+    }
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const matchName = sub.name.toLowerCase().includes(term);
