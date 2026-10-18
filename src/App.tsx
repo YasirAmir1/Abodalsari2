@@ -846,7 +846,7 @@ export default function App() {
 
   // If not logged in, display Login Page matching Screenshot 1!
   if (!currentUser) {
-    return <LoginView users={state.users} onLogin={handleLogin} />;
+    return <LoginView users={state.users} agents={state.agents} onLogin={handleLogin} />;
   }
 
   // Titles mapping
