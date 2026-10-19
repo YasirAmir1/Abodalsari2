@@ -572,9 +572,16 @@ export default function App() {
   };
 
   // Deactivate Subscriber (Reset information to blank and status to inactive)
+  // Deactivate Subscriber:
+  // 1. Reset subscriber information: status = 'inactive', startDate = '-', endDate = '-', amount = 0, subscriptionType = '-', paymentStatus = '-'
+  // 2. Remove all related sales invoices (removes the invoice line from sales page)
+  // 3. Remove all related pending renewal requests
+  // 4. Fully recalculate agent financials and counters (removes agent debt and sales that came from this subscriber)
   const handleDeactivateSubscriber = (subscriberId: string) => {
     const sub = state.subscribers.find((s) => s.id === subscriberId);
     if (!sub) return;
+
+    const subDeviceId = sub.deviceId;
 
     const deactivatedSub: Subscriber = {
       ...sub,
@@ -586,26 +593,53 @@ export default function App() {
       paymentStatus: '-'
     };
 
+    const updatedSubscribers = state.subscribers.map((s) =>
+      s.id === subscriberId ? deactivatedSub : s
+    );
+
+    // Remove sales invoices associated with this subscriber (by id or deviceId)
+    const remainingInvoices = state.invoices.filter(
+      (inv) => inv.subscriberId !== subscriberId && (subDeviceId ? inv.deviceId !== subDeviceId : true)
+    );
+
+    // Remove any pending requests associated with this subscriber
+    const remainingPendingRequests = state.pendingRequests.filter(
+      (req) => req.subscriberId !== subscriberId && (subDeviceId ? req.deviceId !== subDeviceId : true)
+    );
+
+    // Recalculate agent stats based on updatedSubscribers & remainingInvoices
     const updatedAgents = state.agents.map((ag) => {
-      if (ag.id === sub.agentId) {
-        return {
-          ...ag,
-          activeSubscriptions: Math.max(0, ag.activeSubscriptions - 1),
-          inactiveSubscriptions: ag.inactiveSubscriptions + 1
-        };
-      }
-      return ag;
+      const agSubs = updatedSubscribers.filter((s) => s.agentId === ag.id);
+      const activeSubs = agSubs.filter((s) => s.status === 'active');
+      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt');
+      const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+      const totalAgentSales = agSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+
+      // Total paid is sales minus remaining debt
+      const totalAgentPaid = Math.max(0, totalAgentSales - totalAgentDebt);
+
+      return {
+        ...ag,
+        devicesCount: agSubs.length,
+        activeSubscriptions: activeSubs.length,
+        inactiveSubscriptions: agSubs.length - activeSubs.length,
+        totalDebt: totalAgentDebt,
+        totalSales: totalAgentSales,
+        totalPaid: totalAgentPaid,
+        hasDebt: totalAgentDebt > 0
+      };
     });
 
     setState({
       ...state,
-      subscribers: state.subscribers.map((s) => (s.id === subscriberId ? deactivatedSub : s)),
+      subscribers: updatedSubscribers,
+      invoices: remainingInvoices,
+      pendingRequests: remainingPendingRequests,
       agents: updatedAgents
     });
 
     soundService.playSuccess();
   };
-
   // Instant Renewal Handler
   const handleRenewSubscriber = (
     updatedSubscriber: Subscriber,
