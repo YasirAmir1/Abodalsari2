@@ -34,7 +34,7 @@ interface SubscribersViewProps {
   onDeleteSubscriber: (id: string) => void;
   onRenewSubscriber: (updatedSubscriber: Subscriber, isDebt: boolean, amount: number) => void;
   onDeactivateSubscriber: (subscriberId: string) => void;
-  onDeleteAllSubscribers?: () => Promise<void> | void;
+  onDeleteAllSubscribersHandler: () => Promise<void> | void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr: (deviceId: string, subscriberName?: string, agentName?: string) => void;
   onImportSubscribers?: (data: { subscribers: Subscriber[], newAgents: Agent[] }) => void;
@@ -51,13 +51,14 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   onDeleteSubscriber,
   onRenewSubscriber,
   onDeactivateSubscriber,
-  onDeleteAllSubscribers,
+  onDeleteAllSubscribersHandler = () => { console.log('DEBUG: onDeleteAllSubscribersHandler called'); },
   onOpenWhatsApp,
   onSelectDeviceQr,
   onImportSubscribers,
   currentAgentFilter,
   isMainCenterView = true
 }) => {
+  console.log('DEBUG: SubscribersView rendering, onDeleteAllSubscribers is:', onDeleteAllSubscribers);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
@@ -1052,8 +1053,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           subscribersCount={subscribers.length}
           onClose={() => setShowDeleteAllModal(false)}
           onConfirmDeleteAll={async () => {
-            if (onDeleteAllSubscribers) {
-              await onDeleteAllSubscribers();
+            if (onDeleteAllSubscribersHandler) {
+              await onDeleteAllSubscribersHandler();
             }
             setShowDeleteAllModal(false);
           }}

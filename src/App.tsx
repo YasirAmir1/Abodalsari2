@@ -1037,7 +1037,7 @@ export default function App() {
               onDeleteSubscriber={handleDeleteSubscriber}
               onRenewSubscriber={handleRenewSubscriber}
               onDeactivateSubscriber={handleDeactivateSubscriber}
-              onDeleteAllSubscribers={handleDeleteAllSubscribers}
+              onDeleteAllSubscribersHandler={handleDeleteAllSubscribers}
               onOpenWhatsApp={setActiveWhatsAppSub}
               onSelectDeviceQr={handleOpenDeviceQr}
               onImportSubscribers={handleImportSubscribers}
