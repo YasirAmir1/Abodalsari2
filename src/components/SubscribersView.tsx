@@ -51,6 +51,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   onDeleteSubscriber,
   onRenewSubscriber,
   onDeactivateSubscriber,
+  onDeleteAllSubscribers,
   onOpenWhatsApp,
   onSelectDeviceQr,
   onImportSubscribers,
