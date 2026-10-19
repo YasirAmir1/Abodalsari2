@@ -433,6 +433,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
               @media print {
                 .page-break { page-break-after: always; }
                 @page { size: A4; margin: 10mm; }
+                .no-print { display: none !important; }
               }
             `}</style>
             <div className="mt-4 grid grid-cols-3 gap-3" id="printable-labels">
@@ -454,7 +455,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
               ))}
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2">
+            <div className="mt-6 flex items-center justify-end gap-2 no-print">
               <button
                 onClick={() => setShowPrintModal(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold"
