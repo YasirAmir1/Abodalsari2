@@ -20,6 +20,8 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
   onClose,
   onWhatsApp
 }) => {
+  const isDeviceSale = invoice.packageType === 'بيع جهاز جديد فقط';
+
   const handleDownload = () => {
     const svgElement = document.getElementById('success-invoice-qr-svg');
     if (!svgElement) return;
@@ -37,6 +39,18 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
   };
 
   const handleSendWhatsApp = () => {
+    if (isDeviceSale) {
+      const deviceSaleText = `تم تسجيل بيع جهاز جديد بنجاح في شركة الساري للبث الأرضي.
+المشترك: ${invoice.subscriberName}
+رقم الجهاز: ${invoice.deviceId}
+قيمة الفاتورة: ${invoice.amount.toLocaleString()} د.ع
+تاريخ البيع: ${invoice.date}
+طريقة السداد: ${invoice.paymentStatus === 'paid' ? 'مدفوع' : 'مستحق'}
+شكراً لكم.`;
+      onWhatsApp(phone, deviceSaleText);
+      return;
+    }
+
     const text = `🎉 تم بنجاح تجديد اشتراكك في شبكة الساري للبث الأرضي - وكيل قنوات الرابعة الرياضية!
 المشترك: ${invoice.subscriberName}
 رقم الجهاز: ${invoice.deviceId}
@@ -87,13 +101,20 @@ export const InvoiceSuccessModal: React.FC<InvoiceSuccessModalProps> = ({
 
           <div className="grid grid-cols-2 gap-2 pt-1 border-t border-sky-200/60 text-[11px]">
             <div>
-              <span className="text-slate-500">تاريخ البدء: </span>
-              <span className="font-mono text-slate-700">{startDate}</span>
+              <span className="text-slate-500">{isDeviceSale ? 'تاريخ البيع: ' : 'تاريخ البدء: '}</span>
+              <span className="font-mono text-slate-700">{isDeviceSale ? invoice.date : startDate}</span>
             </div>
-            <div>
-              <span className="text-slate-500">تاريخ الانتهاء: </span>
-              <span className="font-mono font-bold text-slate-900">{endDate}</span>
-            </div>
+            {isDeviceSale ? (
+              <div>
+                <span className="text-slate-500">طريقة السداد: </span>
+                <span className="font-bold text-slate-900">{invoice.paymentStatus === 'paid' ? 'مدفوع' : 'مستحق'}</span>
+              </div>
+            ) : (
+              <div>
+                <span className="text-slate-500">تاريخ الانتهاء: </span>
+                <span className="font-mono font-bold text-slate-900">{endDate}</span>
+              </div>
+            )}
           </div>
         </div>
 

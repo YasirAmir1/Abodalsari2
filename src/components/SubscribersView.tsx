@@ -30,7 +30,7 @@ interface SubscribersViewProps {
   subscribers: Subscriber[];
   agents: Agent[];
   pricing: PricingRow[];
-  onAddSubscriber: (sub: Partial<Subscriber>, isSale: boolean, paid: boolean) => void;
+  onAddSubscriber: (sub: Partial<Subscriber>, isSale: boolean, paid: boolean, saleKind?: 'subscription' | 'device') => void;
   onUpdateSubscriber: (sub: Subscriber) => void;
   onDeleteSubscriber: (id: string) => void;
   onRenewSubscriber: (updatedSubscriber: Subscriber, isDebt: boolean, amount: number) => void;
@@ -41,6 +41,7 @@ interface SubscribersViewProps {
   onImportSubscribers?: (data: { subscribers: Subscriber[], newAgents: Agent[] }) => void;
   currentAgentFilter?: string;
   isMainCenterView?: boolean;
+  isAdmin?: boolean;
 }
 
 export const SubscribersView: React.FC<SubscribersViewProps> = ({
@@ -57,7 +58,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   onSelectDeviceQr,
   onImportSubscribers,
   currentAgentFilter,
-  isMainCenterView = true
+  isMainCenterView = true,
+  isAdmin = false
 }) => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,13 +95,24 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
 
   const todayStr = new Date().toISOString().split('T')[0];
 
+  const [showAgentRenewalModal, setShowAgentRenewalModal] = useState(false);
+  const [agentRenewalCustomerName, setAgentRenewalCustomerName] = useState('');
+  const [selectedAgentSubscriber, setSelectedAgentSubscriber] = useState<Subscriber | null>(null);
+  const [showAgentRenewalSuggestions, setShowAgentRenewalSuggestions] = useState(false);
+  const [agentRenewalDuration, setAgentRenewalDuration] = useState<SubscriptionDuration>('1 شهر');
+  const [agentRenewalStartDate, setAgentRenewalStartDate] = useState(todayStr);
+  const [agentRenewalEndDate, setAgentRenewalEndDate] = useState(() => calculateEndDate(todayStr, '1 شهر'));
+  const [agentRenewalPayment, setAgentRenewalPayment] = useState<'paid' | 'debt'>('debt');
+
   // New Sale Form State
   const [newSubName, setNewSubName] = useState('');
   const [newSubPhone, setNewSubPhone] = useState('');
   const [newSubDeviceId, setNewSubDeviceId] = useState('');
   const [newSubAgentId, setNewSubAgentId] = useState('agent-main');
+  const [newSaleType, setNewSaleType] = useState<'renewal' | 'device'>('device');
   const [newSubType, setNewSubType] = useState<SubscriptionDuration>('1 شهر');
   const [newSubPaymentStatus, setNewSubPaymentStatus] = useState<'paid' | 'debt'>('debt');
+  const [newSaleDate, setNewSaleDate] = useState(todayStr);
   const [newSubStartDate, setNewSubStartDate] = useState(todayStr);
   const [newSubEndDate, setNewSubEndDate] = useState(() => calculateEndDate(todayStr, '1 شهر'));
   const [newSubNotes, setNewSubNotes] = useState('');
@@ -108,7 +121,28 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
 
   // Auto calculate price based on selected agent and package
   const selectedAgent = agents.find((a) => a.id === newSubAgentId) || agents[0];
-  const calculatedPrice = getPriceByDuration(newSubAgentId, newSubType, pricing);
+  const selectedAgentPricing = pricing.find((row) => row.agentId === selectedAgent?.id)
+    || pricing.find((row) => row.isReference)
+    || pricing[0];
+  const newDevicePrice = selectedAgentPricing?.newDevicePrice ?? 0;
+  const calculatedPrice = getPriceByDuration(selectedAgent?.id || newSubAgentId, newSubType, pricing);
+
+  const openNewSaleModal = () => {
+    setNewSaleType('device');
+    setNewSubName('');
+    setNewSubPhone('');
+    setNewSubDeviceId('');
+    setNewSubAgentId(agents[0]?.id || 'agent-main');
+    setNewSubType('1 شهر');
+    setNewSubPaymentStatus('debt');
+    setNewSaleDate(todayStr);
+    setNewSubStartDate(todayStr);
+    setNewSubEndDate(calculateEndDate(todayStr, '1 شهر'));
+    setNewSubNotes('');
+    setMatchedSubscriber(null);
+    setShowNameSuggestions(false);
+    setShowAddModal(true);
+  };
 
   // When subscriber name is typed, check if it matches existing subscriber
   const handleNameChange = (val: string) => {
@@ -137,8 +171,12 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     if (sub.deviceId) setNewSubDeviceId(sub.deviceId);
     if (sub.agentId) setNewSubAgentId(sub.agentId);
     if (sub.subscriptionType) {
-      setNewSubType(sub.subscriptionType);
-      setNewSubEndDate(calculateEndDate(newSubStartDate, sub.subscriptionType));
+      const supportedDurations = ['1 شهر', 'شهرين', '3 أشهر', '6 أشهر', 'سنة'] as const;
+      const duration: SubscriptionDuration = supportedDurations.find(
+        (candidate) => candidate === sub.subscriptionType
+      ) || '1 شهر';
+      setNewSubType(duration);
+      setNewSubEndDate(calculateEndDate(newSubStartDate, duration));
     }
   };
 
@@ -150,6 +188,86 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   const handleStartDateChange = (startDateVal: string) => {
     setNewSubStartDate(startDateVal);
     setNewSubEndDate(calculateEndDate(startDateVal, newSubType));
+  };
+
+  const agentOwnedSubscribers = subscribers.filter((sub) =>
+    (Boolean(sub.agentId) || Boolean(sub.agentName)) &&
+    sub.agentId !== 'agent-main' && sub.agentName !== 'المركز الرئيسي'
+  );
+
+  const agentRenewalPrice = selectedAgentSubscriber
+    ? getPriceByDuration(
+        agents.find((agent) => agent.id === selectedAgentSubscriber.agentId || agent.name === selectedAgentSubscriber.agentName)?.id
+          || selectedAgentSubscriber.agentId,
+        agentRenewalDuration,
+        pricing
+      )
+    : 0;
+
+  const openAgentRenewalModal = () => {
+    const startDate = todayStr;
+    setAgentRenewalCustomerName('');
+    setSelectedAgentSubscriber(null);
+    setShowAgentRenewalSuggestions(false);
+    setAgentRenewalDuration('1 شهر');
+    setAgentRenewalStartDate(startDate);
+    setAgentRenewalEndDate(calculateEndDate(startDate, '1 شهر'));
+    setAgentRenewalPayment('debt');
+    setShowAgentRenewalModal(true);
+  };
+
+  const selectAgentRenewalSubscriber = (subscriber: Subscriber) => {
+    const supportedDurations = ['1 شهر', 'شهرين', '3 أشهر', '6 أشهر', 'سنة'] as const;
+    const duration: SubscriptionDuration = supportedDurations.find(
+      (candidate) => candidate === subscriber.subscriptionType
+    ) || '1 شهر';
+    setSelectedAgentSubscriber(subscriber);
+    setAgentRenewalCustomerName(subscriber.name);
+    setShowAgentRenewalSuggestions(false);
+    setAgentRenewalDuration(duration);
+    setAgentRenewalStartDate(todayStr);
+    setAgentRenewalEndDate(calculateEndDate(todayStr, duration));
+    setAgentRenewalPayment('debt');
+  };
+
+  const handleAgentRenewalCustomerNameChange = (value: string) => {
+    setAgentRenewalCustomerName(value);
+    setShowAgentRenewalSuggestions(value.trim().length > 0);
+    const normalized = value.trim().toLocaleLowerCase();
+    const exactMatch = agentOwnedSubscribers.find(
+      (sub) => sub.name.trim().toLocaleLowerCase() === normalized
+    );
+
+    if (exactMatch) {
+      selectAgentRenewalSubscriber(exactMatch);
+    } else {
+      setSelectedAgentSubscriber(null);
+    }
+  };
+
+  const handleAgentSubscriberRenewal = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedAgentSubscriber || !agentRenewalEndDate || agentRenewalPrice <= 0) return;
+
+    const isDebt = agentRenewalPayment === 'debt';
+    const renewedSubscriber: Subscriber = {
+      ...selectedAgentSubscriber,
+      agentId: selectedAgentSubscriber.agentId,
+      agentName: selectedAgentSubscriber.agentName,
+      subscriptionType: agentRenewalDuration,
+      status: 'active',
+      paymentStatus: isDebt ? 'debt' : 'paid',
+      amount: agentRenewalPrice,
+      originalAmount: agentRenewalPrice,
+      paidAmount: isDebt ? 0 : agentRenewalPrice,
+      settleDate: isDebt ? undefined : agentRenewalStartDate,
+      startDate: agentRenewalStartDate,
+      endDate: agentRenewalEndDate
+    };
+
+    onRenewSubscriber(renewedSubscriber, isDebt, agentRenewalPrice);
+    setShowAgentRenewalModal(false);
+    setSelectedAgentSubscriber(null);
   };
 
   // Filter logic
@@ -186,30 +304,73 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     if (!newSubName.trim() || !newSubDeviceId.trim()) return;
 
     const currentAgent = agents.find((a) => a.id === newSubAgentId) || agents[0];
-    const sDate = newSubStartDate || todayStr;
-    const eDate = newSubEndDate || calculateEndDate(sDate, newSubType);
     const rawDev = newSubDeviceId.trim();
     const cleanDeviceId = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
+    const isDeviceSale = newSaleType === 'device';
+    const saleAmount = isDeviceSale ? newDevicePrice : calculatedPrice;
 
-    onAddSubscriber(
-      {
+    if (saleAmount <= 0) {
+      setModalInfo({
+        isOpen: true,
+        title: 'السعر غير متوفر',
+        message: 'يرجى تحديد سعر الجهاز أو الاشتراك للوكيل في صفحة الأسعار قبل تسجيل البيع.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    if (!isDeviceSale && !matchedSubscriber) {
+      setModalInfo({
+        isOpen: true,
+        title: 'اختر مشتركاً للتجديد',
+        message: 'ابحث عن المشترك واختره من قائمة النتائج قبل تجديد اشتراكه.',
+        type: 'warning'
+      });
+      return;
+    }
+
+    if (isDeviceSale) {
+      onAddSubscriber(
+        {
+          name: newSubName.trim(),
+          phone: newSubPhone.trim(),
+          deviceId: cleanDeviceId,
+          agentId: currentAgent.id,
+          agentName: currentAgent.name,
+          subscriptionType: '-',
+          status: 'inactive',
+          paymentStatus: newSubPaymentStatus,
+          amount: saleAmount,
+          startDate: newSaleDate || todayStr,
+          endDate: '-',
+          address: '',
+          notes: newSubNotes.trim()
+        },
+        true,
+        newSubPaymentStatus === 'paid',
+        'device'
+      );
+    } else {
+      const startDate = newSubStartDate || todayStr;
+      const endDate = newSubEndDate || calculateEndDate(startDate, newSubType);
+      const renewedSubscriber: Subscriber = {
+        ...matchedSubscriber!,
         name: newSubName.trim(),
         phone: newSubPhone.trim(),
         deviceId: cleanDeviceId,
-        agentId: currentAgent.id,
-        agentName: currentAgent.name,
         subscriptionType: newSubType,
         status: 'active',
         paymentStatus: newSubPaymentStatus,
-        amount: calculatedPrice,
-        startDate: sDate,
-        endDate: eDate,
-        address: '', // Hidden as requested by user
-        notes: newSubNotes.trim()
-      },
-      true,
-      newSubPaymentStatus === 'paid'
-    );
+        amount: saleAmount,
+        originalAmount: saleAmount,
+        paidAmount: newSubPaymentStatus === 'paid' ? saleAmount : 0,
+        settleDate: newSubPaymentStatus === 'paid' ? startDate : undefined,
+        startDate,
+        endDate,
+        notes: newSubNotes.trim() || matchedSubscriber!.notes || ''
+      };
+      onRenewSubscriber(renewedSubscriber, newSubPaymentStatus === 'debt', saleAmount);
+    }
 
     // Reset
     setNewSubName('');
@@ -218,6 +379,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     setNewSubNotes('');
     setMatchedSubscriber(null);
     setShowNameSuggestions(false);
+    setNewSaleType('device');
+    setNewSaleDate(todayStr);
     setNewSubStartDate(todayStr);
     setNewSubEndDate(calculateEndDate(todayStr, '1 شهر'));
     setShowAddModal(false);
@@ -312,51 +475,24 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           </button>
         </div>
 
-        {/* Action Buttons: New Sale + Excel Export/Import + Delete All */}
+        {/* New sale action */}
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={openNewSaleModal}
             className="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            <span>تسجيل بيع جديد +</span>
+            <span>بيع جهاز جديد</span>
           </button>
-
-          <button
-            onClick={() => {
-              const filterTag = agentFilter !== 'all' || statusFilter !== 'all' || searchTerm ? '_المفلترة' : '';
-              const dateStr = new Date().toISOString().split('T')[0];
-              excelService.exportSubscribers(
-                filteredSubscribers,
-                `قائمة_المشتركين${filterTag}_${dateStr}.xlsx`
-              );
-            }}
-            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-            title="تصدير قائمة المشتركين المعروضة حالياً إلى ملف إكسل منسق"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-white" />
-            <span className="hidden sm:inline">تصدير قائمة المشتركين (Excel)</span>
-            <span className="sm:hidden">تصدير Excel</span>
-          </button>
-
-          <button
-            onClick={() => setShowDeleteAllModal(true)}
-            className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-            title="حذف جميع المشتركين نهائياً (تصفير شامل)"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span className="hidden sm:inline">حذف جميع المشتركين</span>
-            <span className="sm:hidden">حذف الكل</span>
-          </button>
-
-          <label
-            className="cursor-pointer px-3.5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition-all"
-            title="استيراد قائمة المشتركين من ملف Excel"
-          >
-            <Upload className="w-4 h-4" />
-            <span>استيراد مشتركين</span>
-            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" />
-          </label>
+          {isAdmin && (
+            <button
+              onClick={openAgentRenewalModal}
+              className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>تجديد اشتراك مشتركين الوكيل</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -620,6 +756,248 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         </div>
       </div>
 
+      {/* Subscriber management actions at the bottom of the table */}
+      <div dir="rtl" className="mt-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <button
+          onClick={() => setShowDeleteAllModal(true)}
+          className="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+          title="حذف جميع المشتركين نهائياً (تصفير شامل)"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>حذف جميع المشتركين</span>
+        </button>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <label
+            className="cursor-pointer px-4 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"
+            title="استيراد قائمة المشتركين من ملف Excel"
+          >
+            <Upload className="w-4 h-4" />
+            <span>استيراد مشتركين</span>
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" />
+          </label>
+
+          <button
+            onClick={() => {
+              const filterTag = agentFilter !== 'all' || statusFilter !== 'all' || searchTerm ? '_المفلترة' : '';
+              const dateStr = new Date().toISOString().split('T')[0];
+              excelService.exportSubscribers(
+                filteredSubscribers,
+                `قائمة_المشتركين${filterTag}_${dateStr}.xlsx`
+              );
+            }}
+            className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+            title="تصدير قائمة المشتركين المعروضة حالياً إلى ملف إكسل منسق"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-white" />
+            <span>تصدير قائمة المشتركين (Excel)</span>
+          </button>
+        </div>
+      </div>
+
+      {isAdmin && showAgentRenewalModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in"
+          dir="rtl"
+          onClick={() => setShowAgentRenewalModal(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="agent-subscriber-renewal-title"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[92vh] overflow-y-auto"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300">
+                <RefreshCw className="w-5 h-5" />
+                <h3 id="agent-subscriber-renewal-title" className="font-extrabold text-lg text-slate-900 dark:text-white">
+                  تجديد اشتراك مشترك الوكيل
+                </h3>
+              </div>
+              <button
+                type="button"
+                aria-label="إغلاق"
+                onClick={() => setShowAgentRenewalModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAgentSubscriberRenewal} className="mt-5 space-y-4 text-sm">
+              <div className="relative">
+                <label htmlFor="agent-renewal-customer-name" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  اسم الزبون *
+                </label>
+                <input
+                  id="agent-renewal-customer-name"
+                  type="text"
+                  required
+                  autoComplete="off"
+                  value={agentRenewalCustomerName}
+                  onChange={(event) => handleAgentRenewalCustomerNameChange(event.target.value)}
+                  onFocus={() => {
+                    if (agentRenewalCustomerName.trim()) setShowAgentRenewalSuggestions(true);
+                  }}
+                  placeholder="اكتب اسم المشترك للبحث"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500"
+                />
+
+                {showAgentRenewalSuggestions && agentRenewalCustomerName.trim() && (
+                  <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 max-h-52 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+                    {agentOwnedSubscribers
+                      .filter((subscriber) => subscriber.name.toLocaleLowerCase().includes(agentRenewalCustomerName.trim().toLocaleLowerCase()))
+                      .slice(0, 8)
+                      .map((subscriber) => (
+                        <button
+                          key={subscriber.id}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => selectAgentRenewalSubscriber(subscriber)}
+                          className="w-full px-3 py-2.5 text-right hover:bg-teal-50 dark:hover:bg-slate-700 transition-colors"
+                        >
+                          <span className="block font-bold text-slate-800 dark:text-slate-200">{subscriber.name}</span>
+                          <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            الوكيل: {subscriber.agentName} · الجهاز: {subscriber.deviceId}
+                          </span>
+                        </button>
+                      ))}
+                    {agentOwnedSubscribers.every((subscriber) => !subscriber.name.toLocaleLowerCase().includes(agentRenewalCustomerName.trim().toLocaleLowerCase())) && (
+                      <div className="px-3 py-3 text-xs text-slate-500">لم يتم العثور على مشترك تابع لوكيل بهذا الاسم.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">المالك / الوكيل</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={selectedAgentSubscriber?.agentName || ''}
+                    placeholder="يظهر بعد اختيار المشترك"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">رقم الجهاز</label>
+                  <input
+                    type="text"
+                    readOnly
+                    dir="ltr"
+                    value={selectedAgentSubscriber?.deviceId || ''}
+                    placeholder="—"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-left font-mono text-slate-700 dark:text-slate-300"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">رقم الهاتف</label>
+                  <input
+                    type="text"
+                    readOnly
+                    dir="ltr"
+                    value={selectedAgentSubscriber?.phone || ''}
+                    placeholder="—"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-left font-mono text-slate-700 dark:text-slate-300"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">المبلغ / السعر (د.ع)</label>
+                  <input
+                    type="text"
+                    readOnly
+                    dir="ltr"
+                    value={selectedAgentSubscriber ? agentRenewalPrice.toLocaleString('en-US') : ''}
+                    placeholder="يُحسب حسب الوكيل ونوع الاشتراك"
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-left font-mono font-bold text-slate-700 dark:text-slate-300"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="agent-renewal-duration" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">نوع الاشتراك *</label>
+                  <select
+                    id="agent-renewal-duration"
+                    value={agentRenewalDuration}
+                    onChange={(event) => {
+                      const duration = event.target.value as SubscriptionDuration;
+                      setAgentRenewalDuration(duration);
+                      setAgentRenewalEndDate(calculateEndDate(agentRenewalStartDate, duration));
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="1 شهر">شهر واحد</option>
+                    <option value="شهرين">شهران</option>
+                    <option value="3 أشهر">3 أشهر</option>
+                    <option value="6 أشهر">6 أشهر</option>
+                    <option value="سنة">سنة</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="agent-renewal-payment" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">طريقة الدفع *</label>
+                  <select
+                    id="agent-renewal-payment"
+                    value={agentRenewalPayment}
+                    onChange={(event) => setAgentRenewalPayment(event.target.value as 'paid' | 'debt')}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="paid">نقدي — مدفوع</option>
+                    <option value="debt">دين — يسجل كمستحق</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="agent-renewal-start-date" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ البدء *</label>
+                  <input
+                    id="agent-renewal-start-date"
+                    type="date"
+                    required
+                    value={agentRenewalStartDate}
+                    onChange={(event) => {
+                      const startDate = event.target.value;
+                      setAgentRenewalStartDate(startDate);
+                      setAgentRenewalEndDate(calculateEndDate(startDate, agentRenewalDuration));
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ الانتهاء (يُحسب تلقائيًا)</label>
+                  <input
+                    type="date"
+                    readOnly
+                    value={agentRenewalEndDate}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowAgentRenewalModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={!selectedAgentSubscriber || !agentRenewalEndDate || agentRenewalPrice <= 0}
+                  className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold shadow-sm active:scale-95 transition-all"
+                >
+                  حفظ وتفعيل الاشتراك
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal: New Sale / Subscriber */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
@@ -627,7 +1005,9 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2 text-sky-800 dark:text-sky-300">
                 <Sparkles className="w-5 h-5 text-amber-500" />
-                <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">تسجيل بيع / اشتراك جديد</h3>
+                <h3 className="font-extrabold text-lg text-slate-900 dark:text-white">
+                  {newSaleType === 'device' ? 'بيع جهاز جديد' : 'تجديد اشتراك'}
+                </h3>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -638,6 +1018,21 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
             </div>
 
             <form onSubmit={handleCreateSale} className="mt-4 space-y-4 text-xs">
+              <div>
+                <label htmlFor="new-sale-type" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  نوع البيع *
+                </label>
+                <select
+                  id="new-sale-type"
+                  value={newSaleType}
+                  onChange={(event) => setNewSaleType(event.target.value as 'renewal' | 'device')}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
+                >
+                  <option value="renewal">تجديد اشتراك</option>
+                  <option value="device">بيع جهاز جديد فقط</option>
+                </select>
+              </div>
+
               <div className="relative">
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   اسم المشترك بالكامل *
@@ -747,7 +1142,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                   <select
                     value={newSubAgentId}
                     onChange={(e) => setNewSubAgentId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 text-xs font-semibold"
+                    disabled={newSaleType === 'renewal' && Boolean(matchedSubscriber)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 disabled:bg-slate-100 disabled:text-slate-500 focus:ring-2 focus:ring-sky-500 text-xs font-semibold"
                   >
                     {agents.map((ag) => (
                       <option key={ag.id} value={ag.id}>
@@ -757,7 +1153,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                   </select>
                 </div>
 
-                <div>
+                {newSaleType === 'renewal' && <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">مدة الاشتراك</label>
                   <select
                     value={newSubType}
@@ -770,15 +1166,14 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     <option value="6 أشهر">6 أشهر (نصف سنوي)</option>
                     <option value="سنة">سنة كاملة (12 شهر)</option>
                   </select>
-                </div>
+                </div>}
               </div>
 
-              {/* Subscription Dates: Start Date and End Date calculated according to duration */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+              {newSaleType === 'renewal' && <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2.5">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-200">
                   <span className="flex items-center gap-1.5 text-sky-800 dark:text-sky-300">
                     <Calendar className="w-4 h-4 text-sky-600" />
-                    <span>تواريخ الاشتراك (تُحسب تلقائياً حسب مدة الاشتراك)</span>
+                      <span>تواريخ الاشتراك (تُحسب تلقائياً حسب مدة الاشتراك)</span>
                   </span>
                   <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950/80 text-sky-900 dark:text-sky-300 font-mono font-bold">
                     {newSubType}
@@ -812,21 +1207,46 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     />
                   </div>
                 </div>
-              </div>
+              </div>}
 
-              {/* Price Calculation Card based on chosen agent & duration */}
+              {newSaleType === 'device' && (
+                <div>
+                  <label htmlFor="new-device-sale-date" className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    تاريخ البيع *
+                  </label>
+                  <input
+                    id="new-device-sale-date"
+                    type="date"
+                    required
+                    value={newSaleDate}
+                    onChange={(event) => setNewSaleDate(event.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-mono focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+              )}
+
+              {/* Price is sourced from the assigned agent's pricing row. */}
               <div className="p-3.5 bg-gradient-to-r from-sky-50 to-blue-50 dark:from-slate-800 dark:to-sky-950/50 border border-sky-200 dark:border-sky-800/80 rounded-2xl flex items-center justify-between shadow-xs">
                 <div>
                   <div className="flex items-center gap-1.5 font-bold text-sky-950 dark:text-sky-200 text-xs">
                     <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>المبلغ المعتمد للباقة:</span>
+                    <span>{newSaleType === 'device' ? 'المبلغ المعتمد للجهاز:' : 'المبلغ المعتمد للاشتراك:'}</span>
                   </div>
                   <div className="text-[11px] text-sky-700 dark:text-sky-400 mt-0.5">
-                    الوكيل: <span className="font-bold text-sky-900 dark:text-sky-200">{selectedAgent?.name}</span> • الباقة: <span className="font-bold text-sky-900 dark:text-sky-200">{newSubType}</span>
+                    الوكيل: <span className="font-bold text-sky-900 dark:text-sky-200">{selectedAgent?.name}</span>
+                    {newSaleType === 'renewal' && <> • الباقة: <span className="font-bold text-sky-900 dark:text-sky-200">{newSubType}</span></>}
                   </div>
                 </div>
-                <div className="text-xl font-black text-sky-950 dark:text-sky-100 font-mono">
-                  {calculatedPrice.toLocaleString()} <span className="text-xs font-normal text-sky-700 dark:text-sky-300">د.ع</span>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    aria-label="المبلغ"
+                    dir="ltr"
+                    value={(newSaleType === 'device' ? newDevicePrice : calculatedPrice).toLocaleString('en-US')}
+                    className="w-36 px-3 py-2 rounded-xl border border-sky-200 dark:border-sky-700 bg-white dark:bg-slate-900 text-left text-lg font-black font-mono text-sky-950 dark:text-sky-100"
+                  />
+                  <span className="text-xs font-normal text-sky-700 dark:text-sky-300">د.ع</span>
                 </div>
               </div>
 
@@ -869,9 +1289,10 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold shadow-sm active:scale-95 transition-all"
+                  disabled={(newSaleType === 'device' ? newDevicePrice : calculatedPrice) <= 0 || (newSaleType === 'renewal' && !matchedSubscriber)}
+                  className="px-5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold shadow-sm active:scale-95 transition-all"
                 >
-                  حفظ وتسجيل البيع
+                  {newSaleType === 'device' ? 'حفظ وتسجيل بيع الجهاز' : 'حفظ وتفعيل الاشتراك'}
                 </button>
               </div>
             </form>

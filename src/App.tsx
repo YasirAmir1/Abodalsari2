@@ -288,7 +288,12 @@ export default function App() {
   };
 
   // Add Subscriber / New Sale
-  const handleAddSubscriber = (subData: Partial<Subscriber>, isSale = true, isPaid = false) => {
+  const handleAddSubscriber = (
+    subData: Partial<Subscriber>,
+    isSale = true,
+    isPaid = false,
+    saleKind: 'subscription' | 'device' = 'subscription'
+  ) => {
     const newId = `sub-${Date.now()}`;
     const rawDevId = (subData.deviceId || '').trim();
     const cleanDevId = rawDevId
@@ -335,7 +340,7 @@ export default function App() {
         deviceId: newSub.deviceId,
         agentId: newSub.agentId,
         agentName: newSub.agentName,
-        packageType: `اشتراك ${newSub.subscriptionType}`,
+        packageType: saleKind === 'device' ? 'بيع جهاز جديد فقط' : `اشتراك ${newSub.subscriptionType}`,
         amount: newSub.amount,
         paidAmount: isPaid ? newSub.amount : 0,
         remainingAmount: isPaid ? 0 : newSub.amount,
@@ -355,7 +360,7 @@ export default function App() {
             totalSales: ag.totalSales + newSub.amount,
             totalPaid: newPaid,
             totalDebt: newDebt,
-            activeSubscriptions: ag.activeSubscriptions + 1,
+            activeSubscriptions: ag.activeSubscriptions + (newSub.status === 'active' ? 1 : 0),
             devicesCount: ag.devicesCount + 1,
             hasDebt: newDebt > 0
           };
@@ -666,13 +671,16 @@ export default function App() {
     isDebt: boolean,
     amount: number
   ) => {
+    const currentState = stateRef.current;
+    const currentSubscriber = currentState.subscribers.find((subscriber) => subscriber.id === updatedSubscriber.id);
+    const wasActive = currentSubscriber?.status === 'active';
     const rawDev = (updatedSubscriber.deviceId || '').trim();
     const cleanDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
     const finalSubscriber = { ...updatedSubscriber, deviceId: cleanDev };
 
     const newInvoice: Invoice = {
       id: `inv-${Date.now()}`,
-      invoiceNumber: `INV-2026-${String(state.invoices.length + 1).padStart(3, '0')}`,
+      invoiceNumber: `INV-${new Date().getFullYear()}-${String(currentState.invoices.length + 1).padStart(3, '0')}`,
       subscriberId: finalSubscriber.id,
       subscriberName: finalSubscriber.name,
       deviceId: finalSubscriber.deviceId,
@@ -687,7 +695,7 @@ export default function App() {
       notes: 'تجديد اشتراك رسمي معتمد'
     };
 
-    const updatedAgents = state.agents.map((ag) => {
+    const updatedAgents = currentState.agents.map((ag) => {
       if (ag.id === updatedSubscriber.agentId) {
         const newDebt = isDebt ? ag.totalDebt + amount : ag.totalDebt;
         const newPaid = isDebt ? ag.totalPaid : ag.totalPaid + amount;
@@ -696,19 +704,41 @@ export default function App() {
           totalSales: ag.totalSales + amount,
           totalDebt: newDebt,
           totalPaid: newPaid,
-          activeSubscriptions: ag.activeSubscriptions + 1,
-          inactiveSubscriptions: Math.max(0, ag.inactiveSubscriptions - 1),
+          activeSubscriptions: ag.activeSubscriptions + (wasActive ? 0 : 1),
+          inactiveSubscriptions: Math.max(0, ag.inactiveSubscriptions - (wasActive ? 0 : 1)),
           hasDebt: newDebt > 0
         };
       }
       return ag;
     });
 
-    setState({
-      ...state,
-      subscribers: state.subscribers.map((s) => (s.id === finalSubscriber.id ? finalSubscriber : s)),
-      invoices: [newInvoice, ...state.invoices],
-      agents: updatedAgents
+    const newState: AppState = {
+      ...currentState,
+      subscribers: currentState.subscribers.map((subscriber) =>
+        subscriber.id === finalSubscriber.id ? finalSubscriber : subscriber
+      ),
+      invoices: [newInvoice, ...currentState.invoices],
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    // Keep the local snapshot and the single Firestore payload in sync. The
+    // persistence effect will deduplicate this payload after its debounce.
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    stateRef.current = newState;
+    storageService.saveState(newState);
+    setState(newState);
+    void firebaseService.saveRemoteState(newState, true).catch((error) => {
+      console.error('Could not immediately sync subscriber renewal:', error);
+      if (isMountedRef.current) {
+        setSyncToast('تم تسجيل التجديد محلياً وتعذرت مزامنته حالياً');
+        setTimeout(() => {
+          if (isMountedRef.current) setSyncToast(null);
+        }, 3500);
+      }
     });
 
     soundService.playSuccess();
@@ -1143,6 +1173,7 @@ export default function App() {
               onImportSubscribers={handleImportSubscribers}
               currentAgentFilter={subscribersAgentFilter}
               isMainCenterView={!isAgentMode}
+              isAdmin={currentUser.role === 'مدير رئيسي' && !isAgentMode}
             />
           )}
 
