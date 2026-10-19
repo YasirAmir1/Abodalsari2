@@ -1,6 +1,6 @@
 export type SubscriptionStatus = 'active' | 'inactive' | 'expiring_soon';
-export type PaymentStatus = 'paid' | 'debt' | 'partial';
-export type SubscriptionDuration = '1 شهر' | 'شهرين' | '3 أشهر' | '6 أشهر' | 'سنة';
+export type PaymentStatus = 'paid' | 'debt' | 'partial' | '';
+export type SubscriptionDuration = '1 شهر' | 'شهرين' | '3 أشهر' | '6 أشهر' | 'سنة' | '';
 
 export interface Subscriber {
   id: string;
@@ -22,6 +22,7 @@ export interface Subscriber {
   address?: string;
   createdAt: string;
 }
+
 
 export interface Agent {
   id: string;

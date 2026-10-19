@@ -460,7 +460,7 @@ export default function App() {
     soundService.playSuccess();
   };
 
-  const handleDeleteSubscriber = (id: string) => {
+  const handleDeleteSubscriber = async (id: string) => {
     const sub = state.subscribers.find((s) => s.id === id);
     if (sub) {
       storageService.addDeletedSubscriberId(sub.id);
@@ -517,6 +517,11 @@ export default function App() {
 
     storageService.saveState(newState);
     setState(newState);
+    try {
+      await firebaseService.saveRemoteState(newState);
+    } catch (e) {
+      console.warn('Immediate remote save on delete failed:', e);
+    }
     soundService.playSuccess();
   };
 
@@ -565,7 +570,7 @@ export default function App() {
   };
 
   // Deactivate Subscriber (Reset information to blank and status to inactive)
-  const handleDeactivateSubscriber = (subscriberId: string) => {
+  const handleDeactivateSubscriber = async (subscriberId: string) => {
     const sub = state.subscribers.find((s) => s.id === subscriberId);
     if (!sub) return;
 
@@ -590,12 +595,20 @@ export default function App() {
       return ag;
     });
 
-    setState({
+    const newState: AppState = {
       ...state,
       subscribers: state.subscribers.map((s) => (s.id === subscriberId ? deactivatedSub : s)),
-      agents: updatedAgents
-    });
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
 
+    storageService.saveState(newState);
+    setState(newState);
+    try {
+      await firebaseService.saveRemoteState(newState);
+    } catch (e) {
+      console.warn('Immediate remote save on deactivate failed:', e);
+    }
     soundService.playSuccess();
   };
 
