@@ -781,6 +781,55 @@ export default function App() {
     soundService.playSuccess();
   };
 
+  // Settle Subscriber Debt (Set debt to 0, status to paid, update invoice)
+  const handleSettleSubscriberDebt = (subscriberId: string) => {
+    const updatedSubscribers = state.subscribers.map(s => {
+      if (s.id === subscriberId) {
+        return { ...s, paymentStatus: 'paid', amount: 0 };
+      }
+      return s;
+    });
+
+    const updatedInvoices = state.invoices.map(inv => {
+      if (inv.subscriberId === subscriberId && inv.paymentStatus === 'debt') {
+        return {
+          ...inv,
+          paymentStatus: 'paid',
+          paidAmount: inv.amount,
+          remainingAmount: 0
+        };
+      }
+      return inv;
+    });
+
+    // Recalculate agent stats
+    const updatedAgents = state.agents.map((ag) => {
+      const agSubs = updatedSubscribers.filter((s) => s.agentId === ag.id);
+      const activeSubs = agSubs.filter((s) => s.status === 'active');
+      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt');
+      const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+      const totalAgentSales = agSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+
+      return {
+        ...ag,
+        devicesCount: agSubs.length,
+        activeSubscriptions: activeSubs.length,
+        inactiveSubscriptions: agSubs.length - activeSubs.length,
+        totalDebt: totalAgentDebt,
+        totalSales: totalAgentSales,
+        hasDebt: totalAgentDebt > 0
+      };
+    });
+
+    setState({
+      ...state,
+      subscribers: updatedSubscribers,
+      invoices: updatedInvoices,
+      agents: updatedAgents
+    });
+    soundService.playSuccess();
+  };
+
   // Reset Agent Data
   const handleResetAgentData = (agentId: string) => {
     const updatedAgents = state.agents.map((ag) => {
@@ -1006,6 +1055,7 @@ export default function App() {
               agents={state.agents}
               subscribers={state.subscribers}
               onSettleAgentDebt={handleSettleAgentDebt}
+              onSettleSubscriberDebt={handleSettleSubscriberDebt}
               onResetAgentData={handleResetAgentData}
               onOpenWhatsApp={setActiveWhatsAppSub}
               onSelectDeviceQr={handleOpenDeviceQr}

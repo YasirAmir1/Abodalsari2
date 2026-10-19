@@ -20,6 +20,7 @@ interface DebtsViewProps {
   agents: Agent[];
   subscribers: Subscriber[];
   onSettleAgentDebt: (agentId: string, amount: number) => void;
+  onSettleSubscriberDebt: (subscriberId: string) => void;
   onResetAgentData: (agentId: string) => void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr?: (deviceId: string, subscriberName?: string, agentName?: string) => void;
@@ -30,6 +31,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   agents,
   subscribers,
   onSettleAgentDebt,
+  onSettleSubscriberDebt,
   onResetAgentData,
   onOpenWhatsApp,
   onSelectDeviceQr,
@@ -410,6 +412,16 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         >
                           <MessageSquare className="w-3.5 h-3.5" />
                           <span>تذكير</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('هل أنت متأكد من تصفير دين هذا المشترك؟')) {
+                              onSettleSubscriberDebt(sub.id);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          تصفير الدين
                         </button>
                         <button
                           onClick={() => {
