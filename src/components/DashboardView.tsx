@@ -40,7 +40,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalDebts = calculateTotalDebts(subscribers);
 
   // Count of debt records across HQ and all agents in the system
-  const totalDebtRecordsCount = subscribers.filter((s) => s.paymentStatus === 'debt').length;
+  const totalDebtRecordsCount = subscribers.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial').length;
 
   const activeAgentsCount = agents.filter((a) => a.id !== 'agent-main').length;
   const totalOperations = invoices.length;

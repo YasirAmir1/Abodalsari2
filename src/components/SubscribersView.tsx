@@ -348,48 +348,18 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
             <span className="hidden sm:inline">حذف جميع المشتركين</span>
             <span className="sm:hidden">حذف الكل</span>
           </button>
+
+          <label
+            className="cursor-pointer px-3.5 py-2 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition-all"
+            title="استيراد قائمة المشتركين من ملف Excel"
+          >
+            <Upload className="w-4 h-4" />
+            <span>استيراد مشتركين</span>
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" />
+          </label>
         </div>
       </div>
 
-      {/* Bottom Action Card: Import Excel, Export Excel, Delete All */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-center gap-4">
-        {/* Export Excel */}
-        <button
-          onClick={() => {
-            const filterTag = agentFilter !== 'all' || statusFilter !== 'all' || searchTerm ? '_المفلترة' : '';
-            const dateStr = new Date().toISOString().split('T')[0];
-            excelService.exportSubscribers(
-              filteredSubscribers,
-              `قائمة_المشتركين${filterTag}_${dateStr}.xlsx`
-            );
-          }}
-          className="px-5 py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-          title="تصدير قائمة المشتركين المعروضة حالياً إلى ملف إكسل منسق"
-        >
-          <FileSpreadsheet className="w-4 h-4 text-white" />
-          <span>تصدير قائمة المشتركين (Excel)</span>
-        </button>
-
-        {/* Delete All */}
-        <button
-          onClick={() => setShowDeleteAllModal(true)}
-          className="px-5 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-          title="حذف جميع المشتركين نهائياً (تصفير شامل)"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>حذف جميع المشتركين</span>
-        </button>
-
-        {/* Import Excel */}
-        <label
-          className="cursor-pointer px-5 py-3 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition-all"
-          title="استيراد مشتركين من إكسل"
-        >
-          <Upload className="w-4 h-4" />
-          <span>استيراد مشتركين (Excel)</span>
-          <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" />
-        </label>
-      </div>
       <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 ml-1">
           <span className="w-2 h-2 rounded-full bg-sky-600" />
@@ -573,10 +543,12 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold w-fit ${
                               sub.paymentStatus === 'debt'
                                 ? 'bg-red-100 text-red-700'
+                                : sub.paymentStatus === 'partial'
+                                  ? 'bg-amber-100 text-amber-800'
                                 : 'bg-emerald-50 text-emerald-700'
                             }`}
                           >
-                            {sub.paymentStatus === 'debt' ? 'دين' : 'مسدد'}
+                            {sub.paymentStatus === 'debt' ? 'دين' : sub.paymentStatus === 'partial' ? 'دفع جزئي' : 'مسدد'}
                           </span>
                         </div>
                       ) : (
@@ -645,40 +617,6 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
               })}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* Bottom Action Card: Import Excel for all subscribers (Center and Agents) */}
-      <div className="bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-slate-800 dark:to-sky-950/40 p-5 rounded-3xl border border-sky-200 dark:border-sky-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm hidden">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-sky-700 text-white flex items-center justify-center shrink-0 shadow-md">
-            <Upload className="w-6 h-6" />
-          </div>
-          <div>
-            <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
-              استيراد شامل لجميع بيانات المشتركين (المركز الرئيسي والوكلاء)
-            </h4>
-            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-              قم برفع ملف Excel (.xlsx) يحتوي على قوائم المشتركين ليتم إضافتهم وتحديثهم فوراً في النظام المركزي والوكلاء
-            </p>
-          </div>
-        </div>
-
-        <div>
-          <input
-            type="file"
-            accept=".xlsx, .xls, .csv"
-            onChange={handleExcelImport}
-            className="hidden"
-            id="bottom-excel-import-input"
-          />
-          <label
-            htmlFor="bottom-excel-import-input"
-            className="cursor-pointer px-5 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition-all"
-          >
-            <Upload className="w-4 h-4" />
-            <span>اختر ملف إكسل للاستيراد الشامل</span>
-          </label>
         </div>
       </div>
 

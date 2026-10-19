@@ -4,7 +4,7 @@ export const calculateTotalSales = (invoices: any[]) => {
 
 export const calculateTotalDebts = (subscribers: any[]) => {
   return (subscribers || [])
-    .filter((s) => s.paymentStatus === 'debt')
+    .filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial')
     .reduce((sum, s) => sum + (s.amount || 0), 0);
 };
 
@@ -16,6 +16,6 @@ export const calculateAgentSales = (agentId: string, invoices: any[]) => {
 
 export const calculateAgentDebt = (agentId: string, subscribers: any[]) => {
   return (subscribers || [])
-    .filter((s) => s.agentId === agentId && s.paymentStatus === 'debt')
+    .filter((s) => s.agentId === agentId && (s.paymentStatus === 'debt' || s.paymentStatus === 'partial'))
     .reduce((sum, s) => sum + (s.amount || 0), 0);
 };

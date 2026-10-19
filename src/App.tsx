@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Agent,
   DeviceCode,
@@ -46,6 +46,11 @@ const USER_SESSION_KEY = 'alsari_auth_user_v1';
 
 export default function App() {
   const [state, setState] = useState<AppState>(() => storageService.loadState());
+  const stateRef = useRef(state);
+
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Current logged in user
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
@@ -496,9 +501,11 @@ export default function App() {
     const updatedAgents = state.agents.map((ag) => {
       const agSubs = remainingSubscribers.filter((s) => s.agentId === ag.id);
       const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt');
+      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
       const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
-      const totalAgentSales = agSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+      const totalAgentSales = remainingInvoices
+        .filter((invoice) => invoice.agentId === ag.id)
+        .reduce((sum, invoice) => sum + (invoice.amount || 0), 0);
 
       return {
         ...ag,
@@ -614,9 +621,11 @@ export default function App() {
     const updatedAgents = state.agents.map((ag) => {
       const agSubs = updatedSubscribers.filter((s) => s.agentId === ag.id);
       const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt');
+      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
       const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
-      const totalAgentSales = agSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+      const totalAgentSales = remainingInvoices
+        .filter((invoice) => invoice.agentId === ag.id)
+        .reduce((sum, invoice) => sum + (invoice.amount || 0), 0);
 
       // Total paid is sales minus remaining debt
       const totalAgentPaid = Math.max(0, totalAgentSales - totalAgentDebt);
@@ -840,51 +849,89 @@ export default function App() {
     soundService.playSuccess();
   };
 
-  // Settle Subscriber Debt (Set debt to 0, status to paid, update invoice)
-  const handleSettleSubscriberDebt = (subscriberId: string) => {
-    const updatedSubscribers = state.subscribers.map((s): Subscriber => {
-      if (s.id === subscriberId) {
-        return { ...s, paymentStatus: 'paid' as PaymentStatus, amount: 0 };
-      }
-      return s;
+  // Apply a subscriber payment to their outstanding balance and related invoices.
+  const handleSettleSubscriberDebt = (subscriberId: string, paymentAmount: number) => {
+    const currentState = stateRef.current;
+    const subscriber = currentState.subscribers.find((s) => s.id === subscriberId);
+    const amount = Math.trunc(paymentAmount);
+    if (!subscriber || !Number.isFinite(amount) || amount <= 0 || amount > subscriber.amount) return;
+
+    const remainingDebt = Math.max(0, subscriber.amount - amount);
+    const updatedSubscribers = currentState.subscribers.map((s): Subscriber => {
+      if (s.id !== subscriberId) return s;
+      const paidAmount = (s.paidAmount || 0) + amount;
+      return {
+        ...s,
+        originalAmount: s.originalAmount ?? (s.amount + (s.paidAmount || 0)),
+        paidAmount,
+        amount: remainingDebt,
+        paymentStatus: remainingDebt === 0 ? 'paid' : 'partial',
+        settleDate: new Date().toISOString().split('T')[0]
+      };
     });
 
-    const updatedInvoices = state.invoices.map((inv): Invoice => {
-      if (inv.subscriberId === subscriberId && inv.paymentStatus === 'debt') {
-        return {
-          ...inv,
-          paymentStatus: 'paid' as PaymentStatus,
-          paidAmount: inv.amount,
-          remainingAmount: 0
-        };
-      }
-      return inv;
-    });
+    // Apply the payment to the subscriber's oldest outstanding invoices first.
+    const invoicePaymentOrder = currentState.invoices
+      .map((invoice, index) => ({ invoice, index }))
+      .filter(({ invoice }) => invoice.subscriberId === subscriberId)
+      .sort((a, b) => a.invoice.date.localeCompare(b.invoice.date) || a.index - b.index);
+    const updatedInvoices = currentState.invoices.slice();
+    let unappliedPayment = amount;
 
-    // Recalculate agent stats
-    const updatedAgents = state.agents.map((ag) => {
+    for (const { index } of invoicePaymentOrder) {
+      if (unappliedPayment <= 0) break;
+      const invoice = updatedInvoices[index];
+      const invoiceRemaining = Math.max(
+        0,
+        invoice.remainingAmount ?? (invoice.amount - (invoice.paidAmount || 0))
+      );
+      if (invoiceRemaining <= 0) continue;
+
+      const appliedPayment = Math.min(unappliedPayment, invoiceRemaining);
+      const remainingAmount = invoiceRemaining - appliedPayment;
+      updatedInvoices[index] = {
+        ...invoice,
+        paidAmount: (invoice.paidAmount || 0) + appliedPayment,
+        remainingAmount,
+        paymentStatus: remainingAmount === 0 ? 'paid' : 'partial'
+      };
+      unappliedPayment -= appliedPayment;
+    }
+
+    const updatedAgents = currentState.agents.map((ag) => {
       const agSubs = updatedSubscribers.filter((s) => s.agentId === ag.id);
       const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt');
+      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
       const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
-      const totalAgentSales = agSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
-
       return {
         ...ag,
         devicesCount: agSubs.length,
         activeSubscriptions: activeSubs.length,
         inactiveSubscriptions: agSubs.length - activeSubs.length,
         totalDebt: totalAgentDebt,
-        totalSales: totalAgentSales,
+        totalSales: ag.totalSales,
         hasDebt: totalAgentDebt > 0
       };
     });
 
-    setState({
-      ...state,
+    const newState: AppState = {
+      ...currentState,
       subscribers: updatedSubscribers,
       invoices: updatedInvoices,
-      agents: updatedAgents
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
+    stateRef.current = newState;
+    storageService.saveState(newState);
+    setState(newState);
+    void firebaseService.saveRemoteState(newState, true).catch((error) => {
+      console.error('Could not immediately sync subscriber payment:', error);
+      if (isMountedRef.current) {
+        setSyncToast('تم تسجيل الدفعة محلياً وتعذرت مزامنتها حالياً');
+        setTimeout(() => {
+          if (isMountedRef.current) setSyncToast(null);
+        }, 3500);
+      }
     });
     soundService.playSuccess();
   };

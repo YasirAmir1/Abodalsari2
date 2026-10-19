@@ -20,7 +20,7 @@ interface DebtsViewProps {
   agents: Agent[];
   subscribers: Subscriber[];
   onSettleAgentDebt: (agentId: string, amount: number) => void;
-  onSettleSubscriberDebt: (subscriberId: string) => void;
+  onSettleSubscriberDebt: (subscriberId: string, amount: number) => void;
   onResetAgentData: (agentId: string) => void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr?: (deviceId: string, subscriberName?: string, agentName?: string) => void;
@@ -40,10 +40,15 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const [activeTab, setActiveTab] = useState<'agents' | 'subscribers'>('agents');
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>('all');
   const [debtSearchTerm, setDebtSearchTerm] = useState<string>('');
+  const [subscriberToPay, setSubscriberToPay] = useState<Subscriber | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const paymentSubscriber = subscriberToPay
+    ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || null
+    : null;
 
   const computedAgents = agents.map((ag) => {
     const agentDebtSubs = subscribers.filter(
-      (s) => s.paymentStatus === 'debt' && (s.agentId === ag.id || s.agentName === ag.name)
+      (s) => (s.paymentStatus === 'debt' || s.paymentStatus === 'partial') && (s.agentId === ag.id || s.agentName === ag.name)
     );
     const calculatedDebt = agentDebtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
     return {
@@ -54,7 +59,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   });
 
   const totalAgentDebts = computedAgents.reduce((sum, ag) => sum + ag.totalDebt, 0);
-  const debtSubscribers = subscribers.filter((s) => s.paymentStatus === 'debt');
+  const debtSubscribers = subscribers.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
   const grandTotalDebt = totalAgentDebts;
 
   // Filter Agents Table
@@ -106,14 +111,23 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
         name: sub.name,
         agentName: sub.agentName,
         code: sub.deviceId,
-        totalAmount: sub.amount,
-        paidAmount: 0,
+        totalAmount: sub.originalAmount ?? (sub.amount + (sub.paidAmount || 0)),
+        paidAmount: sub.paidAmount || 0,
         remainingAmount: sub.amount,
         dueDate: sub.endDate,
         notes: sub.subscriptionType
       }));
       excelService.exportDebts(exportData, 'ديون_المشتركين_المباشرة.xlsx');
     }
+  };
+
+  const submitSubscriberPayment = () => {
+    if (!paymentSubscriber) return;
+    const amount = Number(paymentAmount);
+    if (!Number.isInteger(amount) || amount <= 0 || amount > paymentSubscriber.amount) return;
+    onSettleSubscriberDebt(paymentSubscriber.id, amount);
+    setSubscriberToPay(null);
+    setPaymentAmount('');
   };
 
   return (
@@ -300,17 +314,6 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => {
-                                  const amount = prompt(`أدخل مبلغ التسديد للوكيل ${ag.name}:`, String(ag.totalDebt));
-                                  if (amount && Number(amount) > 0) {
-                                    onSettleAgentDebt(ag.id, Number(amount));
-                                  }
-                                }}
-                                className="px-3.5 py-1.5 bg-sky-900 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                              >
-                                تسديد دفعة
-                              </button>
-                              <button
-                                onClick={() => {
                                   if (confirm(`هل أنت متأكد من حذف/تصفير دين الوكيل ${ag.name} بالكامل؟`)) {
                                     onSettleAgentDebt(ag.id, ag.totalDebt);
                                   }
@@ -411,13 +414,12 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         </button>
                         <button
                           onClick={() => {
-                            if (confirm('هل أنت متأكد من تصفير دين هذا المشترك؟')) {
-                              onSettleSubscriberDebt(sub.id);
-                            }
+                            setSubscriberToPay(sub);
+                            setPaymentAmount('');
                           }}
                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
                         >
-                          تصفير الدين
+                          تسديد دفعة
                         </button>
                         <button
                           onClick={() => {
@@ -435,6 +437,83 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {paymentSubscriber && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" dir="rtl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscriber-payment-title"
+            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 id="subscriber-payment-title" className="text-lg font-black text-slate-900 dark:text-white">
+                  تسجيل دفعة للمشترك
+                </h3>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{paymentSubscriber.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubscriberToPay(null)}
+                className="rounded-lg px-2 py-1 text-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="إغلاق"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-2xl bg-red-50 p-4 text-sm dark:bg-red-950/30">
+              <span className="text-slate-600 dark:text-slate-300">الدين المتبقي: </span>
+              <strong className="font-mono text-red-700 dark:text-red-300">
+                {paymentSubscriber.amount.toLocaleString()} د.ع
+              </strong>
+            </div>
+
+            <label htmlFor="subscriber-payment-amount" className="mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200">
+              مبلغ الدفعة (د.ع)
+            </label>
+            <input
+              id="subscriber-payment-amount"
+              type="number"
+              min="1"
+              max={paymentSubscriber.amount}
+              step="1"
+              inputMode="numeric"
+              autoFocus
+              value={paymentAmount}
+              onChange={(event) => setPaymentAmount(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-mono text-lg text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              placeholder="أدخل المبلغ"
+            />
+            <button
+              type="button"
+              onClick={() => setPaymentAmount(String(paymentSubscriber.amount))}
+              className="mt-2 text-xs font-bold text-sky-700 hover:underline dark:text-sky-400"
+            >
+              تسديد كامل الدين
+            </button>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSubscriberToPay(null)}
+                className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={submitSubscriberPayment}
+                disabled={!Number.isInteger(Number(paymentAmount)) || Number(paymentAmount) <= 0 || Number(paymentAmount) > paymentSubscriber.amount}
+                className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                حفظ الدفعة
+              </button>
+            </div>
           </div>
         </div>
       )}
