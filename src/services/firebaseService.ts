@@ -132,12 +132,12 @@ export const firebaseService = {
       }
 
       updateSyncStatus('syncing');
-      lastSavedPayload = payload;
       await setDoc(STATE_DOC_REF, {
         payload,
         updatedAt: new Date().toISOString(),
         lastUpdatedTimestamp: state.lastUpdatedTimestamp || Date.now()
       }, { merge: true });
+      lastSavedPayload = payload;
       updateSyncStatus('connected');
     } catch (e: any) {
       console.warn('Error saving state to Firestore:', e);

@@ -280,10 +280,96 @@ export default function App() {
   };
 
   const handleDeleteInvoice = (id: string) => {
-    setState((prev) => ({
-      ...prev,
-      invoices: prev.invoices.filter((inv) => inv.id !== id)
-    }));
+    const currentState = stateRef.current;
+    const invoiceToDelete = currentState.invoices.find((invoice) => invoice.id === id);
+    if (!invoiceToDelete) return;
+
+    const deletedInvoiceAmount = Math.max(0, Number.isFinite(invoiceToDelete.amount) ? invoiceToDelete.amount : 0);
+    const deletedInvoicePaidAmount = Math.max(0, Number.isFinite(invoiceToDelete.paidAmount) ? invoiceToDelete.paidAmount : 0);
+    const deletedInvoiceDebt = Math.max(
+      0,
+      Number.isFinite(invoiceToDelete.remainingAmount)
+        ? invoiceToDelete.remainingAmount
+        : deletedInvoiceAmount - deletedInvoicePaidAmount
+    );
+    const updatedInvoices = currentState.invoices.filter((invoice) => invoice.id !== id);
+
+    const updatedSubscribers = currentState.subscribers.map((subscriber): Subscriber => {
+      if (subscriber.id !== invoiceToDelete.subscriberId) return subscriber;
+
+      const currentDebt = Math.max(0, Number.isFinite(subscriber.amount) ? subscriber.amount : 0);
+      const remainingDebt = Math.max(0, currentDebt - deletedInvoiceDebt);
+      const currentPaidAmount = Math.max(0, subscriber.paidAmount || 0);
+      const remainingPaidAmount = Math.max(0, currentPaidAmount - deletedInvoicePaidAmount);
+      const currentOriginalAmount = subscriber.originalAmount ?? currentDebt + currentPaidAmount;
+      const hasRemainingDebt = remainingDebt > 0;
+
+      return {
+        ...subscriber,
+        status: 'inactive' as const,
+        subscriptionType: '',
+        paymentStatus: hasRemainingDebt
+          ? (remainingPaidAmount > 0 ? 'partial' as const : 'debt' as const)
+          : '',
+        amount: remainingDebt,
+        originalAmount: hasRemainingDebt
+          ? Math.max(remainingDebt + remainingPaidAmount, currentOriginalAmount - deletedInvoiceAmount)
+          : undefined,
+        paidAmount: hasRemainingDebt ? remainingPaidAmount : undefined,
+        settleDate: hasRemainingDebt ? subscriber.settleDate : undefined,
+        startDate: '',
+        endDate: ''
+      };
+    });
+
+    const updatedAgents = currentState.agents.map((agent) => {
+      const agentSubscribers = updatedSubscribers.filter(
+        (subscriber) => subscriber.agentId === agent.id || subscriber.agentName === agent.name
+      );
+      const activeSubscribers = agentSubscribers.filter((subscriber) => subscriber.status === 'active');
+      const totalDebt = agentSubscribers
+        .filter((subscriber) => subscriber.paymentStatus === 'debt' || subscriber.paymentStatus === 'partial')
+        .reduce((sum, subscriber) => sum + (subscriber.amount || 0), 0);
+      const totalSales = updatedInvoices
+        .filter((invoice) => invoice.agentId === agent.id)
+        .reduce((sum, invoice) => sum + (invoice.amount || 0), 0);
+
+      return {
+        ...agent,
+        devicesCount: agentSubscribers.length,
+        activeSubscriptions: activeSubscribers.length,
+        inactiveSubscriptions: agentSubscribers.length - activeSubscribers.length,
+        totalSales,
+        totalDebt,
+        totalPaid: Math.max(0, totalSales - totalDebt),
+        hasDebt: totalDebt > 0
+      };
+    });
+
+    const newState: AppState = {
+      ...currentState,
+      invoices: updatedInvoices,
+      subscribers: updatedSubscribers,
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    stateRef.current = newState;
+    storageService.saveState(newState);
+    setState(newState);
+    void firebaseService.saveRemoteState(newState, true).catch((error) => {
+      console.error('Could not immediately sync invoice deletion:', error);
+      if (isMountedRef.current) {
+        setSyncToast('تم حذف الفاتورة محلياً وتعذرت مزامنة التعديلات حالياً');
+        setTimeout(() => {
+          if (isMountedRef.current) setSyncToast(null);
+        }, 3500);
+      }
+    });
     soundService.playSuccess();
   };
 
