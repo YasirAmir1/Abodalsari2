@@ -1,7 +1,8 @@
 import React from 'react';
 import {
   Calendar,
-  Contrast,
+  Sun,
+  Moon,
   RefreshCw,
   LogOut,
   Menu
@@ -81,10 +82,14 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Dark Mode Toggle */}
         <button
           onClick={onToggleDark}
-          className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors shadow-xs active:scale-95 cursor-pointer"
+          className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-all shadow-xs active:scale-95 cursor-pointer"
           title={isDark ? 'التحويل إلى الوضع النهاري' : 'التحويل إلى الوضع الليلي'}
         >
-          <Contrast className={`w-4 h-4 ${isDark ? 'text-sky-400 rotate-180' : 'text-slate-600 dark:text-slate-300'}`} />
+          {isDark ? (
+            <Sun className="w-4 h-4 text-amber-400 animate-in zoom-in spin-in-180 duration-500" />
+          ) : (
+            <Moon className="w-4 h-4 text-slate-600 animate-in zoom-in spin-in-180 duration-500" />
+          )}
         </button>
 
         {/* Refresh Data */}
