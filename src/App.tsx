@@ -96,6 +96,8 @@ export default function App() {
   const handleGlobalRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
+    // Clear quota so manual refresh always reaches Firestore
+    clearDailyQuota();
     try {
       let remote: AppState | null = null;
       try {
@@ -108,6 +110,8 @@ export default function App() {
 
       if (remote && typeof remote === 'object' && remote.subscribers) {
         const filtered = storageService.filterOutDeleted(remote);
+        // Mark as remote update so state-effect does NOT echo back to Firestore
+        isRemoteUpdateRef.current = true;
         setState(filtered);
         storageService.saveState(filtered);
       } else {
@@ -198,11 +202,17 @@ export default function App() {
 
   // --- Effect 2: Real-time Firestore listener (cross-device sync) ---
   useEffect(() => {
+    // Clear quota at start so listener always connects
+    clearDailyQuota();
+
     const unsubscribe = firebaseService.subscribeToRemoteState((remoteState) => {
       if (!remoteState) return;
 
       // Apply the deleted-subscriber filter so deletions propagate cross-device
       const filteredState = storageService.filterOutDeleted(remoteState);
+
+      // Save to localStorage immediately so a subsequent reload retains fresh remote state
+      storageService.saveState(filteredState);
 
       // Mark as remote so Effect 1 does NOT write it back to Firestore
       isRemoteUpdateRef.current = true;
@@ -549,8 +559,8 @@ export default function App() {
       storageService.saveState(newState);
       setState(newState);
 
-      // Trigger cloud sync to propagate deletion
-      await firebaseService.saveRemoteState(newState);
+      // State-effect debounce-writes to Firestore automatically
+
 
       soundService.playSuccess();
       setSyncToast('ØªÙ… Ø­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ù…Ø´ØªØ±ÙƒÙŠÙ† ÙˆØªØµÙÙŠØ± Ø§Ù„Ø³Ø¬Ù„Ø§Øª Ø¨Ù†Ø¬Ø§Ø­ ðŸ—‘ï¸');

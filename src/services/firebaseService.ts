@@ -1,4 +1,4 @@
-import { initializeApp, getApps } from 'firebase/app';
+﻿import { initializeApp, getApps } from 'firebase/app';
 import {
   initializeFirestore,
   memoryLocalCache,
@@ -98,7 +98,10 @@ export const firebaseService = {
       if (snap.exists()) {
         const data = snap.data();
         if (data && data.payload) {
-          lastWrittenPayload = data.payload;
+          // Do NOT update lastWrittenPayload here.
+          // lastWrittenPayload must only reflect payloads WE wrote via setDoc.
+          // If we set it here, the onSnapshot listener would forever ignore
+          // any future remote state that happens to equal this fetched snapshot.
           return JSON.parse(data.payload) as AppState;
         }
       }
