@@ -232,7 +232,6 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, onSavePricing
                 <th className="py-3 px-3">شهرين (د.ع)</th>
                 <th className="py-3 px-3">3 أشهر (د.ع)</th>
                 <th className="py-3 px-3">الحالة</th>
-                <th className="py-3 px-4 text-center">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -319,37 +318,6 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, onSavePricing
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                       <span>{row.status}</span>
                     </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td className="py-3 px-4">
-                    <div className="flex items-center justify-center gap-1.5">
-                      {row.isReference ? (
-                        <button
-                          onClick={() => handleResetDefault(index)}
-                          className="px-2 py-1 rounded-md text-slate-600 hover:bg-slate-100 text-[11px] font-semibold border border-slate-200"
-                        >
-                          استعادة
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => handleApplyWholesaleSingle(index)}
-                            className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-semibold"
-                            title="تطبيق أسعار الجملة لهذا الوكيل"
-                          >
-                            جملة
-                          </button>
-                          <button
-                            onClick={() => handleApplyCenterPricesSingle(index)}
-                            className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-semibold"
-                            title="تطبيق أسعار المركز"
-                          >
-                            المركز
-                          </button>
-                        </>
-                      )}
-                    </div>
                   </td>
                 </tr>
               ))}
