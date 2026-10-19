@@ -1007,6 +1007,28 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
               </div>
 
               <div>
+                <label className="block font-bold text-slate-700 mb-1">المالك / الوكيل *</label>
+                <select
+                  value={editingSubscriber.agentId}
+                  onChange={(e) => {
+                    const selectedAgent = agents.find(a => a.id === e.target.value);
+                    setEditingSubscriber({ 
+                      ...editingSubscriber, 
+                      agentId: e.target.value,
+                      agentName: selectedAgent?.name || 'المركز الرئيسي'
+                    });
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold"
+                >
+                  {agents.map((ag) => (
+                    <option key={ag.id} value={ag.id}>
+                      {ag.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
                 <label className="block font-bold text-slate-700 mb-1">العنوان / المنطقة</label>
                 <input
                   type="text"

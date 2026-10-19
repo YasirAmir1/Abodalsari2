@@ -12,6 +12,7 @@ import {
   Sparkles,
   Download
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 import { DeviceCode } from '../types';
 import { excelService } from '../services/excelService';
 
@@ -428,27 +429,33 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             </div>
 
             {/* Printable Cards Grid */}
-            <div className="mt-4 grid grid-cols-2 gap-3" id="printable-labels">
-              {(selectedIds.length > 0 ? codes.filter((c) => selectedIds.includes(c.id)) : codes).map((c) => (
+            <style>{`
+              @media print {
+                .page-break { page-break-after: always; }
+                @page { size: A4; margin: 10mm; }
+                .no-print { display: none !important; }
+              }
+            `}</style>
+            <div className="mt-4 grid grid-cols-3 gap-3" id="printable-labels">
+              {(selectedIds.length > 0 ? codes.filter((c) => selectedIds.includes(c.id)) : codes).map((c, index) => (
                 <div
                   key={c.id}
-                  className="p-4 border-2 border-slate-800 rounded-2xl flex flex-col items-center text-center bg-white"
+                  className={`p-3 border border-slate-300 rounded-xl flex flex-col items-center text-center bg-white ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}
                 >
-                  <div className="text-[12px] font-black text-slate-900">شركة الساري للبث الأرضي</div>
-                  <div className="text-[10px] text-slate-600 font-bold">وكيل قنوات الرابعة الرياضية - صلاح الدين</div>
-
+                  <div className="font-mono font-black text-[10px] text-slate-900 mb-1 tracking-tight">{c.code}</div>
+                  
                   {/* Visual QR with real SVG */}
-                  <div className="my-3 p-2 bg-white border border-slate-300 rounded-xl shadow-xs">
-                    <QRCodeSVG value={c.code} size={110} level="M" />
+                  <div className="p-1 border border-slate-200 rounded-lg shadow-xs">
+                    <QRCodeSVG value={c.code} size={80} level="M" />
                   </div>
 
-                  <div className="font-mono font-black text-xs text-slate-900 tracking-wider">{c.code}</div>
-                  <div className="text-[9px] text-slate-400 mt-1 font-semibold">ضمان وتشغيل رسمي معتمد</div>
+                  {/* Empty box for manual writing */}
+                  <div className="w-full h-4 mt-2 border border-slate-200 rounded-sm"></div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2">
+            <div className="mt-6 flex items-center justify-end gap-2 no-print">
               <button
                 onClick={() => setShowPrintModal(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold"
@@ -461,7 +468,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                 title="تحويل وحفظ بطاقات QR كملف PDF"
               >
                 <Download className="w-4 h-4" />
-                <span>تحويل الى PDF</span>
+                <span>تحويل للطباعة (PDF)</span>
               </button>
             </div>
           </div>
