@@ -4,5 +4,11 @@ service cloud.firestore {
     match /app_state/{stateId} {
       allow read, write: if true;
     }
+    match /system_state/{stateId} {
+      allow read, write: if true;
+    }
+    match /{document=**} {
+      allow read, write: if true;
+    }
   }
 }

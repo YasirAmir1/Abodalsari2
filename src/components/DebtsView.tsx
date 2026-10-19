@@ -218,21 +218,17 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                 }`}
               >
                 <span>{ag.name}</span>
-                {activeTab === 'agents' ? (
-                  hasDebt ? (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300">
-                      {ag.totalDebt.toLocaleString()} د.ع
-                    </span>
-                  ) : (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
-                      خالص
-                    </span>
-                  )
+                {hasDebt ? (
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                    isSelected ? 'bg-red-500/20 text-white' : 'bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300'
+                  }`}>
+                    {ag.totalDebt.toLocaleString()} د.ع
+                  </span>
                 ) : (
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                    isSelected ? 'bg-emerald-500/20 text-white' : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
                   }`}>
-                    {subDebtsForAgent}
+                    غير مديون
                   </span>
                 )}
               </button>

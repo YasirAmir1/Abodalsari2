@@ -3,17 +3,18 @@ import { PricingRow, SubscriptionDuration } from '../types';
 export const getPriceByDuration = (
   agentId: string,
   duration: SubscriptionDuration,
-  pricing: PricingRow[]
+  pricing: PricingRow[] = []
 ): number => {
-  const agentPricing = pricing.find((p) => p.agentId === agentId) || pricing[0]; // Fallback to first if not found
-  if (!agentPricing) return 22000; // Default fallback
+  const safePricing = Array.isArray(pricing) ? pricing : [];
+  const agentPricing = safePricing.find((p) => p && p.agentId === agentId) || safePricing[0];
+  if (!agentPricing) return 22000;
 
   switch (duration) {
-    case '1 شهر': return agentPricing.oneMonthPrice;
-    case 'شهرين': return agentPricing.twoMonthsPrice;
-    case '3 أشهر': return agentPricing.threeMonthsPrice;
-    case '6 أشهر': return agentPricing.sixMonthsPrice;
-    case 'سنة': return agentPricing.oneYearPrice;
+    case '1 شهر': return agentPricing.oneMonthPrice || 22000;
+    case 'شهرين': return agentPricing.twoMonthsPrice || 44000;
+    case '3 أشهر': return agentPricing.threeMonthsPrice || 60000;
+    case '6 أشهر': return agentPricing.sixMonthsPrice || 110000;
+    case 'سنة': return agentPricing.oneYearPrice || 200000;
     default: return 22000;
   }
 };

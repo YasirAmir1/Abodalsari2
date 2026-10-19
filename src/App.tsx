@@ -19,7 +19,7 @@ import {
 } from './types';
 import { RefreshCw } from 'lucide-react';
 import { AppState, storageService } from './services/storageService';
-import { firebaseService, clearDailyQuota } from './services/firebaseService';
+import { firebaseService } from './services/firebaseService';
 import { soundService } from './services/soundService';
 import { excelService } from './services/excelService';
 
@@ -97,7 +97,6 @@ export default function App() {
     if (isRefreshing) return;
     setIsRefreshing(true);
     // Clear quota so manual refresh always reaches Firestore
-    clearDailyQuota();
     try {
       let remote: AppState | null = null;
       try {
@@ -203,7 +202,6 @@ export default function App() {
   // --- Effect 2: Real-time Firestore listener (cross-device sync) ---
   useEffect(() => {
     // Clear quota at start so listener always connects
-    clearDailyQuota();
 
     const unsubscribe = firebaseService.subscribeToRemoteState((remoteState) => {
       if (!remoteState) return;
@@ -467,7 +465,7 @@ export default function App() {
     soundService.playSuccess();
   };
 
-  const handleDeleteSubscriber = (id: string) => {
+  const handleDeleteSubscriber = async (id: string) => {
     const sub = state.subscribers.find((s) => s.id === id);
     if (sub) {
       storageService.addDeletedSubscriberId(sub.id);
@@ -524,6 +522,11 @@ export default function App() {
 
     storageService.saveState(newState);
     setState(newState);
+    try {
+      await firebaseService.saveRemoteState(newState);
+    } catch (e) {
+      console.warn('Immediate remote save on delete failed:', e);
+    }
     soundService.playSuccess();
   };
 
@@ -573,11 +576,11 @@ export default function App() {
 
   // Deactivate Subscriber (Reset information to blank and status to inactive)
   // Deactivate Subscriber:
-  // 1. Reset subscriber information: status = 'inactive', startDate = '-', endDate = '-', amount = 0, subscriptionType = '-', paymentStatus = '-'
-  // 2. Remove all related sales invoices (removes the invoice line from sales page)
+  // 1. Reset subscriber info: status = 'inactive', startDate = '-', endDate = '-', amount = 0, subscriptionType = '-', paymentStatus = '-'
+  // 2. Remove all related sales invoices (removes invoice line from sales page)
   // 3. Remove all related pending renewal requests
   // 4. Fully recalculate agent financials and counters (removes agent debt and sales that came from this subscriber)
-  const handleDeactivateSubscriber = (subscriberId: string) => {
+  const handleDeactivateSubscriber = async (subscriberId: string) => {
     const sub = state.subscribers.find((s) => s.id === subscriberId);
     if (!sub) return;
 
@@ -630,14 +633,22 @@ export default function App() {
       };
     });
 
-    setState({
+    const newState: AppState = {
       ...state,
       subscribers: updatedSubscribers,
       invoices: remainingInvoices,
       pendingRequests: remainingPendingRequests,
-      agents: updatedAgents
-    });
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
 
+    storageService.saveState(newState);
+    setState(newState);
+    try {
+      await firebaseService.saveRemoteState(newState);
+    } catch (e) {
+      console.warn('Immediate remote save on deactivate failed:', e);
+    }
     soundService.playSuccess();
   };
   // Instant Renewal Handler

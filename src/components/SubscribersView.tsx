@@ -24,6 +24,7 @@ import { RenewSubscriptionModal } from './RenewSubscriptionModal';
 import { DeactivateSubscriberModal } from './DeactivateSubscriberModal';
 import { DeleteSubscriberModal } from './DeleteSubscriberModal';
 import { DeleteAllSubscribersModal } from './DeleteAllSubscribersModal';
+import { CustomModal } from './CustomModal';
 
 interface SubscribersViewProps {
   subscribers: Subscriber[];
@@ -69,6 +70,12 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   const [deletingSubscriber, setDeletingSubscriber] = useState<Subscriber | null>(null);
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [modalInfo, setModalInfo] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'success' | 'error' | 'warning' | 'info';
+  }>({ isOpen: false, title: '', message: '' });
 
   // Helper to calculate end date from start date & duration
   const calculateEndDate = (startDateStr: string, duration: SubscriptionDuration): string => {
@@ -222,7 +229,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         const file = e.target.files[0];
         const imported = await excelService.importSubscribersFromExcel(file, agents);
         if (imported.subscribers.length === 0) {
-          alert('لم يتم العثور على أي بيانات مشتركين صالحة في ملف الإكسل.');
+          setModalInfo({ isOpen: true, title: 'تنبيه', message: 'لم يتم العثور على أي بيانات مشتركين صالحة في ملف الإكسل.', type: 'warning' });
           return;
         }
 
@@ -233,11 +240,11 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
             onAddSubscriber(sub, false, true);
           });
         }
-        alert(`تم بنجاح استيراد ${imported.subscribers.length} مشترك وربطهم بوكلائهم بنجاح!`);
+        setModalInfo({ isOpen: true, title: 'نجاح الاستيراد', message: `تم بنجاح استيراد ${imported.subscribers.length} مشترك وربطهم بوكلائهم بنجاح!`, type: 'success' });
         e.target.value = '';
       } catch (err: any) {
         console.error('Import error:', err);
-        alert('حدث خطأ أثناء استيراد الملف. يرجى التأكد من أن الملف بصيغة إكسل (.xlsx أو .xls) ويحتوي على الأعمدة المطلوبة.');
+        setModalInfo({ isOpen: true, title: 'خطأ', message: 'حدث خطأ أثناء استيراد الملف. يرجى التأكد من أن الملف بصيغة إكسل (.xlsx أو .xls) ويحتوي على الأعمدة المطلوبة.', type: 'error' });
       }
     }
   };
@@ -1059,6 +1066,15 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           }}
         />
       )}
+
+      {/* Modal: Info / Warning Notification Modal */}
+      <CustomModal
+        isOpen={modalInfo.isOpen}
+        title={modalInfo.title}
+        message={modalInfo.message}
+        type={modalInfo.type || 'info'}
+        onClose={() => setModalInfo({ ...modalInfo, isOpen: false })}
+      />
     </div>
   );
 };

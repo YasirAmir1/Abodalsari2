@@ -1,6 +1,6 @@
 ﻿export type SubscriptionStatus = 'active' | 'inactive' | 'expiring_soon';
-export type PaymentStatus = 'paid' | 'debt' | 'partial' | '-';
-export type SubscriptionDuration = '1 شهر' | 'شهرين' | '3 أشهر' | '6 أشهر' | 'سنة' | '-';
+export type PaymentStatus = 'paid' | 'debt' | 'partial' | '-' | '';
+export type SubscriptionDuration = '1 شهر' | 'شهرين' | '3 أشهر' | '6 أشهر' | 'سنة' | '-' | '';
 
 export interface Subscriber {
   id: string;
@@ -23,12 +23,13 @@ export interface Subscriber {
   createdAt: string;
 }
 
+
 export interface Agent {
   id: string;
   code: string; // e.g. AG-01, AG-02
   name: string;
   phone: string;
-  region: string; // e.g. 0770 - تكريت، سامراء، بلد، الدجيل
+  region: string; // e.g. 0770 - ØªÙƒØ±ÙŠØªØŒ Ø³Ø§Ù…Ø±Ø§Ø¡ØŒ Ø¨Ù„Ø¯ØŒ Ø§Ù„Ø¯Ø¬ÙŠÙ„
   totalSales: number;
   totalPaid: number;
   totalDebt: number;
@@ -47,7 +48,7 @@ export interface Product {
   id: string;
   code: string;
   name: string;
-  category: 'أريل' | 'كابلات' | 'ريمونت' | 'فيش' | 'أجهزة جديدة' | 'أجهزة مستعملة';
+  category: 'Ø£Ø±ÙŠÙ„' | 'ÙƒØ§Ø¨Ù„Ø§Øª' | 'Ø±ÙŠÙ…ÙˆÙ†Øª' | 'ÙÙŠØ´' | 'Ø£Ø¬Ù‡Ø²Ø© Ø¬Ø¯ÙŠØ¯Ø©' | 'Ø£Ø¬Ù‡Ø²Ø© Ù…Ø³ØªØ¹Ù…Ù„Ø©';
   price: number;
   stock: number;
   unit?: string;
@@ -65,7 +66,7 @@ export interface PricingRow {
   threeMonthsPrice: number;
   sixMonthsPrice: number;
   oneYearPrice: number;
-  status: 'معتمدة (المرجع)' | 'معتمدة (تطبق في البيع)' | 'مسودة';
+  status: 'Ù…Ø¹ØªÙ…Ø¯Ø© (Ø§Ù„Ù…Ø±Ø¬Ø¹)' | 'Ù…Ø¹ØªÙ…Ø¯Ø© (ØªØ·Ø¨Ù‚ ÙÙŠ Ø§Ù„Ø¨ÙŠØ¹)' | 'Ù…Ø³ÙˆØ¯Ø©';
   isReference?: boolean;
 }
 
@@ -114,7 +115,7 @@ export interface SystemUser {
   id: string;
   username: string;
   displayName: string;
-  role: 'مدير رئيسي' | 'محاسب' | 'موظف مبيعات' | 'وكيل معتمد' | 'دعم فني';
+  role: 'Ù…Ø¯ÙŠØ± Ø±Ø¦ÙŠØ³ÙŠ' | 'Ù…Ø­Ø§Ø³Ø¨' | 'Ù…ÙˆØ¸Ù Ù…Ø¨ÙŠØ¹Ø§Øª' | 'ÙˆÙƒÙŠÙ„ Ù…Ø¹ØªÙ…Ø¯' | 'Ø¯Ø¹Ù… ÙÙ†ÙŠ';
   agentCode?: string;
   agentId?: string;
   passwordMasked: string;
