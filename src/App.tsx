@@ -520,6 +520,12 @@ export default function App() {
   };
 
   const handleDeleteAllSubscribers = async () => {
+    // التحقق من الصلاحيات
+    if (currentUser?.role !== 'مدير رئيسي') {
+      alert('غير مصرح لك بتنفيذ هذه العملية. تواصل مع المدير الرئيسي.');
+      return;
+    }
+
     try {
       storageService.markAllSubscribersAsDeleted(state.subscribers || []);
 
