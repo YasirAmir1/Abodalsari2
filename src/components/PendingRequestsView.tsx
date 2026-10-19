@@ -239,7 +239,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
       </div>
 
       {/* Main Container matching Screenshot */}
-      <div className="bg-[#0C1326] rounded-3xl border border-amber-500/80 p-8 min-h-[380px] flex flex-col justify-center items-center shadow-[0_0_20px_rgba(245,158,11,0.06)]">
+      <div className="bg-slate-900 rounded-3xl border border-amber-500/50 p-8 min-h-[380px] flex flex-col justify-center items-center shadow-lg">
         <div className="w-full text-right mb-4">
           <span className="text-xs font-extrabold text-amber-400 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
@@ -254,8 +254,8 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
               <Check className="w-9 h-9 stroke-[3]" />
             </div>
 
-            <h3 className="text-lg font-black text-white mb-2">لا توجد طلبات معلقة حالياً</h3>
-            <p className="text-xs text-slate-400 leading-relaxed">
+            <h3 className="text-lg font-black text-slate-100 mb-2">لا توجد طلبات معلقة حالياً</h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
               جميع طلبات التجديد الواردة من الوكلاء تم اعتمادها أو رفضها بنجاح، وسينبهك النظام فور وصول أي طلب جديد.
             </p>
           </div>
@@ -265,46 +265,46 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
             {pendingRequests.map((req) => (
               <div
                 key={req.id}
-                className="bg-white rounded-2xl border border-amber-300 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
               >
                 <div>
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold text-[11px] border border-amber-200">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+                    <span className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-200 font-bold text-[11px] border border-amber-200 dark:border-amber-700">
                       طلب من: {req.agentName}
                     </span>
-                    <span className="text-[11px] text-slate-400 font-mono">{req.requestDate}</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{req.requestDate}</span>
                   </div>
 
                   <div className="mt-3 space-y-2 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-slate-500">اسم المشترك:</span>
-                      <span className="font-bold text-slate-900">{req.subscriberName}</span>
+                      <span className="text-slate-600 dark:text-slate-400">اسم المشترك:</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100">{req.subscriberName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">رقم الجهاز:</span>
-                      <span className="font-mono font-bold text-sky-800">{req.deviceId}</span>
+                      <span className="text-slate-600 dark:text-slate-400">رقم الجهاز:</span>
+                      <span className="font-mono font-bold text-sky-700 dark:text-sky-300">{req.deviceId}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">الهاتف:</span>
-                      <span className="font-mono text-slate-700">{req.subscriberPhone}</span>
+                      <span className="text-slate-600 dark:text-slate-400">الهاتف:</span>
+                      <span className="font-mono text-slate-800 dark:text-slate-200">{req.subscriberPhone}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">نوع الباقة المطلوبة:</span>
-                      <span className="font-bold text-teal-700">{req.duration}</span>
+                      <span className="text-slate-600 dark:text-slate-400">نوع الباقة المطلوبة:</span>
+                      <span className="font-bold text-teal-700 dark:text-teal-300">{req.duration}</span>
                     </div>
-                    <div className="flex justify-between pt-2 border-t border-slate-100">
-                      <span className="text-slate-500 font-bold">المبلغ المحتسب:</span>
-                      <span className="text-sm font-black text-slate-900">{req.amount.toLocaleString()} د.ع</span>
+                    <div className="flex justify-between pt-2 border-t border-slate-100 dark:border-slate-700">
+                      <span className="text-slate-600 dark:text-slate-400 font-bold">المبلغ المحتسب:</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-slate-100">{req.amount.toLocaleString()} د.ع</span>
                     </div>
                     {req.notes && (
-                      <div className="p-2 bg-slate-50 rounded-lg text-[11px] text-slate-600">
+                      <div className="p-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-[11px] text-slate-600 dark:text-slate-400">
                         ملاحظة الوكيل: {req.notes}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2">
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleOpenActivate(req)}
                     className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
@@ -314,7 +314,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                   </button>
                   <button
                     onClick={() => onRejectRequest(req.id)}
-                    className="py-2 px-3 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-200 transition-colors cursor-pointer"
+                    className="py-2 px-3 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-600 dark:hover:text-red-400 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-600 transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                     <span>رفض الطلب</span>
