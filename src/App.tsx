@@ -582,8 +582,8 @@ export default function App() {
       startDate: '-',
       endDate: '-',
       amount: 0,
-      subscriptionType: '1 Ø´Ù‡Ø±',
-      paymentStatus: 'paid'
+      subscriptionType: '-',
+      paymentStatus: '-'
     };
 
     const updatedAgents = state.agents.map((ag) => {
