@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Agent, PaymentStatus, PendingRenewalRequest, Subscriber, SubscriptionDuration } from '../types';
 import { soundService } from '../services/soundService';
+import { CustomModal } from './CustomModal';
 
 interface PendingRequestsViewProps {
   pendingRequests: PendingRenewalRequest[];
@@ -53,13 +54,18 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
   const [toneType, setToneType] = useState(soundService.getToneType());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Activation Modal State
   const [activatingRequest, setActivatingRequest] = useState<PendingRenewalRequest | null>(null);
   const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
   const [editAmount, setEditAmount] = useState<number>(22000);
   const [editStartDate, setEditStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [editDuration, setEditDuration] = useState<SubscriptionDuration>('1 شهر');
   const [editPaymentStatus, setEditPaymentStatus] = useState<'paid' | 'debt'>('paid');
+  const [modalInfo, setModalInfo] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'success' | 'error' | 'warning' | 'info';
+  }>({ isOpen: false, title: '', message: '' });
 
   // Manage repeat sound alert when there are pending requests
   useEffect(() => {
@@ -95,7 +101,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
         setToneType('custom');
         soundService.playPendingAlert();
       } catch {
-        alert('تعذر تشغيل الملف الصوتي');
+        setModalInfo({ isOpen: true, title: 'خطأ', message: 'تعذر تشغيل الملف الصوتي', type: 'error' });
       }
     }
   };
@@ -418,6 +424,14 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
           </div>
         </div>
       )}
+      {/* Modal: Info / Warning Notification Modal */}
+      <CustomModal
+        isOpen={modalInfo.isOpen}
+        title={modalInfo.title}
+        message={modalInfo.message}
+        type={modalInfo.type || 'info'}
+        onClose={() => setModalInfo({ ...modalInfo, isOpen: false })}
+      />
     </div>
   );
 };
