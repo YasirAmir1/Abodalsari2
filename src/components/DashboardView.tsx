@@ -11,6 +11,7 @@ import {
   PlusCircle,
   FileSpreadsheet
 } from 'lucide-react';
+import { calculateTotalSales, calculateTotalDebts } from '../utils/calculationUtils';
 import { Agent, Invoice, Subscriber } from '../types';
 
 interface DashboardViewProps {
@@ -33,12 +34,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [activeChartPoint, setActiveChartPoint] = useState<number | null>(null);
 
   // Calculations - System-wide total sales & debts across ALL agents and HQ
-  const totalSales = invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+  const totalSales = calculateTotalSales(invoices);
 
   // Total system debt: Sum of debts for all agents including HQ ('agent-main') and all debt subscribers
-  const totalDebts = subscribers
-    .filter((s) => s.paymentStatus === 'debt')
-    .reduce((sum, s) => sum + (s.amount || 0), 0);
+  const totalDebts = calculateTotalDebts(subscribers);
 
   // Count of debt records across HQ and all agents in the system
   const totalDebtRecordsCount = subscribers.filter((s) => s.paymentStatus === 'debt').length;

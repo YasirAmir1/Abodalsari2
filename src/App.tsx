@@ -781,6 +781,28 @@ export default function App() {
     soundService.playSuccess();
   };
 
+  // Reset Agent Data
+  const handleResetAgentData = (agentId: string) => {
+    const updatedAgents = state.agents.map((ag) => {
+      if (ag.id === agentId) {
+        return {
+          ...ag,
+          totalSales: 0,
+          totalPaid: 0,
+          totalDebt: 0,
+          hasDebt: false
+        };
+      }
+      return ag;
+    });
+
+    setState({
+      ...state,
+      agents: updatedAgents
+    });
+    soundService.playSuccess();
+  };
+
   // Update Agent Branding
   const handleUpdateAgentBranding = (agentId: string, branding: Partial<Agent>) => {
     setState({
@@ -984,6 +1006,7 @@ export default function App() {
               agents={state.agents}
               subscribers={state.subscribers}
               onSettleAgentDebt={handleSettleAgentDebt}
+              onResetAgentData={handleResetAgentData}
               onOpenWhatsApp={setActiveWhatsAppSub}
               onSelectDeviceQr={handleOpenDeviceQr}
               onDeleteSubscriber={handleDeleteSubscriber}

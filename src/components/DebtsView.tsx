@@ -20,6 +20,7 @@ interface DebtsViewProps {
   agents: Agent[];
   subscribers: Subscriber[];
   onSettleAgentDebt: (agentId: string, amount: number) => void;
+  onResetAgentData: (agentId: string) => void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr?: (deviceId: string, subscriberName?: string, agentName?: string) => void;
   onDeleteSubscriber: (subscriberId: string) => void;
@@ -29,6 +30,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   agents,
   subscribers,
   onSettleAgentDebt,
+  onResetAgentData,
   onOpenWhatsApp,
   onSelectDeviceQr,
   onDeleteSubscriber
@@ -268,12 +270,13 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                   <th className="py-3 px-3">المسدد للرئيسية</th>
                   <th className="py-3 px-3">الدين المتبقي</th>
                   <th className="py-3 px-4 text-center">إجراءات التحصيل</th>
+                  <th className="py-3 px-4 text-center">تصفير السجلات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredAgents.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400 text-xs">
+                    <td colSpan={6} className="py-12 text-center text-slate-400 text-xs">
                       لا يوجد وكلاء يطابقون خيار التصنيف المحدد
                     </td>
                   </tr>
@@ -325,6 +328,19 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                               غير مطلوب
                             </span>
                           )}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <button
+                            onClick={() => {
+                              if (confirm(`تحذير: هل أنت متأكد من تصفير (المبيعات، الديون، والمبالغ المسددة) للوكيل ${ag.name}؟ هذا الإجراء نهائي.`)) {
+                                onResetAgentData(ag.id);
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1 mx-auto"
+                            title="تصفير كافة المبيعات والديون للوكيل"
+                          >
+                            <span>تصفير</span>
+                          </button>
                         </td>
                       </tr>
                     );

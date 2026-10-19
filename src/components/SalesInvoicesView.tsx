@@ -11,6 +11,7 @@ import {
   ExternalLink,
   X
 } from 'lucide-react';
+import { calculateTotalSales } from '../utils/calculationUtils';
 import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 
@@ -48,9 +49,9 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     return true;
   });
 
-  const totalSalesSum = invoices.reduce((s, i) => s + i.amount, 0);
-  const totalPaidSum = invoices.reduce((s, i) => s + i.paidAmount, 0);
-  const totalRemainingDebt = invoices.reduce((s, i) => s + i.remainingAmount, 0);
+  const totalSalesSum = calculateTotalSales(invoices);
+  const totalPaidSum = invoices.reduce((s, i) => s + (i.paidAmount || 0), 0);
+  const totalRemainingDebt = invoices.reduce((s, i) => s + (i.remainingAmount || 0), 0);
 
   return (
     <div className="space-y-6">

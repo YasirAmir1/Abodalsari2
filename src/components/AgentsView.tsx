@@ -19,6 +19,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import { calculateAgentSales, calculateAgentDebt } from '../utils/calculationUtils';
 import { Agent, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 
@@ -261,11 +262,8 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {fieldAgents.map((ag) => {
-              const agentInvoices = subscribers.filter((s) => s.agentId === ag.id);
-              const agentSales = agentInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
-              const agentDebt = agentInvoices
-                .filter((s) => s.paymentStatus === 'debt')
-                .reduce((sum, s) => sum + (s.amount || 0), 0);
+              const agentSales = calculateAgentSales(ag.id, subscribers);
+              const agentDebt = calculateAgentDebt(ag.id, subscribers);
               const hasDebt = agentDebt > 0;
 
               return (
@@ -420,11 +418,8 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {fieldAgents.map((ag) => {
-                  const agentInvoices = subscribers.filter((s) => s.agentId === ag.id);
-                  const agentSales = agentInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
-                  const agentDebt = agentInvoices
-                    .filter((s) => s.paymentStatus === 'debt')
-                    .reduce((sum, s) => sum + (s.amount || 0), 0);
+                  const agentSales = calculateAgentSales(ag.id, subscribers);
+                  const agentDebt = calculateAgentDebt(ag.id, subscribers);
                   const hasDebt = agentDebt > 0;
                   return (
                     <tr key={ag.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
