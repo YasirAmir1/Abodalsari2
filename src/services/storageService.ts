@@ -212,7 +212,6 @@ export const storageService = {
           codes: Array.isArray(parsed.codes) && parsed.codes.length > 0 ? parsed.codes : INITIAL_CODES,
           users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : INITIAL_USERS,
           pendingRequests: Array.isArray(parsed.pendingRequests) ? parsed.pendingRequests : [],
-          securityAlerts: Array.isArray(parsed.securityAlerts) ? parsed.securityAlerts : INITIAL_SECURITY_ALERTS,
           lastBackupDate: parsed.lastBackupDate || new Date().toISOString(),
           lastUpdatedTimestamp: parsed.lastUpdatedTimestamp || Date.now()
         };

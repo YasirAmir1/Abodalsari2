@@ -225,7 +225,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                     </span>
                   ) : (
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
-                      خالص
+                      غير مديون
                     </span>
                   )
                 ) : (
