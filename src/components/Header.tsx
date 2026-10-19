@@ -74,9 +74,9 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Control Tools (Left in RTL) */}
       <div className="flex items-center gap-2">
         {/* Date Display */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100/90 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-medium text-slate-600 dark:text-slate-300">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100/90 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300">
           <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-          <span dir="ltr">Saturday, Oct 17, 2026</span>
+          <span>{new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
         </div>
 
         {/* Dark Mode Toggle */}
