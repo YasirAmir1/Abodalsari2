@@ -1276,6 +1276,7 @@ export default function App() {
           {currentTab === 'debts' && (
             <DebtsView
               agents={state.agents}
+              invoices={state.invoices}
               subscribers={state.subscribers}
               onSettleAgentDebt={handleSettleAgentDebt}
               onSettleSubscriberDebt={handleSettleSubscriberDebt}

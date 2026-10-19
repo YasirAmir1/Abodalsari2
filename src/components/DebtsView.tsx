@@ -13,11 +13,12 @@ import {
   Filter,
   FileSpreadsheet
 } from 'lucide-react';
-import { Agent, Subscriber } from '../types';
+import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 
 interface DebtsViewProps {
   agents: Agent[];
+  invoices: Invoice[];
   subscribers: Subscriber[];
   onSettleAgentDebt: (agentId: string, amount: number) => void;
   onSettleSubscriberDebt: (subscriberId: string, amount: number) => void;
@@ -29,6 +30,7 @@ interface DebtsViewProps {
 
 export const DebtsView: React.FC<DebtsViewProps> = ({
   agents,
+  invoices,
   subscribers,
   onSettleAgentDebt,
   onSettleSubscriberDebt,
@@ -46,21 +48,40 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || null
     : null;
 
+  const debtSubscribers = subscribers.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
+  const totalSalesAmount = invoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
+  const totalPaidAmount = invoices.reduce((sum, invoice) => {
+    const amount = Number(invoice.amount) || 0;
+    const paidAmount = Number.isFinite(Number(invoice.paidAmount))
+      ? Number(invoice.paidAmount)
+      : Math.max(0, amount - (Number(invoice.remainingAmount) || 0));
+    return sum + Math.max(0, paidAmount);
+  }, 0);
+  const grandTotalDebt = debtSubscribers.reduce((sum, subscriber) => sum + (Number(subscriber.amount) || 0), 0);
+  const formatMoney = (amount: number) => Math.max(0, Number.isFinite(amount) ? amount : 0).toLocaleString();
+
   const computedAgents = agents.map((ag) => {
     const agentDebtSubs = subscribers.filter(
       (s) => (s.paymentStatus === 'debt' || s.paymentStatus === 'partial') && (s.agentId === ag.id || s.agentName === ag.name)
     );
     const calculatedDebt = agentDebtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+    const agentInvoices = invoices.filter((invoice) => invoice.agentId === ag.id || (!invoice.agentId && invoice.agentName === ag.name));
+    const agentSales = agentInvoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
+    const agentPaid = agentInvoices.reduce((sum, invoice) => {
+      const amount = Number(invoice.amount) || 0;
+      const paidAmount = Number.isFinite(Number(invoice.paidAmount))
+        ? Number(invoice.paidAmount)
+        : Math.max(0, amount - (Number(invoice.remainingAmount) || 0));
+      return sum + Math.max(0, paidAmount);
+    }, 0);
     return {
       ...ag,
+      invoiceSalesAmount: agentSales,
+      invoicePaidAmount: agentPaid,
       totalDebt: calculatedDebt,
       hasDebt: calculatedDebt > 0
     };
   });
-
-  const totalAgentDebts = computedAgents.reduce((sum, ag) => sum + ag.totalDebt, 0);
-  const debtSubscribers = subscribers.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
-  const grandTotalDebt = totalAgentDebts;
 
   // Filter Agents Table
   const filteredAgents = computedAgents.filter((ag) => {
@@ -76,6 +97,9 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     }
     return true;
   });
+  const financialSummaryAgents = activeTab === 'agents'
+    ? filteredAgents
+    : computedAgents.filter((ag) => selectedAgentFilter === 'all' || ag.id === selectedAgentFilter || ag.name === selectedAgentFilter);
 
   // Filter Subscribers Debt Table
   const filteredDebtSubscribers = debtSubscribers.filter((sub) => {
@@ -143,14 +167,6 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Total Debts Display Card */}
-          <div className="bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 px-5 py-2.5 rounded-2xl text-center shadow-xs">
-            <div className="text-xl font-black text-red-600 dark:text-red-400 font-mono">
-              {grandTotalDebt.toLocaleString()} <span className="text-xs font-bold text-red-500">د.ع</span>
-            </div>
-            <div className="text-[11px] text-red-700 dark:text-red-300 font-bold">إجمالي الديون القائمة</div>
-          </div>
-
           {/* Export Excel Button */}
           <button
             onClick={handleExportExcel}
@@ -163,6 +179,28 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
         </div>
       </div>
 
+      {/* Main financial summary: values are derived directly from current invoices and subscriber balances. */}
+      <section aria-label="الملخص المالي العام" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="min-w-0 rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-xs dark:border-sky-900 dark:bg-sky-950/30">
+          <div className="text-xs font-bold text-sky-800 dark:text-sky-300">مبلغ المبيعات — الإجمالي العام</div>
+          <div className="mt-2 break-all font-mono text-2xl font-black leading-tight text-sky-900 dark:text-sky-100">
+            {formatMoney(totalSalesAmount)} <span className="text-xs font-bold">د.ع</span>
+          </div>
+        </div>
+        <div className="min-w-0 rounded-2xl border border-red-200 bg-red-50 p-4 shadow-xs dark:border-red-900 dark:bg-red-950/30">
+          <div className="text-xs font-bold text-red-800 dark:text-red-300">مبلغ الدين الكلي — الإجمالي العام</div>
+          <div className="mt-2 break-all font-mono text-2xl font-black leading-tight text-red-700 dark:text-red-200">
+            {formatMoney(grandTotalDebt)} <span className="text-xs font-bold">د.ع</span>
+          </div>
+        </div>
+        <div className="min-w-0 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-xs dark:border-emerald-900 dark:bg-emerald-950/30">
+          <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300">مبلغ المسدد — الإجمالي العام</div>
+          <div className="mt-2 break-all font-mono text-2xl font-black leading-tight text-emerald-700 dark:text-emerald-200">
+            {formatMoney(totalPaidAmount)} <span className="text-xs font-bold">د.ع</span>
+          </div>
+        </div>
+      </section>
+
       {/* Switch Tab: Agent Debts vs Subscriber Debts */}
       <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 text-xs font-bold">
         <button
@@ -174,7 +212,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
           }`}
         >
           <Users2 className="w-4 h-4" />
-          <span>ديون الوكلاء المستحقة ({agents.filter((a) => a.totalDebt > 0).length})</span>
+          <span>ديون الوكلاء المستحقة ({computedAgents.filter((a) => a.totalDebt > 0).length})</span>
         </button>
 
         <button
@@ -215,9 +253,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
           </button>
 
           {/* Individual Agent Pills */}
-          {agents.map((ag) => {
+          {computedAgents.map((ag) => {
             const isSelected = selectedAgentFilter === ag.id || selectedAgentFilter === ag.name;
-            const subDebtsForAgent = debtSubscribers.filter((s) => s.agentId === ag.id || s.agentName === ag.name).length;
             const hasDebt = ag.totalDebt > 0;
             return (
               <button
@@ -262,6 +299,44 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
           <Search className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
         </div>
       </div>
+
+      {/* Agent and main-office financial summaries */}
+      <section className="space-y-3" aria-label="الملخص المالي لكل وكيل">
+        <div>
+          <h3 className="text-sm font-black text-slate-900 dark:text-slate-100">ملخص المبيعات والديون والتسديدات حسب الوكيل</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">يشمل المركز الرئيسي، وتتحدث القيم تلقائياً مع تسجيل أو تعديل المعاملات.</p>
+        </div>
+        {financialSummaryAgents.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+            لا توجد نتائج مطابقة لخيارات البحث والتصنيف.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+            {financialSummaryAgents.map((ag) => (
+              <article key={ag.id} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+                <h4 className="mb-3 flex min-w-0 items-center gap-2 text-sm font-black text-slate-900 dark:text-slate-100" title={ag.name}>
+                  <span className="truncate">{ag.name}</span>
+                  {ag.id === 'agent-main' && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">الرئيسي</span>}
+                </h4>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="min-w-0 rounded-xl bg-sky-50 p-3 dark:bg-sky-950/30">
+                    <div className="text-[11px] font-bold text-sky-800 dark:text-sky-300">مبلغ المبيعات</div>
+                    <div className="mt-1 break-all font-mono text-base font-black text-sky-900 dark:text-sky-100">{formatMoney(ag.invoiceSalesAmount)} <span className="text-[10px]">د.ع</span></div>
+                  </div>
+                  <div className="min-w-0 rounded-xl bg-red-50 p-3 dark:bg-red-950/30">
+                    <div className="text-[11px] font-bold text-red-800 dark:text-red-300">مبلغ الدين الكلي</div>
+                    <div className="mt-1 break-all font-mono text-base font-black text-red-700 dark:text-red-200">{formatMoney(ag.totalDebt)} <span className="text-[10px]">د.ع</span></div>
+                  </div>
+                  <div className="min-w-0 rounded-xl bg-emerald-50 p-3 dark:bg-emerald-950/30">
+                    <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">مبلغ المسدد</div>
+                    <div className="mt-1 break-all font-mono text-base font-black text-emerald-700 dark:text-emerald-200">{formatMoney(ag.invoicePaidAmount)} <span className="text-[10px]">د.ع</span></div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Agents Debt Table */}
       {activeTab === 'agents' ? (
