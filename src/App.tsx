@@ -17,6 +17,7 @@ import {
   SystemUser,
   PaymentStatus
 } from './types';
+import { RefreshCw } from 'lucide-react';
 import { AppState, storageService } from './services/storageService';
 import { firebaseService } from './services/firebaseService';
 import { soundService } from './services/soundService';
@@ -789,18 +790,18 @@ export default function App() {
 
   // Settle Subscriber Debt (Set debt to 0, status to paid, update invoice)
   const handleSettleSubscriberDebt = (subscriberId: string) => {
-    const updatedSubscribers = state.subscribers.map(s => {
+    const updatedSubscribers = state.subscribers.map((s): Subscriber => {
       if (s.id === subscriberId) {
-        return { ...s, paymentStatus: 'paid', amount: 0 };
+        return { ...s, paymentStatus: 'paid' as PaymentStatus, amount: 0 };
       }
       return s;
     });
 
-    const updatedInvoices = state.invoices.map(inv => {
+    const updatedInvoices = state.invoices.map((inv): Invoice => {
       if (inv.subscriberId === subscriberId && inv.paymentStatus === 'debt') {
         return {
           ...inv,
-          paymentStatus: 'paid',
+          paymentStatus: 'paid' as PaymentStatus,
           paidAmount: inv.amount,
           remainingAmount: 0
         };

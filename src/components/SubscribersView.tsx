@@ -51,14 +51,13 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   onDeleteSubscriber,
   onRenewSubscriber,
   onDeactivateSubscriber,
-  onDeleteAllSubscribersHandler = () => { console.log('DEBUG: onDeleteAllSubscribersHandler called'); },
+  onDeleteAllSubscribersHandler,
   onOpenWhatsApp,
   onSelectDeviceQr,
   onImportSubscribers,
   currentAgentFilter,
   isMainCenterView = true
 }) => {
-  console.log('DEBUG: SubscribersView rendering, onDeleteAllSubscribers is:', onDeleteAllSubscribers);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
