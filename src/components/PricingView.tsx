@@ -8,18 +8,29 @@ import {
   Building2,
   Tv,
   Check,
-  Sparkles
+  Sparkles,
+  Eye,
+  EyeOff,
+  Edit2
 } from 'lucide-react';
-import { PricingRow } from '../types';
+import { Agent, PricingRow } from '../types';
 
 interface PricingViewProps {
   pricing: PricingRow[];
+  agents: Agent[];
   onSavePricing: (rows: PricingRow[]) => void;
+  onUpdateAgent: (agentId: string, branding: Partial<Agent>) => void;
 }
 
-export const PricingView: React.FC<PricingViewProps> = ({ pricing, onSavePricing }) => {
+export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSavePricing, onUpdateAgent }) => {
   const [rows, setRows] = useState<PricingRow[]>(pricing);
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const [editingAgentCredentials, setEditingAgentCredentials] = useState<string | null>(null);
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+
+  const togglePasswordVisibility = (agentId: string) => {
+    setVisiblePasswords(prev => ({ ...prev, [agentId]: !prev[agentId] }));
+  };
 
   const handleCellChange = (
     index: number,
@@ -235,92 +246,153 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, onSavePricing
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((row, index) => (
-                <tr
-                  key={row.agentId}
-                  className={`hover:bg-slate-50/80 transition-colors ${
-                    row.isReference ? 'bg-sky-50/30' : ''
-                  }`}
-                >
-                  {/* Agent Name & Code */}
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <div className="font-bold text-slate-900">{row.agentName}</div>
-                        <div className="text-[10px] text-sky-700 font-mono font-medium">
-                          {row.agentCode}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
+              {rows.map((row, index) => {
+                const agent = agents.find((a) => a.id === row.agentId);
+                const isEditing = editingAgentCredentials === row.agentId;
+                const [tempUsername, setTempUsername] = useState(agent?.username || '');
+                const [tempPassword, setTempPassword] = useState(agent?.password || '');
 
-                  {/* New Device Price Input */}
-                  <td className="py-3 px-3 font-mono">
-                    <input
-                      type="number"
-                      step={500}
-                      value={row.newDevicePrice}
-                      onChange={(e) =>
-                        handleCellChange(index, 'newDevicePrice', Number(e.target.value))
-                      }
-                      className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
-                    />
-                  </td>
-
-                  {/* 1 Month Price Input */}
-                  <td className="py-3 px-3 font-mono">
-                    <input
-                      type="number"
-                      step={500}
-                      value={row.oneMonthPrice}
-                      onChange={(e) =>
-                        handleCellChange(index, 'oneMonthPrice', Number(e.target.value))
-                      }
-                      className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
-                    />
-                  </td>
-
-                  {/* 2 Months Price Input */}
-                  <td className="py-3 px-3 font-mono">
-                    <input
-                      type="number"
-                      step={500}
-                      value={row.twoMonthsPrice}
-                      onChange={(e) =>
-                        handleCellChange(index, 'twoMonthsPrice', Number(e.target.value))
-                      }
-                      className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
-                    />
-                  </td>
-
-                  {/* 3 Months Price Input */}
-                  <td className="py-3 px-3 font-mono">
-                    <input
-                      type="number"
-                      step={500}
-                      value={row.threeMonthsPrice}
-                      onChange={(e) =>
-                        handleCellChange(index, 'threeMonthsPrice', Number(e.target.value))
-                      }
-                      className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
-                    />
-                  </td>
-
-                  {/* Status Pill */}
-                  <td className="py-3 px-3">
-                    <span
-                      className={`px-2.5 py-1 rounded-full font-bold text-[10px] flex items-center gap-1 w-fit ${
-                        row.isReference
-                          ? 'bg-sky-100 text-sky-800 border border-sky-300'
-                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                return (
+                  <React.Fragment key={row.agentId}>
+                    <tr
+                      className={`hover:bg-slate-50/80 transition-colors ${
+                        row.isReference ? 'bg-sky-50/30' : ''
                       }`}
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      <span>{row.status}</span>
-                    </span>
-                  </td>
-                </tr>
-              ))}
+                      {/* Agent Name & Code */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <div className="font-bold text-slate-900">{row.agentName}</div>
+                            <div className="text-[10px] text-sky-700 font-mono font-medium">
+                              {row.agentCode}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* New Device Price Input */}
+                      <td className="py-3 px-3 font-mono">
+                        <input
+                          type="number"
+                          step={500}
+                          value={row.newDevicePrice}
+                          onChange={(e) =>
+                            handleCellChange(index, 'newDevicePrice', Number(e.target.value))
+                          }
+                          className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
+                        />
+                      </td>
+
+                      {/* 1 Month Price Input */}
+                      <td className="py-3 px-3 font-mono">
+                        <input
+                          type="number"
+                          step={500}
+                          value={row.oneMonthPrice}
+                          onChange={(e) =>
+                            handleCellChange(index, 'oneMonthPrice', Number(e.target.value))
+                          }
+                          className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
+                        />
+                      </td>
+
+                      {/* 2 Months Price Input */}
+                      <td className="py-3 px-3 font-mono">
+                        <input
+                          type="number"
+                          step={500}
+                          value={row.twoMonthsPrice}
+                          onChange={(e) =>
+                            handleCellChange(index, 'twoMonthsPrice', Number(e.target.value))
+                          }
+                          className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
+                        />
+                      </td>
+
+                      {/* 3 Months Price Input */}
+                      <td className="py-3 px-3 font-mono">
+                        <input
+                          type="number"
+                          step={500}
+                          value={row.threeMonthsPrice}
+                          onChange={(e) =>
+                            handleCellChange(index, 'threeMonthsPrice', Number(e.target.value))
+                          }
+                          className="w-28 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:border-sky-500 font-bold text-slate-800"
+                        />
+                      </td>
+
+                      {/* Status Pill */}
+                      <td className="py-3 px-3">
+                        <span
+                          className={`px-2.5 py-1 rounded-full font-bold text-[10px] flex items-center gap-1 w-fit ${
+                            row.isReference
+                              ? 'bg-sky-100 text-sky-800 border border-sky-300'
+                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          <span>{row.status}</span>
+                        </span>
+                      </td>
+                    </tr>
+                    {/* Credentials Row */}
+                    <tr className="bg-slate-50/50">
+                      <td colSpan={6} className="py-2 px-4">
+                        <div className="flex items-center gap-4 text-[11px]">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-600">اسم المستخدم:</span>
+                            {isEditing ? (
+                              <input
+                                value={tempUsername}
+                                onChange={(e) => setTempUsername(e.target.value)}
+                                className="px-2 py-1 rounded border border-slate-300"
+                              />
+                            ) : (
+                              <span className="font-mono text-slate-800">{agent?.username || '-'}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-600">الرمز السري:</span>
+                            <div className="flex items-center gap-1">
+                              {isEditing ? (
+                                <input
+                                  type={visiblePasswords[row.agentId] ? 'text' : 'password'}
+                                  value={tempPassword}
+                                  onChange={(e) => setTempPassword(e.target.value)}
+                                  className="px-2 py-1 rounded border border-slate-300"
+                                />
+                              ) : (
+                                <span className="font-mono text-slate-800">
+                                  {visiblePasswords[row.agentId] ? (agent?.password || '-') : '••••••••'}
+                                </span>
+                              )}
+                              <button onClick={() => togglePasswordVisibility(row.agentId)} className="text-slate-500 hover:text-slate-700">
+                                {visiblePasswords[row.agentId] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (isEditing) {
+                                onUpdateAgent(row.agentId, { username: tempUsername, password: tempPassword });
+                                setEditingAgentCredentials(null);
+                              } else {
+                                setEditingAgentCredentials(row.agentId);
+                              }
+                            }}
+                            className="mr-auto px-3 py-1 rounded bg-white hover:bg-slate-100 border border-slate-300 flex items-center gap-1"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            {isEditing ? 'حفظ' : 'تعديل'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

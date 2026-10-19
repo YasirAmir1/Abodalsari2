@@ -1180,7 +1180,9 @@ export default function App() {
           {currentTab === 'pricing' && (
             <PricingView
               pricing={state.pricing}
+              agents={state.agents}
               onSavePricing={handleSavePricing}
+              onUpdateAgent={handleUpdateAgentBranding}
             />
           )}
 

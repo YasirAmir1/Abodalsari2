@@ -348,18 +348,48 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
             <span className="hidden sm:inline">حذف جميع المشتركين</span>
             <span className="sm:hidden">حذف الكل</span>
           </button>
-
-          <label
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 cursor-pointer"
-            title="استيراد مشتركين من إكسل"
-          >
-            <Upload className="w-4 h-4 text-sky-600" />
-            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" />
-          </label>
         </div>
       </div>
 
-      {/* Classification by Responsible Agent (Pills Row) */}
+      {/* Bottom Action Card: Import Excel, Export Excel, Delete All */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-center gap-4">
+        {/* Export Excel */}
+        <button
+          onClick={() => {
+            const filterTag = agentFilter !== 'all' || statusFilter !== 'all' || searchTerm ? '_المفلترة' : '';
+            const dateStr = new Date().toISOString().split('T')[0];
+            excelService.exportSubscribers(
+              filteredSubscribers,
+              `قائمة_المشتركين${filterTag}_${dateStr}.xlsx`
+            );
+          }}
+          className="px-5 py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+          title="تصدير قائمة المشتركين المعروضة حالياً إلى ملف إكسل منسق"
+        >
+          <FileSpreadsheet className="w-4 h-4 text-white" />
+          <span>تصدير قائمة المشتركين (Excel)</span>
+        </button>
+
+        {/* Delete All */}
+        <button
+          onClick={() => setShowDeleteAllModal(true)}
+          className="px-5 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+          title="حذف جميع المشتركين نهائياً (تصفير شامل)"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>حذف جميع المشتركين</span>
+        </button>
+
+        {/* Import Excel */}
+        <label
+          className="cursor-pointer px-5 py-3 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs flex items-center gap-2 shadow-sm active:scale-95 transition-all"
+          title="استيراد مشتركين من إكسل"
+        >
+          <Upload className="w-4 h-4" />
+          <span>استيراد مشتركين (Excel)</span>
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" />
+        </label>
+      </div>
       <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 ml-1">
           <span className="w-2 h-2 rounded-full bg-sky-600" />
@@ -619,7 +649,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
       </div>
 
       {/* Bottom Action Card: Import Excel for all subscribers (Center and Agents) */}
-      <div className="bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-slate-800 dark:to-sky-950/40 p-5 rounded-3xl border border-sky-200 dark:border-sky-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+      <div className="bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-slate-800 dark:to-sky-950/40 p-5 rounded-3xl border border-sky-200 dark:border-sky-800/80 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm hidden">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-sky-700 text-white flex items-center justify-center shrink-0 shadow-md">
             <Upload className="w-6 h-6" />
