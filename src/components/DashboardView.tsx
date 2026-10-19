@@ -32,23 +32,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [activeChartPoint, setActiveChartPoint] = useState<number | null>(null);
 
-  // Calculations - System-wide total sales & debts across ALL agents and HQ (المركز الرئيسي)
-  const totalSalesFromAgents = agents.reduce((sum, ag) => sum + (ag.totalSales || 0), 0);
-  const totalSalesFromInvoices = invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
-  const totalSales = Math.max(totalSalesFromAgents, totalSalesFromInvoices);
+  // Calculations - System-wide total sales & debts across ALL agents and HQ
+  const totalSales = invoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
 
   // Total system debt: Sum of debts for all agents including HQ ('agent-main') and all debt subscribers
-  const agentDebtsTotal = agents.reduce((sum, ag) => sum + (ag.totalDebt || 0), 0);
-  const subscriberDebtsTotal = subscribers
+  const totalDebts = subscribers
     .filter((s) => s.paymentStatus === 'debt')
     .reduce((sum, s) => sum + (s.amount || 0), 0);
 
-  const totalDebts = Math.max(agentDebtsTotal, subscriberDebtsTotal);
-
   // Count of debt records across HQ and all agents in the system
-  const debtSubscribersCount = subscribers.filter((s) => s.paymentStatus === 'debt').length;
-  const debtAgentsCount = agents.filter((a) => a.totalDebt > 0).length;
-  const totalDebtRecordsCount = debtSubscribersCount > 0 ? debtSubscribersCount : debtAgentsCount;
+  const totalDebtRecordsCount = subscribers.filter((s) => s.paymentStatus === 'debt').length;
 
   const activeAgentsCount = agents.filter((a) => a.id !== 'agent-main').length;
   const totalOperations = invoices.length;

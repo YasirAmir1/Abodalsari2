@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Trash2, ShieldAlert, CheckSquare, X } from 'lucide-react';
+import { AlertTriangle, Trash2, ShieldAlert, X, Loader2 } from 'lucide-react';
 
 interface DeleteAllSubscribersModalProps {
   subscribersCount: number;
   onClose: () => void;
-  onConfirmDeleteAll: () => void;
+  onConfirmDeleteAll: () => Promise<void> | void;
 }
 
 export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps> = ({
@@ -15,14 +15,17 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
   const [confirmationInput, setConfirmationInput] = useState('');
   const [isChecked, setIsChecked] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isValidInput =
     confirmationInput.trim().toUpperCase() === 'DELETE' ||
     confirmationInput.trim() === 'حذف' ||
     confirmationInput.trim() === '1234';
 
-  const handleConfirm = (e: React.FormEvent) => {
+  const handleConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isDeleting) return;
+
     if (!isChecked) {
       setErrorMsg('يرجى الموافقة على الإقرار قبل المتابعة');
       return;
@@ -31,7 +34,20 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
       setErrorMsg('رمز التأكيد غير صحيح. اكتب DELETE أو حذف أو 1234');
       return;
     }
-    onConfirmDeleteAll();
+
+    setIsDeleting(true);
+    setErrorMsg('');
+
+    try {
+      await onConfirmDeleteAll();
+      // On success, the parent component closes the modal
+    } catch (err: any) {
+      console.error('Error deleting all subscribers:', err);
+      const message = err?.message || 'حدث خطأ أثناء تنفيذ عملية الحذف. يرجى المحاولة مرة أخرى.';
+      setErrorMsg(message);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -57,7 +73,8 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            disabled={isDeleting}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-5 h-5" />
           </button>
@@ -94,10 +111,11 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
         {/* Confirmation Form */}
         <form onSubmit={handleConfirm} className="mt-5 space-y-4 text-xs">
           {/* Step 1 Checkbox */}
-          <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <label className={`flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}>
             <input
               type="checkbox"
               checked={isChecked}
+              disabled={isDeleting}
               onChange={(e) => {
                 setIsChecked(e.target.checked);
                 if (e.target.checked) setErrorMsg('');
@@ -117,12 +135,13 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
             <input
               type="text"
               value={confirmationInput}
+              disabled={isDeleting}
               onChange={(e) => {
                 setConfirmationInput(e.target.value);
                 setErrorMsg('');
               }}
               placeholder="اكتب DELETE أو حذف أو 1234 هنا..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-red-500 font-mono text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-red-500 font-mono text-sm disabled:opacity-50"
               autoFocus
             />
           </div>
@@ -139,22 +158,32 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              disabled={isDeleting}
+              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               إلغاء
             </button>
 
             <button
               type="submit"
-              disabled={!isChecked || !isValidInput}
+              disabled={!isChecked || !isValidInput || isDeleting}
               className={`px-5 py-2.5 rounded-xl text-white font-extrabold flex items-center gap-2 shadow-md transition-all ${
-                isChecked && isValidInput
+                isChecked && isValidInput && !isDeleting
                   ? 'bg-red-600 hover:bg-red-700 cursor-pointer active:scale-95'
                   : 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed opacity-60'
               }`}
             >
-              <Trash2 className="w-4 h-4" />
-              <span>تأكيد الحذف الشامل والنهائي</span>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>جاري الحذف والمسح الشامل...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  <span>تأكيد الحذف الشامل والنهائي</span>
+                </>
+              )}
             </button>
           </div>
         </form>

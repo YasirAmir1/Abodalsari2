@@ -260,53 +260,59 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
       {/* Conditional View: Grid Cards vs Dynamic Summary Table */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {fieldAgents.map((ag) => {
-            const hasDebt = ag.totalDebt > 0;
-            return (
-              <div
-                key={ag.id}
-                className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-all p-5 flex flex-col justify-between"
-              >
-                <div>
-                  {/* Agent Header */}
-                  <div className="flex items-start justify-between">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        hasDebt
-                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                          : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                      }`}
-                    >
-                      {hasDebt ? 'عليه ديون مستحقة' : 'حساب خالص'}
-                    </span>
+            {fieldAgents.map((ag) => {
+              const agentInvoices = subscribers.filter((s) => s.agentId === ag.id);
+              const agentSales = agentInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+              const agentDebt = agentInvoices
+                .filter((s) => s.paymentStatus === 'debt')
+                .reduce((sum, s) => sum + (s.amount || 0), 0);
+              const hasDebt = agentDebt > 0;
 
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <div className="text-sm font-black text-slate-900 dark:text-slate-100">{ag.name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">{ag.code}</div>
-                      </div>
-                      <div className="w-10 h-10 rounded-2xl bg-sky-900 text-white font-black flex items-center justify-center text-sm shadow-xs">
-                        {ag.avatarInitials}
-                      </div>
-                    </div>
-                  </div>
+              return (
+                <div
+                  key={ag.id}
+                  className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-all p-5 flex flex-col justify-between"
+                >
+                  <div>
+                    {/* Agent Header */}
+                    <div className="flex items-start justify-between">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          hasDebt
+                            ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                            : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        }`}
+                      >
+                        {hasDebt ? 'عليه ديون مستحقة' : 'حساب خالص'}
+                      </span>
 
-                  {/* Financial & Subscriber Stats */}
-                  <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
-                      <div className="text-[10px] text-slate-400">إجمالي المبيعات</div>
-                      <div className="font-mono font-black text-slate-800 dark:text-slate-200 text-sm mt-0.5">
-                        {ag.totalSales.toLocaleString()} <span className="text-[10px]">د.ع</span>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <div className="text-sm font-black text-slate-900 dark:text-slate-100">{ag.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{ag.code}</div>
+                        </div>
+                        <div className="w-10 h-10 rounded-2xl bg-sky-900 text-white font-black flex items-center justify-center text-sm shadow-xs">
+                          {ag.avatarInitials}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="bg-red-50 dark:bg-red-950/40 p-2.5 rounded-2xl border border-red-200 dark:border-red-900 text-center">
-                      <div className="text-[10px] text-red-600 dark:text-red-400 font-bold">الديون المستحقة</div>
-                      <div className="font-mono font-black text-red-600 dark:text-red-400 text-sm mt-0.5">
-                        {ag.totalDebt.toLocaleString()} <span className="text-[10px]">د.ع</span>
+                    {/* Financial & Subscriber Stats */}
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 text-center">
+                        <div className="text-[10px] text-slate-400">إجمالي المبيعات</div>
+                        <div className="font-mono font-black text-slate-800 dark:text-slate-200 text-sm mt-0.5">
+                          {agentSales.toLocaleString()} <span className="text-[10px]">د.ع</span>
+                        </div>
+                      </div>
+
+                      <div className="bg-red-50 dark:bg-red-950/40 p-2.5 rounded-2xl border border-red-200 dark:border-red-900 text-center">
+                        <div className="text-[10px] text-red-600 dark:text-red-400 font-bold">الديون المستحقة</div>
+                        <div className="font-mono font-black text-red-600 dark:text-red-400 text-sm mt-0.5">
+                          {agentDebt.toLocaleString()} <span className="text-[10px]">د.ع</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
                   {/* Subscription Count Badges */}
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -414,7 +420,12 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {fieldAgents.map((ag) => {
-                  const hasDebt = ag.totalDebt > 0;
+                  const agentInvoices = subscribers.filter((s) => s.agentId === ag.id);
+                  const agentSales = agentInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+                  const agentDebt = agentInvoices
+                    .filter((s) => s.paymentStatus === 'debt')
+                    .reduce((sum, s) => sum + (s.amount || 0), 0);
+                  const hasDebt = agentDebt > 0;
                   return (
                     <tr key={ag.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="py-3.5 px-4">
@@ -440,13 +451,13 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
                         </span>
                       </td>
                       <td className="py-3.5 px-3 font-mono font-bold text-slate-900 dark:text-slate-100">
-                        {ag.totalSales.toLocaleString()} د.ع
+                        {agentSales.toLocaleString()} د.ع
                       </td>
                       <td className="py-3.5 px-3 font-mono font-bold text-emerald-700 dark:text-emerald-400">
                         {ag.totalPaid.toLocaleString()} د.ع
                       </td>
                       <td className="py-3.5 px-3 font-mono font-black text-red-600 dark:text-red-400 text-sm">
-                        {ag.totalDebt.toLocaleString()} د.ع
+                        {agentDebt.toLocaleString()} د.ع
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">

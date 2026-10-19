@@ -83,27 +83,54 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const handleGlobalRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      const remote = await firebaseService.fetchRemoteState();
-      if (remote) {
+      let remote: AppState | null = null;
+      try {
+        remote = await firebaseService.fetchRemoteState();
+      } catch (netErr) {
+        console.warn('Network or Firestore fetch exception caught during refresh:', netErr);
+      }
+
+      if (!isMountedRef.current) return;
+
+      if (remote && typeof remote === 'object' && remote.subscribers) {
         const filtered = storageService.filterOutDeleted(remote);
         setState(filtered);
         storageService.saveState(filtered);
       } else {
         const local = storageService.loadState();
-        setState(local);
+        if (local) {
+          setState(local);
+        }
       }
       setSyncToast('تم تحديث ومزامنة البيانات بنجاح 🔄');
       soundService.playSuccess();
-    } catch (e) {
-      console.error('Refresh sync error:', e);
-      setSyncToast('تعذر مزامنة البيانات، يرجى التحقق من الاتصال');
+    } catch (e: any) {
+      console.error('Detailed Refresh & Sync error log:', e);
+      if (isMountedRef.current) {
+        setSyncToast('تعذر مزامنة البيانات، يرجى التحقق من الاتصال');
+      }
     } finally {
-      setIsRefreshing(false);
-      setTimeout(() => setSyncToast(null), 3500);
+      if (isMountedRef.current) {
+        setIsRefreshing(false);
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            setSyncToast(null);
+          }
+        }, 3500);
+      }
     }
   };
 
@@ -492,31 +519,42 @@ export default function App() {
     soundService.playSuccess();
   };
 
-  const handleDeleteAllSubscribers = () => {
-    storageService.markAllSubscribersAsDeleted(state.subscribers);
+  const handleDeleteAllSubscribers = async () => {
+    try {
+      storageService.markAllSubscribersAsDeleted(state.subscribers || []);
 
-    const resetAgents = state.agents.map((ag) => ({
-      ...ag,
-      devicesCount: 0,
-      activeSubscriptions: 0,
-      inactiveSubscriptions: 0,
-      totalDebt: 0,
-      totalSales: 0,
-      hasDebt: false
-    }));
+      const resetAgents = (state.agents || []).map((ag) => ({
+        ...ag,
+        devicesCount: 0,
+        activeSubscriptions: 0,
+        inactiveSubscriptions: 0,
+        totalDebt: 0,
+        totalSales: 0,
+        hasDebt: false
+      }));
 
-    const newState: AppState = {
-      ...state,
-      subscribers: [],
-      invoices: [],
-      pendingRequests: [],
-      agents: resetAgents,
-      lastUpdatedTimestamp: Date.now()
-    };
+      const newState: AppState = {
+        ...state,
+        subscribers: [],
+        invoices: [],
+        pendingRequests: [],
+        agents: resetAgents,
+        lastUpdatedTimestamp: Date.now()
+      };
 
-    storageService.saveState(newState);
-    setState(newState);
-    soundService.playSuccess();
+      storageService.saveState(newState);
+      setState(newState);
+
+      // Trigger cloud sync to propagate deletion
+      await firebaseService.saveRemoteState(newState);
+
+      soundService.playSuccess();
+      setSyncToast('تم حذف جميع المشتركين وتصفير السجلات بنجاح 🗑️');
+      setTimeout(() => setSyncToast(null), 3500);
+    } catch (err: any) {
+      console.error('Delete all subscribers error:', err);
+      throw new Error(err?.message || 'حدث خطأ أثناء عملية الحذف الشامل في قاعدة البيانات.');
+    }
   };
 
   // Deactivate Subscriber (Reset information to blank and status to inactive)

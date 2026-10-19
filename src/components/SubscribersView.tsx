@@ -34,7 +34,7 @@ interface SubscribersViewProps {
   onDeleteSubscriber: (id: string) => void;
   onRenewSubscriber: (updatedSubscriber: Subscriber, isDebt: boolean, amount: number) => void;
   onDeactivateSubscriber: (subscriberId: string) => void;
-  onDeleteAllSubscribers?: () => void;
+  onDeleteAllSubscribers?: () => Promise<void> | void;
   onOpenWhatsApp: (sub: Subscriber) => void;
   onSelectDeviceQr: (deviceId: string, subscriberName?: string, agentName?: string) => void;
   onImportSubscribers?: (data: { subscribers: Subscriber[], newAgents: Agent[] }) => void;
@@ -1050,9 +1050,9 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         <DeleteAllSubscribersModal
           subscribersCount={subscribers.length}
           onClose={() => setShowDeleteAllModal(false)}
-          onConfirmDeleteAll={() => {
+          onConfirmDeleteAll={async () => {
             if (onDeleteAllSubscribers) {
-              onDeleteAllSubscribers();
+              await onDeleteAllSubscribers();
             }
             setShowDeleteAllModal(false);
           }}
