@@ -14,6 +14,7 @@ import {
 import { calculateTotalSales } from '../utils/calculationUtils';
 import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
+import { useAppDialogs } from './AppDialogProvider';
 
 interface SalesInvoicesViewProps {
   invoices: Invoice[];
@@ -30,6 +31,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   onDeleteInvoice,
   onSelectDeviceQr
 }) => {
+  const { showConfirm } = useAppDialogs();
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState('all');
   const [paymentFilter, setPaymentFilter] = useState('all');
@@ -229,8 +231,8 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                         <Printer className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm('هل أنت متأكد من حذف هذه الفاتورة؟')) {
+                        onClick={async () => {
+                          if (await showConfirm('هل أنت متأكد من حذف هذه الفاتورة؟', 'حذف الفاتورة')) {
                             onDeleteInvoice(inv.id);
                           }
                         }}

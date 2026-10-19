@@ -4,7 +4,7 @@ import {
   memoryLocalCache,
   getFirestore,
   doc,
-  getDoc,
+  getDocFromServer,
   setDoc,
   onSnapshot
 } from 'firebase/firestore';
@@ -38,6 +38,7 @@ const broadcastChannel: BroadcastChannel | null = (() => {
 })();
 
 let lastSavedPayload = '';
+let lastRemotePayload = '';
 let currentSyncStatus: SyncStatus = typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'connected';
 const statusListeners = new Set<(status: SyncStatus) => void>();
 
@@ -105,12 +106,11 @@ export const firebaseService = {
   async fetchRemoteState(): Promise<AppState | null> {
     try {
       updateSyncStatus('syncing');
-      const snap = await getDoc(STATE_DOC_REF);
+      const snap = await getDocFromServer(STATE_DOC_REF);
       updateSyncStatus('connected');
       if (snap.exists()) {
         const data = snap.data();
         if (data && data.payload) {
-          lastSavedPayload = data.payload;
           return JSON.parse(data.payload) as AppState;
         }
       }
@@ -142,29 +142,37 @@ export const firebaseService = {
     } catch (e: any) {
       console.warn('Error saving state to Firestore:', e);
       updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
+      throw e;
     }
   },
 
-  subscribeToRemoteState(callback: (state: AppState) => void): () => void {
+  subscribeToRemoteState(
+    callback: (state: AppState) => void,
+    onServerReady?: () => void,
+    onSyncError?: (error: unknown) => void
+  ): () => void {
     try {
       const unsubscribeFirestore = onSnapshot(
         STATE_DOC_REF,
-        { includeMetadataChanges: false },
+        { includeMetadataChanges: true },
         (snap) => {
+          if (snap.metadata.fromCache) {
+            updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'syncing');
+            return;
+          }
           updateSyncStatus('connected');
+          if (!snap.metadata.hasPendingWrites) onServerReady?.();
           if (snap.metadata.hasPendingWrites) {
             return;
           }
           if (snap.exists()) {
             const data = snap.data();
             if (data && data.payload) {
-              if (data.payload === lastSavedPayload) {
-                return;
-              }
+              if (data.payload === lastRemotePayload) return;
               try {
                 const parsed = JSON.parse(data.payload) as AppState;
-                lastSavedPayload = data.payload;
-                callback(parsed);
+                lastRemotePayload = data.payload;
+                if (data.payload !== lastSavedPayload) callback(parsed);
               } catch (parseErr) {
                 console.error('Failed to parse remote payload', parseErr);
               }
@@ -174,6 +182,7 @@ export const firebaseService = {
         (error) => {
           console.warn('Firestore snapshot error:', error);
           updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
+          onSyncError?.(error);
         }
       );
 
@@ -184,7 +193,8 @@ export const firebaseService = {
         unsubscribeFirestore();
         unsubscribeBroadcast();
       };
-    } catch {
+    } catch (error) {
+      onSyncError?.(error);
       return this.subscribeToLocalBroadcast(callback);
     }
   }

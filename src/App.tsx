@@ -41,11 +41,14 @@ import { WhatsAppModal } from './components/WhatsAppModal';
 import { ReceiptModal } from './components/ReceiptModal';
 import { DeviceQrModal } from './components/DeviceQrModal';
 import { InvoiceSuccessModal } from './components/InvoiceSuccessModal';
+import { useAppDialogs } from './components/AppDialogProvider';
 
 const USER_SESSION_KEY = 'alsari_auth_user_v1';
 
 export default function App() {
+  const { showAlert } = useAppDialogs();
   const [state, setState] = useState<AppState>(() => storageService.loadState());
+  const [isRemoteReady, setIsRemoteReady] = useState(false);
   const stateRef = useRef(state);
 
   useLayoutEffect(() => {
@@ -115,17 +118,25 @@ export default function App() {
       if (remote && typeof remote === 'object' && remote.subscribers) {
         const filtered = storageService.filterOutDeleted(remote);
         // Mark as remote update so state-effect does NOT echo back to Firestore
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+          saveTimeoutRef.current = null;
+        }
         isRemoteUpdateRef.current = true;
+        stateRef.current = filtered;
         setState(filtered);
         storageService.saveState(filtered);
+        setIsRemoteReady(true);
+        setSyncToast('تم تحديث البيانات ومزامنتها بنجاح');
+        soundService.playSuccess();
       } else {
         const local = storageService.loadState();
         if (local) {
+          stateRef.current = local;
           setState(local);
         }
+        setSyncToast('تعذر جلب أحدث البيانات من الخادم. يتم عرض البيانات المحلية حالياً.');
       }
-      setSyncToast('تم تحديث البيانات ومزامنتها بنجاح');
-      soundService.playSuccess();
     } catch (e: any) {
       console.error('Detailed Refresh & Sync error log:', e);
       if (isMountedRef.current) {
@@ -185,6 +196,8 @@ export default function App() {
 
     // If this state change originated from a REMOTE snapshot, skip the write
     // back to Firestore (it is already there).
+    if (!isRemoteReady) return;
+
     if (isRemoteUpdateRef.current) {
       isRemoteUpdateRef.current = false;
       return;
@@ -196,13 +209,18 @@ export default function App() {
     // collapse into a single Firestore write.
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
-      firebaseService.saveRemoteState(state);
+      void firebaseService.saveRemoteState(state).catch((error) => {
+        console.error('Could not sync local state to Firestore:', error);
+        if (isMountedRef.current) {
+          setSyncToast('تعذرت مزامنة التغييرات مع الأجهزة الأخرى. تحقق من الاتصال بالإنترنت.');
+        }
+      });
     }, 1500);
 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [state]);
+  }, [state, isRemoteReady]);
 
   // --- Effect 2: Real-time Firestore listener (cross-device sync) ---
   useEffect(() => {
@@ -218,8 +236,19 @@ export default function App() {
       storageService.saveState(filteredState);
 
       // Mark as remote so Effect 1 does NOT write it back to Firestore
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
       isRemoteUpdateRef.current = true;
+      stateRef.current = filteredState;
       setState(filteredState);
+    }, () => {
+      if (isMountedRef.current) setIsRemoteReady(true);
+    }, () => {
+      if (isMountedRef.current) {
+        setSyncToast('تعذر الاتصال بقاعدة البيانات المباشرة. لن تصل التحديثات للأجهزة الأخرى حالياً.');
+      }
     });
 
     return () => {
@@ -231,7 +260,20 @@ export default function App() {
   const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents[1];
 
   // Auth Handlers
-  const handleLogin = (user: SystemUser) => {
+  const handleLogin = (user: SystemUser, remoteState?: AppState) => {
+    if (remoteState) {
+      const latestState = storageService.filterOutDeleted(remoteState);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      isRemoteUpdateRef.current = true;
+      stateRef.current = latestState;
+      storageService.saveState(latestState);
+      setState(latestState);
+      setIsRemoteReady(true);
+    }
+
     setCurrentUser(user);
     try {
       localStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
@@ -631,7 +673,7 @@ export default function App() {
   const handleDeleteAllSubscribers = async () => {
     // التحقق من الصلاحيات
     if (currentUser?.role !== 'مدير رئيسي') {
-      alert('غير مصرح لك بتنفيذ هذه العملية. تواصل مع المدير الرئيسي.');
+      showAlert('غير مصرح لك بتنفيذ هذه العملية. تواصل مع المدير الرئيسي.', 'صلاحيات غير كافية');
       return;
     }
 
@@ -895,15 +937,6 @@ export default function App() {
     }));
   };
 
-  // Request Web Notifications permission on load
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission().catch(() => {});
-      }
-    }
-  }, []);
-
   const handleSimulateIncomingRequest = () => {
     const randomAgent = state.agents.filter((a) => a.id !== 'agent-main')[Math.floor(Math.random() * 5)];
     const randomSub = state.subscribers.find((s) => s.agentId === randomAgent.id) || state.subscribers[0];
@@ -930,17 +963,7 @@ export default function App() {
 
     soundService.playPendingAlert();
 
-    // Trigger Desktop Web Notification
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification('طلب تجديد اشتراك جديد - مركز الساري', {
-          body: `ورد طلب تجديد جديد من الوكيل (${randomAgent.name}) للمشترك ${randomSub.name}`,
-          icon: 'https://images.unsplash.com/photo-1593784991095-a205069470b6?auto=format&fit=crop&w=128&q=80'
-        });
-      } catch {
-        // ignore if blocked
-      }
-    }
+    showAlert(`ورد طلب تجديد جديد من الوكيل (${randomAgent.name}) للمشترك ${randomSub.name}`, 'طلب تجديد اشتراك جديد');
   };
 
   // Settle Agent Debt

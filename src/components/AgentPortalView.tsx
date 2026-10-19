@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Agent, PendingRenewalRequest, PricingRow, Product, Subscriber, SubscriptionDuration } from '../types';
 import { getPriceByDuration } from '../utils/pricingUtils';
+import { useAppDialogs } from './AppDialogProvider';
 
 const SubscriberDetail: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({
   label,
@@ -51,6 +52,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   onUpdateBranding,
   onSelectDeviceQr
 }) => {
+  const { showAlert } = useAppDialogs();
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [orderSentToast, setOrderSentToast] = useState(false);
   const [expandedSubscriberId, setExpandedSubscriberId] = useState<string | null>(null);
@@ -74,7 +76,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
       sub = agentSubs.find((s) => s.name.toLowerCase().includes(subSearchQuery.toLowerCase()) || s.deviceId === subSearchQuery);
     }
     if (!sub) {
-      alert('يرجى اختيار أو كتابة اسم مشترك صحيح التابع لوكالتك');
+      showAlert('يرجى اختيار أو كتابة اسم مشترك صحيح التابع لوكالتك', 'بيانات المشترك غير صحيحة');
       return;
     }
 

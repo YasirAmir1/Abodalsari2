@@ -25,6 +25,7 @@ import { DeactivateSubscriberModal } from './DeactivateSubscriberModal';
 import { DeleteSubscriberModal } from './DeleteSubscriberModal';
 import { DeleteAllSubscribersModal } from './DeleteAllSubscribersModal';
 import { CustomModal } from './CustomModal';
+import { useAppDialogs } from './AppDialogProvider';
 
 interface SubscribersViewProps {
   subscribers: Subscriber[];
@@ -61,6 +62,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   isMainCenterView = true,
   isAdmin = false
 }) => {
+  const { showAlert } = useAppDialogs();
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
@@ -1124,7 +1126,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                         if (onSelectDeviceQr && newSubDeviceId.trim()) {
                           onSelectDeviceQr(newSubDeviceId, newSubName || 'مشترك جديد', currentAgent.name);
                         } else {
-                          alert('يرجى إدخال رقم الجهاز أولاً');
+                          showAlert('يرجى إدخال رقم الجهاز أولاً', 'رقم الجهاز مطلوب');
                         }
                       }}
                       className="absolute left-2.5 p-1 text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"

@@ -15,6 +15,7 @@ import {
 import { jsPDF } from 'jspdf';
 import { DeviceCode } from '../types';
 import { excelService } from '../services/excelService';
+import { useAppDialogs } from './AppDialogProvider';
 
 interface QrCodesViewProps {
   codes: DeviceCode[];
@@ -31,6 +32,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   onDeleteCode,
   onClearAllCodes
 }) => {
+  const { showConfirm } = useAppDialogs();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showAddSingleModal, setShowAddSingleModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -149,8 +151,8 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
           {/* Reset / Delete All */}
           <button
-            onClick={() => {
-              if (confirm('هل أنت متأكد من حذف وتصفير كافة الأكواد للبدء من جديد؟')) {
+            onClick={async () => {
+              if (await showConfirm('هل أنت متأكد من حذف وتصفير كافة الأكواد للبدء من جديد؟', 'حذف جميع الأكواد')) {
                 onClearAllCodes();
                 setSelectedIds([]);
               }

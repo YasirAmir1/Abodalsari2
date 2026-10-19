@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
+import { useAppDialogs } from './AppDialogProvider';
 
 interface DebtsViewProps {
   agents: Agent[];
@@ -39,6 +40,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   onSelectDeviceQr,
   onDeleteSubscriber
 }) => {
+  const { showConfirm } = useAppDialogs();
   const [activeTab, setActiveTab] = useState<'agents' | 'subscribers'>('agents');
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>('all');
   const [debtSearchTerm, setDebtSearchTerm] = useState<string>('');
@@ -388,8 +390,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                           {hasDebt ? (
                             <div className="flex items-center justify-center gap-2">
                               <button
-                                onClick={() => {
-                                  if (confirm(`هل أنت متأكد من حذف/تصفير دين الوكيل ${ag.name} بالكامل؟`)) {
+                                onClick={async () => {
+                                  if (await showConfirm(`هل أنت متأكد من حذف/تصفير دين الوكيل ${ag.name} بالكامل؟`, 'تصفير دين الوكيل')) {
                                     onSettleAgentDebt(ag.id, ag.totalDebt);
                                   }
                                 }}
@@ -407,8 +409,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <button
-                            onClick={() => {
-                              if (confirm(`تحذير: هل أنت متأكد من تصفير (المبيعات، الديون، والمبالغ المسددة) للوكيل ${ag.name}؟ هذا الإجراء نهائي.`)) {
+                            onClick={async () => {
+                              if (await showConfirm(`تحذير: هل أنت متأكد من تصفير (المبيعات، الديون، والمبالغ المسددة) للوكيل ${ag.name}؟ هذا الإجراء نهائي.`, 'تصفير سجلات الوكيل')) {
                                 onResetAgentData(ag.id);
                               }
                             }}
@@ -497,8 +499,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                           تسديد دفعة
                         </button>
                         <button
-                          onClick={() => {
-                            if (confirm('هل أنت متأكد من حذف بيانات هذا المشترك نهائياً؟')) {
+                          onClick={async () => {
+                            if (await showConfirm('هل أنت متأكد من حذف بيانات هذا المشترك نهائياً؟', 'حذف المشترك')) {
                               onDeleteSubscriber(sub.id);
                             }
                           }}

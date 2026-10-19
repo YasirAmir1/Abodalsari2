@@ -8,6 +8,7 @@ import {
   X
 } from 'lucide-react';
 import { Product } from '../types';
+import { useAppDialogs } from './AppDialogProvider';
 
 interface ProductsViewProps {
   products: Product[];
@@ -24,6 +25,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
   onDeleteProduct,
   onAdjustStock
 }) => {
+  const { showConfirm } = useAppDialogs();
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -248,8 +250,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({
               <div className="flex items-center justify-between gap-1 pt-3 border-t border-slate-100 text-xs">
                 {/* Delete */}
                 <button
-                  onClick={() => {
-                    if (confirm(`هل تريد حذف المنتج "${prod.name}"؟`)) {
+                  onClick={async () => {
+                    if (await showConfirm(`هل تريد حذف المنتج "${prod.name}"؟`, 'حذف المنتج')) {
                       onDeleteProduct(prod.id);
                     }
                   }}

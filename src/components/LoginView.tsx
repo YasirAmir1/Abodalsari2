@@ -3,11 +3,12 @@ import { Lock, User, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Agent, SystemUser } from '../types';
 import { Logo } from './Logo';
 import { firebaseService } from '../services/firebaseService';
+import { AppState } from '../services/storageService';
 
 interface LoginViewProps {
   users: SystemUser[];
   agents: Agent[];
-  onLogin: (user: SystemUser) => void;
+  onLogin: (user: SystemUser, remoteState?: AppState) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) => {
@@ -95,7 +96,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
       }
 
       if (matchedUser) {
-        onLogin(matchedUser);
+        onLogin(matchedUser, remote || undefined);
       } else {
         setError('اسم المستخدم أو كلمة المرور غير صحيحة. يرجى التحقق من البيانات والمحاولة مرة أخرى.');
       }
