@@ -119,12 +119,12 @@ export default function App() {
           setState(local);
         }
       }
-      setSyncToast('ØªÙ… ØªØ­Ø¯ÙŠØ« ÙˆÙ…Ø²Ø§Ù…Ù†Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ù†Ø¬Ø§Ø­ ðŸ”„');
+      setSyncToast('تم تحديث البيانات ومزامنتها بنجاح');
       soundService.playSuccess();
     } catch (e: any) {
       console.error('Detailed Refresh & Sync error log:', e);
       if (isMountedRef.current) {
-        setSyncToast('ØªØ¹Ø°Ø± Ù…Ø²Ø§Ù…Ù†Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§ØªØŒ ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† Ø§Ù„Ø§ØªØµØ§Ù„');
+        setSyncToast('تعذر مزامنة البيانات، يرجى التحقق من الاتصال');
       }
     } finally {
       if (isMountedRef.current) {
@@ -161,7 +161,7 @@ export default function App() {
   const handleToggleDarkMode = () => {
     setIsDarkMode((prev) => {
       const next = !prev;
-      setThemeToast(next ? 'ØªÙ… ØªÙØ¹ÙŠÙ„ Ø§Ù„ÙˆØ¶Ø¹ Ø§Ù„Ù„ÙŠÙ„ÙŠ' : 'ØªÙ… ØªÙØ¹ÙŠÙ„ Ø§Ù„ÙˆØ¶Ø¹ Ø§Ù„Ù†Ù‡Ø§Ø±ÙŠ');
+      setThemeToast(next ? 'الوضع الليلي' : 'الوضع النهاري');
       setTimeout(() => setThemeToast(null), 3500);
       return next;
     });
@@ -234,7 +234,7 @@ export default function App() {
       // ignore
     }
 
-    if (user.role === 'ÙˆÙƒÙŠÙ„ Ù…Ø¹ØªÙ…Ø¯' && user.agentId) {
+    if (user.role === 'وكيل معتمد' && user.agentId) {
       setIsAgentMode(true);
       setSelectedAgentId(user.agentId);
       setCurrentTab('agent_portal');
@@ -301,12 +301,12 @@ export default function App() {
 
     const newSub: Subscriber = {
       id: newId,
-      name: subData.name || 'Ù…Ø´ØªØ±Ùƒ Ø¬Ø¯ÙŠØ¯',
+      name: subData.name || 'مشترك جديد',
       phone: subData.phone || '',
       deviceId: cleanDevId,
       agentId: subData.agentId || 'agent-main',
-      agentName: subData.agentName || 'Ø§Ù„Ù…Ø±ÙƒØ² Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ',
-      subscriptionType: subData.subscriptionType || '1 Ø´Ù‡Ø±',
+      agentName: subData.agentName || 'المركز الرئيسي',
+      subscriptionType: subData.subscriptionType || '1 شهر',
       status: subData.status || 'active',
       paymentStatus: isPaid ? 'paid' : (subData.paymentStatus || 'debt'),
       amount: subData.amount || 25000,
@@ -330,7 +330,7 @@ export default function App() {
         deviceId: newSub.deviceId,
         agentId: newSub.agentId,
         agentName: newSub.agentName,
-        packageType: `Ø§Ø´ØªØ±Ø§Ùƒ ${newSub.subscriptionType}`,
+        packageType: `اشتراك ${newSub.subscriptionType}`,
         amount: newSub.amount,
         paidAmount: isPaid ? newSub.amount : 0,
         remainingAmount: isPaid ? 0 : newSub.amount,
@@ -531,9 +531,9 @@ export default function App() {
   };
 
   const handleDeleteAllSubscribers = async () => {
-    // Ø§Ù„ØªØ­Ù‚Ù‚ Ù…Ù† Ø§Ù„ØµÙ„Ø§Ø­ÙŠØ§Øª
-    if (currentUser?.role !== 'Ù…Ø¯ÙŠØ± Ø±Ø¦ÙŠØ³ÙŠ') {
-      alert('ØºÙŠØ± Ù…ØµØ±Ø­ Ù„Ùƒ Ø¨ØªÙ†ÙÙŠØ° Ù‡Ø°Ù‡ Ø§Ù„Ø¹Ù…Ù„ÙŠØ©. ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ù…Ø¯ÙŠØ± Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠ.');
+    // التحقق من الصلاحيات
+    if (currentUser?.role !== 'مدير رئيسي') {
+      alert('غير مصرح لك بتنفيذ هذه العملية. تواصل مع المدير الرئيسي.');
       return;
     }
 
@@ -566,11 +566,11 @@ export default function App() {
 
 
       soundService.playSuccess();
-      setSyncToast('ØªÙ… Ø­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ù…Ø´ØªØ±ÙƒÙŠÙ† ÙˆØªØµÙÙŠØ± Ø§Ù„Ø³Ø¬Ù„Ø§Øª Ø¨Ù†Ø¬Ø§Ø­ ðŸ—‘ï¸');
+      setSyncToast('تم حذف جميع المشتركين وتصفير السجلات بنجاح 🗑️');
       setTimeout(() => setSyncToast(null), 3500);
     } catch (err: any) {
       console.error('Delete all subscribers error:', err);
-      throw new Error(err?.message || 'Ø­Ø¯Ø« Ø®Ø·Ø£ Ø£Ø«Ù†Ø§Ø¡ Ø¹Ù…Ù„ÙŠØ© Ø§Ù„Ø­Ø°Ù Ø§Ù„Ø´Ø§Ù…Ù„ ÙÙŠ Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª.');
+      throw new Error(err?.message || 'حدث خطأ أثناء عملية الحذف الشامل في قاعدة البيانات.');
     }
   };
 
@@ -669,13 +669,13 @@ export default function App() {
       deviceId: finalSubscriber.deviceId,
       agentId: finalSubscriber.agentId,
       agentName: finalSubscriber.agentName,
-      packageType: `ØªØ¬Ø¯ÙŠØ¯ Ø¨Ø§Ù‚Ø© ${finalSubscriber.subscriptionType}`,
+      packageType: `تجديد باقة ${finalSubscriber.subscriptionType}`,
       amount: amount,
       paidAmount: isDebt ? 0 : amount,
       remainingAmount: isDebt ? amount : 0,
       paymentStatus: isDebt ? 'debt' : 'paid',
       date: finalSubscriber.startDate,
-      notes: 'ØªØ¬Ø¯ÙŠØ¯ Ø§Ø´ØªØ±Ø§Ùƒ Ø±Ø³Ù…ÙŠ Ù…Ø¹ØªÙ…Ø¯'
+      notes: 'تجديد اشتراك رسمي معتمد'
     };
 
     const updatedAgents = state.agents.map((ag) => {
@@ -736,10 +736,10 @@ export default function App() {
       const payStat = overrides?.paymentStatus || 'paid';
 
       const expDate = new Date(sDate);
-      if (dur === '1 Ø´Ù‡Ø±') expDate.setMonth(expDate.getMonth() + 1);
-      else if (dur === 'Ø´Ù‡Ø±ÙŠÙ†') expDate.setMonth(expDate.getMonth() + 2);
-      else if (dur === '3 Ø£Ø´Ù‡Ø±') expDate.setMonth(expDate.getMonth() + 3);
-      else if (dur === '6 Ø£Ø´Ù‡Ø±') expDate.setMonth(expDate.getMonth() + 6);
+      if (dur === '1 شهر') expDate.setMonth(expDate.getMonth() + 1);
+      else if (dur === 'شهرين') expDate.setMonth(expDate.getMonth() + 2);
+      else if (dur === '3 أشهر') expDate.setMonth(expDate.getMonth() + 3);
+      else if (dur === '6 أشهر') expDate.setMonth(expDate.getMonth() + 6);
       else expDate.setFullYear(expDate.getFullYear() + 1);
 
       const updatedSub: Subscriber = {
@@ -791,10 +791,10 @@ export default function App() {
       subscriberPhone: randomSub.phone,
       agentId: randomAgent.id,
       agentName: randomAgent.name,
-      duration: '1 Ø´Ù‡Ø±',
+      duration: '1 شهر',
       amount: 22000,
       requestDate: new Date().toISOString().split('T')[0],
-      notes: 'Ø·Ù„Ø¨ ØªØ¬Ø¯ÙŠØ¯ Ø¥Ù„ÙƒØªØ±ÙˆÙ†ÙŠ Ø¹Ø¨Ø± ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„ÙˆÙƒÙŠÙ„',
+      notes: 'طلب تجديد إلكتروني عبر تطبيق الوكيل',
       status: 'pending'
     };
 
@@ -808,8 +808,8 @@ export default function App() {
     // Trigger Desktop Web Notification
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        new Notification('Ø·Ù„Ø¨ ØªØ¬Ø¯ÙŠØ¯ Ø§Ø´ØªØ±Ø§Ùƒ Ø¬Ø¯ÙŠØ¯ - Ù…Ø±ÙƒØ² Ø§Ù„Ø³Ø§Ø±ÙŠ', {
-          body: `ÙˆØ±Ø¯ Ø·Ù„Ø¨ ØªØ¬Ø¯ÙŠØ¯ Ø¬Ø¯ÙŠØ¯ Ù…Ù† Ø§Ù„ÙˆÙƒÙŠÙ„ (${randomAgent.name}) Ù„Ù„Ù…Ø´ØªØ±Ùƒ ${randomSub.name}`,
+        new Notification('طلب تجديد اشتراك جديد - مركز الساري', {
+          body: `ورد طلب تجديد جديد من الوكيل (${randomAgent.name}) للمشترك ${randomSub.name}`,
           icon: 'https://images.unsplash.com/photo-1593784991095-a205069470b6?auto=format&fit=crop&w=128&q=80'
         });
       } catch {
@@ -1019,17 +1019,17 @@ export default function App() {
 
   // Titles mapping
   const pageTitles: Record<NavTab, string> = {
-    dashboard: 'Ø§Ù„Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ø§Ù„Ø¹Ø§Ù… Ù„Ù„Ù…Ø±ÙƒØ²',
-    sales: 'Ø³Ø¬Ù„ ÙÙˆØ§ØªÙŠØ± Ø§Ù„Ù…Ø¨ÙŠØ¹Ø§Øª ÙˆØ§Ù„Ø§Ø´ØªØ±Ø§ÙƒØ§Øª',
-    subscribers: 'Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø´ØªØ±ÙƒÙŠÙ† ÙˆØ§Ù„Ø§Ø´ØªØ±Ø§ÙƒØ§Øª',
-    debts: 'Ø³Ø¬Ù„ Ø§Ù„Ø¯ÙŠÙˆÙ† ÙˆØ§Ù„Ù…Ø³ØªØ­Ù‚Ø§Øª Ø§Ù„Ù…Ø§Ù„ÙŠØ©',
-    pending: 'Ø§Ù„Ø·Ù„Ø¨Ø§Øª Ø§Ù„Ù…Ø¹Ù„Ù‚Ø© (Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªØ¬Ø¯ÙŠØ¯ Ø§Ù„ÙˆØ§Ø±Ø¯Ø©)',
-    agents: 'Ù…Ù„Ø®Øµ Ø§Ù„Ø£Ø¯Ø§Ø¡ Ø§Ù„Ù…Ø§Ù„ÙŠ ÙˆØ§Ù„Ù…ÙŠØ¯Ø§Ù†ÙŠ Ù„Ù„ÙˆÙƒÙ„Ø§Ø¡',
-    barcodes: 'Ø¥Ø¯Ø§Ø±Ø© Ø£ÙƒÙˆØ§Ø¯ ÙˆØ£Ø¬Ù‡Ø²Ø© QR',
-    reports: 'Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ± Ø§Ù„ØªØ­Ù„ÙŠÙ„ÙŠØ© ÙˆØ£Ø¨Ø±Ø§Ø¬ Ø§Ù„Ø¨Ø«',
-    products: 'Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ù†ØªØ¬Ø§Øª ÙˆØ§Ù„Ù…Ø¹Ø¯Ø§Øª ÙˆØ§Ù„Ù…Ø®Ø²Ù†',
-    pricing: 'Ø¬Ø¯ÙˆÙ„ Ø£Ø³Ø¹Ø§Ø± Ø§Ù„ÙˆÙƒÙ„Ø§Ø¡ ÙˆØ§Ù„Ù…Ø±ÙƒØ²',
-    agent_portal: `Ø¨ÙˆØ§Ø¨Ø© Ø§Ù„ÙˆÙƒÙŠÙ„ (${currentAgent.name})`
+    dashboard: 'لوحة تحكم المركز',
+    sales: 'سجل فواتير المبيعات والاشتراكات',
+    subscribers: 'إدارة المشتركين والاشتراكات',
+    debts: 'سجل الديون والمستحقات المالية',
+    pending: 'الطلبات المعلقة (طلبات التجديد الواردة)',
+    agents: 'ملخص الأداء المالي والميداني للوكلاء',
+    barcodes: 'إدارة أكواد وأجهزة QR',
+    reports: 'التقارير التحليلية وأبراج البث',
+    products: 'إدارة المنتجات والمعدات والمخزن',
+    pricing: 'جدول أسعار الوكلاء والمركز',
+    agent_portal: `بوابة الوكيل (${currentAgent.name})`
   };
 
   return (
@@ -1262,7 +1262,7 @@ export default function App() {
       {/* Toast Notification for Theme Toggle matching screenshot bottom-left */}
       {themeToast && (
         <div className="fixed bottom-6 left-6 z-50 bg-[#0E1B38] border border-sky-600/70 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <span className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center text-[11px] font-bold">â„¹</span>
+          <span className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center text-[11px] font-bold">ℹ</span>
           <span>{themeToast}</span>
         </div>
       )}

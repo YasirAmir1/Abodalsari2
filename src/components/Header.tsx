@@ -83,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onToggleDark}
           className="w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-all shadow-xs active:scale-95 cursor-pointer"
-          title={isDark ? 'التحويل إلى الوضع النهاري' : 'التحويل إلى الوضع الليلي'}
+          title={isDark ? 'التبديل إلى الوضع النهاري' : 'التبديل إلى الوضع الليلي'}
         >
           {isDark ? (
             <Sun className="w-4 h-4 text-amber-400 animate-in zoom-in spin-in-180 duration-500" />
@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
           className={`w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors shadow-xs cursor-pointer ${
             isRefreshing ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
           }`}
-          title="تحديث ومزامنة البيانات من قاعدة البيانات"
+          title="تحديث البيانات ومزامنتها"
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-600 dark:text-sky-400' : ''}`} />
         </button>
@@ -109,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onLogout}
             className="w-9 h-9 rounded-full border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/60 flex items-center justify-center text-red-600 dark:text-red-400 transition-colors cursor-pointer"
-            title="تسجيل الخروج والعودة لصفحة الدخول"
+            title="تسجيل الخروج والعودة إلى صفحة الدخول"
           >
             <LogOut className="w-4 h-4 rotate-180" />
           </button>
