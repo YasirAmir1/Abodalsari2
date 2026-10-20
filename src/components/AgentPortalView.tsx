@@ -54,6 +54,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
 }) => {
   const { showAlert } = useAppDialogs();
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [showDeviceSaleModal, setShowDeviceSaleModal] = useState(false);
   const [expandedSubscriberId, setExpandedSubscriberId] = useState<string | null>(null);
 
   // Order form state
@@ -62,6 +63,13 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const [showSubSuggestions, setShowSubSuggestions] = useState(false);
   const [orderDuration, setOrderDuration] = useState<SubscriptionDuration>('1 شهر');
   const [orderNotes, setOrderNotes] = useState('');
+
+  // New Device Sale form state
+  const [newSubName, setNewSubName] = useState('');
+  const [newSubPhone, setNewSubPhone] = useState('');
+  const [newDeviceId, setNewDeviceId] = useState('');
+  const [newSubDuration, setNewSubDuration] = useState<SubscriptionDuration>('1 شهر');
+  const [newSubNotes, setNewSubNotes] = useState('');
 
   // Agent's subscribers
   const agentSubs = subscribers.filter(
@@ -104,6 +112,37 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
     showAlert('تم إرسال طلب التجديد بنجاح إلى المركز الرئيسي مع إشعار صوتي فوري!', 'تأكيد إرسال الطلب', 'success');
   };
 
+  const handleSubmitDeviceSale = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubName.trim()) {
+      showAlert('يرجى إدخال اسم المشترك الجديد', 'خطأ في البيانات');
+      return;
+    }
+    const price = getPriceByDuration(currentAgent.id, newSubDuration, pricing);
+    const rawDev = (newDeviceId || '').trim();
+    const finalDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : `00${Math.floor(100000 + Math.random() * 900000)}`;
+
+    onSubmitRenewalOrder({
+      subscriberId: `new-sub-${Date.now()}`,
+      subscriberName: newSubName,
+      deviceId: finalDev,
+      subscriberPhone: newSubPhone,
+      agentId: currentAgent.id,
+      agentName: currentAgent.name,
+      duration: newSubDuration,
+      amount: price,
+      requestDate: new Date().toISOString().split('T')[0],
+      notes: `طلب بيع وتسجيل جهاز جديد: ${newSubNotes}`
+    });
+
+    setShowDeviceSaleModal(false);
+    setNewSubName('');
+    setNewSubPhone('');
+    setNewDeviceId('');
+    setNewSubNotes('');
+    showAlert('تم إرسال طلب بيع الجهاز الجديد بنجاح إلى المركز الرئيسي لاعتماده وتفعيله!', 'تأكيد طلب بيع جهاز جديد', 'success');
+  };
+
   return (
     <div className="space-y-6" dir="rtl">
       {/* Agent Brand Header Banner */}
@@ -136,6 +175,13 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
           >
             <Sparkles className="w-4 h-4" />
             <span>+ طلب تجديد إلكتروني فوري</span>
+          </button>
+          <button
+            onClick={() => setShowDeviceSaleModal(true)}
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Tv className="w-4 h-4" />
+            <span>+ بيع جهاز جديد</span>
           </button>
         </div>
       </div>
@@ -270,19 +316,17 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                               {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                               <span>{isExpanded ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}</span>
                             </button>
-                            {sub.status !== 'active' && (
-                              <button
-                                onClick={() => {
-                                  setSelectedSubId(sub.id);
-                                  setSubSearchQuery(sub.name);
-                                  setShowOrderModal(true);
-                                }}
-                                className="px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                              >
-                                <RefreshCw className="w-3 h-3" />
-                                <span>طلب تجديد</span>
-                              </button>
-                            )}
+                            <button
+                              onClick={() => {
+                                setSelectedSubId(sub.id);
+                                setSubSearchQuery(sub.name);
+                                setShowOrderModal(true);
+                              }}
+                              className="px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              <span>طلب تجديد</span>
+                            </button>
                             <button
                               onClick={() => onOpenWhatsApp(sub)}
                               className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 cursor-pointer"
@@ -437,6 +481,101 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                   className="px-5 py-2 rounded-xl bg-sky-700 text-white font-bold hover:bg-sky-800 disabled:opacity-40 shadow-sm cursor-pointer"
                 >
                   إرسال الطلب للمركز الآن
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Submit New Device Sale Order */}
+      {showDeviceSaleModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                <Tv className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">طلب بيع جهاز جديد وتفعيل</h3>
+              </div>
+              <button onClick={() => setShowDeviceSaleModal(false)} className="text-slate-400 p-1 cursor-pointer">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitDeviceSale} className="mt-4 space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">اسم المشترك الجديد *</label>
+                <input
+                  type="text"
+                  required
+                  value={newSubName}
+                  onChange={(e) => setNewSubName(e.target.value)}
+                  placeholder="أدخل اسم المشترك الثلاثي..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">رقم الهاتف</label>
+                <input
+                  type="text"
+                  value={newSubPhone}
+                  onChange={(e) => setNewSubPhone(e.target.value)}
+                  placeholder="0770xxxxxxx"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">رقم الجهاز (اختياري، يولد تلقائياً إن ترك فارغاً)</label>
+                <input
+                  type="text"
+                  value={newDeviceId}
+                  onChange={(e) => setNewDeviceId(e.target.value)}
+                  placeholder="00..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">باقة الاشتراك الأولى</label>
+                <select
+                  value={newSubDuration}
+                  onChange={(e) => setNewSubDuration(e.target.value as SubscriptionDuration)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                >
+                  <option value="1 شهر">1 شهر (سعر الوكيل: 22,000 د.ع)</option>
+                  <option value="شهرين">شهرين (سعر الوكيل: 36,000 د.ع)</option>
+                  <option value="3 أشهر">3 أشهر (سعر الوكيل: 54,000 د.ع)</option>
+                  <option value="6 أشهر">6 أشهر (سعر الوكيل: 100,000 د.ع)</option>
+                  <option value="سنة">سنة كاملة (سعر الوكيل: 190,000 د.ع)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">ملاحظة إضافية للمركز</label>
+                <textarea
+                  rows={2}
+                  value={newSubNotes}
+                  onChange={(e) => setNewSubNotes(e.target.value)}
+                  placeholder="ملاحظات حول تسليم الجهاز أو الدفع..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowDeviceSaleModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-200 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer"
+                >
+                  إرسال طلب بيع الجهاز للمركز
                 </button>
               </div>
             </form>

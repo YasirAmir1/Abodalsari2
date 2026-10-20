@@ -486,15 +486,13 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
             <Plus className="w-4 h-4" />
             <span>بيع جهاز جديد</span>
           </button>
-          {isAdmin && (
-            <button
-              onClick={openAgentRenewalModal}
-              className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>تجديد اشتراك مشتركين الوكيل</span>
-            </button>
-          )}
+          <button
+            onClick={openAgentRenewalModal}
+            className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>تجديد اشتراك مشتركين الوكيل</span>
+          </button>
         </div>
       </div>
 
@@ -797,7 +795,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         </div>
       </div>
 
-      {isAdmin && showAgentRenewalModal && (
+      {showAgentRenewalModal && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in"
           dir="rtl"

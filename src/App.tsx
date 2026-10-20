@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -989,32 +989,54 @@ export default function App() {
     const req = state.pendingRequests.find((r) => r.id === requestId);
     if (!req) return;
 
-    const sub = state.subscribers.find((s) => s.id === req.subscriberId);
-    if (sub) {
-      const sDate = overrides?.startDate || new Date().toISOString().split('T')[0];
-      const dur = overrides?.duration || req.duration;
-      const amt = overrides?.amount !== undefined ? overrides.amount : req.amount;
-      const stat = overrides?.status || 'active';
-      const payStat = overrides?.paymentStatus || 'paid';
+    const sDate = overrides?.startDate || new Date().toISOString().split('T')[0];
+    const dur = overrides?.duration || req.duration;
+    const amt = overrides?.amount !== undefined ? overrides.amount : req.amount;
+    const stat = overrides?.status || 'active';
+    const payStat = overrides?.paymentStatus || 'paid';
 
-      const expDate = new Date(sDate);
-      if (dur === '1 شهر') expDate.setMonth(expDate.getMonth() + 1);
-      else if (dur === 'شهرين') expDate.setMonth(expDate.getMonth() + 2);
-      else if (dur === '3 أشهر') expDate.setMonth(expDate.getMonth() + 3);
-      else if (dur === '6 أشهر') expDate.setMonth(expDate.getMonth() + 6);
-      else expDate.setFullYear(expDate.getFullYear() + 1);
+    const expDate = new Date(sDate);
+    if (dur === '1 شهر') expDate.setMonth(expDate.getMonth() + 1);
+    else if (dur === 'شهرين') expDate.setMonth(expDate.getMonth() + 2);
+    else if (dur === '3 أشهر') expDate.setMonth(expDate.getMonth() + 3);
+    else if (dur === '6 أشهر') expDate.setMonth(expDate.getMonth() + 6);
+    else expDate.setFullYear(expDate.getFullYear() + 1);
 
-      const updatedSub: Subscriber = {
-        ...sub,
-        status: stat,
-        subscriptionType: dur,
-        amount: amt,
-        startDate: sDate,
-        endDate: expDate.toISOString().split('T')[0],
-        paymentStatus: payStat
-      };
+    if (req.subscriberId.startsWith('new-sub-')) {
+      handleAddSubscriber(
+        {
+          name: req.subscriberName,
+          phone: req.subscriberPhone,
+          deviceId: req.deviceId,
+          agentId: req.agentId,
+          agentName: req.agentName,
+          subscriptionType: dur,
+          status: stat,
+          paymentStatus: payStat,
+          amount: amt,
+          startDate: sDate,
+          endDate: expDate.toISOString().split('T')[0],
+          notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل'
+        },
+        true,
+        payStat === 'paid',
+        'device'
+      );
+    } else {
+      const sub = state.subscribers.find((s) => s.id === req.subscriberId);
+      if (sub) {
+        const updatedSub: Subscriber = {
+          ...sub,
+          status: stat,
+          subscriptionType: dur,
+          amount: amt,
+          startDate: sDate,
+          endDate: expDate.toISOString().split('T')[0],
+          paymentStatus: payStat
+        };
 
-      handleRenewSubscriber(updatedSub, payStat === 'debt', amt);
+        handleRenewSubscriber(updatedSub, payStat === 'debt', amt);
+      }
     }
 
     setState((prev) => ({
