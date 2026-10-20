@@ -21,6 +21,7 @@ import { RefreshCw } from 'lucide-react';
 import { AppState, storageService } from './services/storageService';
 import { firebaseService } from './services/firebaseService';
 import { syncManager } from './services/firebase-sync';
+import { appFeatures } from './services/app-features';
 import { soundService } from './services/soundService';
 import { excelService } from './services/excelService';
 
@@ -289,7 +290,7 @@ export default function App() {
     };
   }, [state, isRemoteReady]);
 
-  // --- Effect 2: Real-time Firestore listener (cross-device sync) ---
+  // --- Effect 2: Real-time Firestore listener (cross-device sync) & AppFeatures streams ---
   useEffect(() => {
     if (!currentUser) {
       syncManager.stopListening();
@@ -326,6 +327,28 @@ export default function App() {
       }
     });
 
+    const cleanupStreams = appFeatures.initRealtimeStreams({
+      onSubscribersUpdate: (subscribers) => {
+        if (!isMountedRef.current) return;
+        setState((prev) => ({ ...prev, subscribers, lastUpdatedTimestamp: Date.now() }));
+      },
+      onAgentsUpdate: (agents) => {
+        if (!isMountedRef.current) return;
+        setState((prev) => ({ ...prev, agents, lastUpdatedTimestamp: Date.now() }));
+      },
+      onRequestUpdate: (pendingRequests) => {
+        if (!isMountedRef.current) return;
+        setState((prev) => ({ ...prev, pendingRequests, lastUpdatedTimestamp: Date.now() }));
+      },
+      onSalesUpdate: (invoices) => {
+        if (!isMountedRef.current) return;
+        setState((prev) => ({ ...prev, invoices, lastUpdatedTimestamp: Date.now() }));
+      },
+      onStatusChange: (status) => {
+        if (status === 'connected' && isMountedRef.current) setIsRemoteReady(true);
+      }
+    });
+
     const unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
       if (status === 'connected' && isMountedRef.current) setIsRemoteReady(true);
       if (status === 'error' && isMountedRef.current) {
@@ -335,6 +358,7 @@ export default function App() {
 
     return () => {
       unsubscribe();
+      cleanupStreams();
       unsubscribeStatus();
     };
   }, [currentUser?.id]);
@@ -1050,6 +1074,15 @@ export default function App() {
 
       handleRenewSubscriber(updatedSub, payStat === 'debt', amt, requestId);
     }
+
+    appFeatures.broadcastAdminUpdate({
+      action: 'APPROVE_PENDING_REQUEST',
+      requestId,
+      subscriberId: req.subscriberId,
+      agentId: req.agentId,
+      timestamp: Date.now()
+    });
+    firebaseService.broadcastLocalChange(stateRef.current);
   };
 
   const handleRejectPendingRequest = (requestId: string) => {
