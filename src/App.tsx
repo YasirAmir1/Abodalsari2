@@ -279,7 +279,6 @@ export default function App() {
 
     // If this state change originated from a REMOTE snapshot, skip the write
     // back to Firestore (it is already there).
-    if (!isRemoteReady) return;
 
     if (isRemoteUpdateRef.current) {
       isRemoteUpdateRef.current = false;
