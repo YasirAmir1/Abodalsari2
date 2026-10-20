@@ -85,21 +85,10 @@ export const storageService = {
   },
 
   filterOutDeleted(state: AppState): AppState {
-    if (this.isAllSubscribersCleared()) {
-      return {
-        ...state,
-        subscribers: [],
-        pendingRequests: [],
-        agents: (state.agents || []).map((ag) => ({
-          ...ag,
-          devicesCount: 0,
-          activeSubscriptions: 0,
-          inactiveSubscriptions: 0,
-          totalDebt: 0,
-          totalSales: 0,
-          hasDebt: false
-        }))
-      };
+    // This flag only protects a device's local cache immediately after
+    // "delete all". It must not hide new server records on other sessions.
+    if (this.isAllSubscribersCleared() && (state.subscribers || []).length > 0) {
+      this.setAllSubscribersCleared(false);
     }
 
     const deletedSet = this.getDeletedSubscriberIds();

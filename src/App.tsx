@@ -45,6 +45,52 @@ import { useAppDialogs } from './components/AppDialogProvider';
 
 const USER_SESSION_KEY = 'alsari_auth_user_v1';
 
+function mergePendingSubscriberAdds(remoteState: AppState, localState: AppState): { state: AppState; merged: boolean } {
+  const remoteTimestamp = remoteState.lastUpdatedTimestamp || 0;
+  const localTimestamp = localState.lastUpdatedTimestamp || 0;
+  if (localTimestamp < remoteTimestamp) return { state: remoteState, merged: false };
+
+  const remoteSubscribers = remoteState.subscribers || [];
+  const localSubscribers = localState.subscribers || [];
+  const remoteIds = new Set(remoteSubscribers.map((subscriber) => subscriber.id));
+  const remoteDeviceIds = new Set(remoteSubscribers.map((subscriber) => subscriber.deviceId).filter(Boolean));
+  const pendingSubscribers = localSubscribers.filter(
+    (subscriber) => !remoteIds.has(subscriber.id) && (!subscriber.deviceId || !remoteDeviceIds.has(subscriber.deviceId))
+  );
+  if (pendingSubscribers.length === 0) return { state: remoteState, merged: false };
+
+  const pendingSubscriberIds = new Set(pendingSubscribers.map((subscriber) => subscriber.id));
+  const remoteInvoices = remoteState.invoices || [];
+  const invoiceIds = new Set(remoteInvoices.map((invoice) => invoice.id));
+  const pendingInvoices = (localState.invoices || []).filter(
+    (invoice) => pendingSubscriberIds.has(invoice.subscriberId) && !invoiceIds.has(invoice.id)
+  );
+  const pendingAgentIds = new Set(pendingSubscribers.map((subscriber) => subscriber.agentId));
+  const localAgentsById = new Map<string, Agent>();
+  (localState.agents || []).forEach((agent) => localAgentsById.set(agent.id, agent));
+  const remoteAgents = remoteState.agents || [];
+  const remoteAgentIds = new Set(remoteAgents.map((agent) => agent.id));
+  const pendingAgents = (localState.agents || []).filter(
+    (agent) => pendingAgentIds.has(agent.id) && !remoteAgentIds.has(agent.id)
+  );
+
+  return {
+    state: {
+      ...remoteState,
+      subscribers: [...pendingSubscribers, ...remoteSubscribers],
+      invoices: [...pendingInvoices, ...remoteInvoices],
+      agents: [
+        ...pendingAgents,
+        ...remoteAgents.map((agent) =>
+          pendingAgentIds.has(agent.id) ? localAgentsById.get(agent.id) || agent : agent
+        )
+      ],
+      lastUpdatedTimestamp: Date.now()
+    },
+    merged: true
+  };
+}
+
 export default function App() {
   const { showAlert } = useAppDialogs();
   const [state, setState] = useState<AppState>(() => storageService.loadState());
@@ -116,7 +162,8 @@ export default function App() {
       if (!isMountedRef.current) return;
 
       if (remote && typeof remote === 'object' && remote.subscribers) {
-        const filtered = storageService.filterOutDeleted(remote);
+        const { state: reconciled, merged } = mergePendingSubscriberAdds(remote, stateRef.current);
+        const filtered = storageService.filterOutDeleted(reconciled);
         // Mark as remote update so state-effect does NOT echo back to Firestore
         if (saveTimeoutRef.current) {
           clearTimeout(saveTimeoutRef.current);
@@ -129,6 +176,14 @@ export default function App() {
         setIsRemoteReady(true);
         setSyncToast('تم تحديث البيانات ومزامنتها بنجاح');
         soundService.playSuccess();
+        if (merged) {
+          void firebaseService.saveRemoteState(filtered, true).catch((error) => {
+            console.error('Could not restore locally pending subscribers to Firestore:', error);
+            if (isMountedRef.current) {
+              setSyncToast('تعذرت استعادة بعض المشتركين المحفوظين محلياً إلى قاعدة البيانات.');
+            }
+          });
+        }
       } else {
         const local = storageService.loadState();
         if (local) {
@@ -189,6 +244,24 @@ export default function App() {
   const isRemoteUpdateRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const persistStateImmediately = (nextState: AppState, failureMessage: string) => {
+    const committedState: AppState = {
+      ...nextState,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    stateRef.current = committedState;
+    storageService.saveState(committedState);
+    setState(committedState);
+
+    void firebaseService.saveRemoteState(committedState, true).catch((error) => {
+      console.error(failureMessage, error);
+      if (isMountedRef.current) {
+        setSyncToast('تعذرت مزامنة التغييرات مع الأجهزة الأخرى. تحقق من الاتصال بالإنترنت.');
+      }
+    });
+  };
+
   // --- Effect 1: Persist locally + push to Firestore on every local change ---
   useEffect(() => {
     // Always save to localStorage for offline resilience
@@ -229,8 +302,10 @@ export default function App() {
     const unsubscribe = firebaseService.subscribeToRemoteState((remoteState) => {
       if (!remoteState) return;
 
-      // Apply the deleted-subscriber filter so deletions propagate cross-device
-      const filteredState = storageService.filterOutDeleted(remoteState);
+      // Recover subscriber additions that were saved locally while an earlier
+      // Firestore write was pending or unavailable, then apply local tombstones.
+      const { state: reconciledState, merged } = mergePendingSubscriberAdds(remoteState, stateRef.current);
+      const filteredState = storageService.filterOutDeleted(reconciledState);
 
       // Save to localStorage immediately so a subsequent reload retains fresh remote state
       storageService.saveState(filteredState);
@@ -243,6 +318,14 @@ export default function App() {
       isRemoteUpdateRef.current = true;
       stateRef.current = filteredState;
       setState(filteredState);
+      if (merged) {
+        void firebaseService.saveRemoteState(filteredState, true).catch((error) => {
+          console.error('Could not restore locally pending subscribers to Firestore:', error);
+          if (isMountedRef.current) {
+            setSyncToast('تعذرت استعادة بعض المشتركين المحفوظين محلياً إلى قاعدة البيانات.');
+          }
+        });
+      }
     }, () => {
       if (isMountedRef.current) setIsRemoteReady(true);
     }, () => {
@@ -422,6 +505,8 @@ export default function App() {
     isPaid = false,
     saleKind: 'subscription' | 'device' = 'subscription'
   ) => {
+    const currentState = stateRef.current;
+    storageService.setAllSubscribersCleared(false);
     const newId = `sub-${Date.now()}`;
     const rawDevId = (subData.deviceId || '').trim();
     const cleanDevId = rawDevId
@@ -437,13 +522,16 @@ export default function App() {
       } catch {}
     }
 
+    const assignedAgent = currentState.agents.find(
+      (agent) => agent.id === subData.agentId || agent.name === subData.agentName
+    );
     const newSub: Subscriber = {
       id: newId,
       name: subData.name || 'مشترك جديد',
       phone: subData.phone || '',
       deviceId: cleanDevId,
-      agentId: subData.agentId || 'agent-main',
-      agentName: subData.agentName || 'المركز الرئيسي',
+      agentId: assignedAgent?.id || subData.agentId || 'agent-main',
+      agentName: assignedAgent?.name || subData.agentName || 'المركز الرئيسي',
       subscriptionType: subData.subscriptionType || '1 شهر',
       status: subData.status || 'active',
       paymentStatus: isPaid ? 'paid' : (subData.paymentStatus || 'debt'),
@@ -455,14 +543,14 @@ export default function App() {
       createdAt: new Date().toISOString().split('T')[0]
     };
 
-    let updatedInvoices = state.invoices;
-    let updatedAgents = state.agents;
+    let updatedInvoices = currentState.invoices;
+    let updatedAgents = currentState.agents;
     let registeredInvoice: Invoice | null = null;
 
     if (isSale) {
       registeredInvoice = {
         id: `inv-${Date.now()}`,
-        invoiceNumber: `INV-2026-${String(state.invoices.length + 1).padStart(3, '0')}`,
+        invoiceNumber: `INV-2026-${String(currentState.invoices.length + 1).padStart(3, '0')}`,
         subscriberId: newSub.id,
         subscriberName: newSub.name,
         deviceId: newSub.deviceId,
@@ -476,10 +564,10 @@ export default function App() {
         date: newSub.startDate,
         notes: newSub.notes
       };
-      updatedInvoices = [registeredInvoice, ...state.invoices];
+      updatedInvoices = [registeredInvoice, ...currentState.invoices];
 
       // Update Agent Financials
-      updatedAgents = state.agents.map((ag) => {
+      updatedAgents = currentState.agents.map((ag) => {
         if (ag.id === newSub.agentId) {
           const newDebt = isPaid ? ag.totalDebt : ag.totalDebt + newSub.amount;
           const newPaid = isPaid ? ag.totalPaid + newSub.amount : ag.totalPaid;
@@ -497,12 +585,12 @@ export default function App() {
       });
     }
 
-    setState({
-      ...state,
-      subscribers: [newSub, ...state.subscribers],
+    persistStateImmediately({
+      ...currentState,
+      subscribers: [newSub, ...currentState.subscribers],
       invoices: updatedInvoices,
       agents: updatedAgents
-    });
+    }, 'Could not immediately sync the new subscriber:');
 
     soundService.playSuccess();
 
@@ -517,18 +605,20 @@ export default function App() {
   };
 
   const handleUpdateSubscriber = (updated: Subscriber) => {
+    const currentState = stateRef.current;
     let cleanDevId = (updated.deviceId || '').trim();
     if (cleanDevId && !cleanDevId.startsWith('00')) {
       cleanDevId = '00' + cleanDevId;
     }
     const fixedSub = { ...updated, deviceId: cleanDevId };
-    setState({
-      ...state,
-      subscribers: state.subscribers.map((s) => (s.id === updated.id ? fixedSub : s))
-    });
+    persistStateImmediately({
+      ...currentState,
+      subscribers: currentState.subscribers.map((s) => (s.id === updated.id ? fixedSub : s))
+    }, 'Could not immediately sync the subscriber update:');
   };
 
   const handleImportSubscribers = ({ subscribers: importedSubs, newAgents = [] }: { subscribers: Subscriber[], newAgents: Agent[] }) => {
+    storageService.setAllSubscribersCleared(false);
     const deletedSet = storageService.getDeletedSubscriberIds();
     importedSubs.forEach((sub) => {
       deletedSet.delete(sub.id);
@@ -543,63 +633,58 @@ export default function App() {
       localStorage.setItem('alsari_deleted_subscribers_v1', JSON.stringify(Array.from(deletedSet)));
     } catch {}
 
-    setState((prev) => {
-      const deletedSet = storageService.getDeletedSubscriberIds();
-      const existingMap = new Map<string, Subscriber>();
-      
-      prev.subscribers.forEach((s) => {
-        if (!deletedSet.has(s.id) && !deletedSet.has(s.deviceId)) {
-          existingMap.set(s.deviceId, s);
-        }
-      });
+    const currentState = stateRef.current;
+    const remainingDeletedIds = storageService.getDeletedSubscriberIds();
+    const existingMap = new Map<string, Subscriber>();
 
-      importedSubs.forEach((sub) => {
-        if (!deletedSet.has(sub.id) && !deletedSet.has(sub.deviceId)) {
-          let devId = (sub.deviceId || '').trim();
-          if (devId && !devId.startsWith('00')) {
-            devId = '00' + devId;
-          }
-          const fixedSub = { ...sub, deviceId: devId };
-          existingMap.set(devId, fixedSub);
-        }
-      });
-
-      const updatedSubscribers = Array.from(existingMap.values());
-
-      let currentAgents = [...prev.agents];
-      newAgents.forEach((na) => {
-        if (!currentAgents.some((a) => a.id === na.id || a.name.toLowerCase() === na.name.toLowerCase())) {
-          currentAgents.push(na);
-        }
-      });
-
-      const updatedAgents = currentAgents.map((ag) => {
-        const agSubs = updatedSubscribers.filter((s) =>
-          s.agentId === ag.id ||
-          (s.agentName && ag.name && (
-            s.agentName.trim().toLowerCase() === ag.name.trim().toLowerCase() ||
-            s.agentName.includes(ag.name) ||
-            ag.name.includes(s.agentName)
-          ))
-        );
-        const activeSubs = agSubs.filter((s) => s.status === 'active');
-        return {
-          ...ag,
-          devicesCount: agSubs.length,
-          activeSubscriptions: activeSubs.length,
-          inactiveSubscriptions: agSubs.length - activeSubs.length
-        };
-      });
-
-      const newState: AppState = {
-        ...prev,
-        subscribers: updatedSubscribers,
-        agents: updatedAgents,
-        lastUpdatedTimestamp: Date.now()
-      };
-      storageService.saveState(newState);
-      return newState;
+    currentState.subscribers.forEach((subscriber) => {
+      if (!remainingDeletedIds.has(subscriber.id) && !remainingDeletedIds.has(subscriber.deviceId)) {
+        existingMap.set(subscriber.deviceId, subscriber);
+      }
     });
+
+    importedSubs.forEach((subscriber) => {
+      if (!remainingDeletedIds.has(subscriber.id) && !remainingDeletedIds.has(subscriber.deviceId)) {
+        let deviceId = (subscriber.deviceId || '').trim();
+        if (deviceId && !deviceId.startsWith('00')) {
+          deviceId = '00' + deviceId;
+        }
+        existingMap.set(deviceId, { ...subscriber, deviceId });
+      }
+    });
+
+    const updatedSubscribers = Array.from(existingMap.values());
+
+    let currentAgents = [...currentState.agents];
+    newAgents.forEach((newAgent) => {
+      if (!currentAgents.some((agent) => agent.id === newAgent.id || agent.name.toLowerCase() === newAgent.name.toLowerCase())) {
+        currentAgents.push(newAgent);
+      }
+    });
+
+    const updatedAgents = currentAgents.map((agent) => {
+      const agentSubscribers = updatedSubscribers.filter((subscriber) =>
+        subscriber.agentId === agent.id ||
+        (subscriber.agentName && agent.name && (
+          subscriber.agentName.trim().toLowerCase() === agent.name.trim().toLowerCase() ||
+          subscriber.agentName.includes(agent.name) ||
+          agent.name.includes(subscriber.agentName)
+        ))
+      );
+      const activeSubscribers = agentSubscribers.filter((subscriber) => subscriber.status === 'active');
+      return {
+        ...agent,
+        devicesCount: agentSubscribers.length,
+        activeSubscriptions: activeSubscribers.length,
+        inactiveSubscriptions: agentSubscribers.length - activeSubscribers.length
+      };
+    });
+
+    persistStateImmediately({
+      ...currentState,
+      subscribers: updatedSubscribers,
+      agents: updatedAgents
+    }, 'Could not immediately sync imported subscribers:');
     soundService.playSuccess();
   };
 
