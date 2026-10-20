@@ -1068,7 +1068,7 @@ export default function App() {
 
     setState((prev) => ({
       ...prev,
-      pendingRequests: [newRequest, ...prev.pendingRequests]
+      pendingRequests: [newRequest, ...prev.pendingRequests.filter(r => r.id !== newRequest.id)]
     }));
 
     soundService.playPendingAlert();
@@ -1505,7 +1505,8 @@ export default function App() {
                 };
                 setState((prev) => ({
                   ...prev,
-                  pendingRequests: [newReq, ...prev.pendingRequests]
+                  // Ensure no duplicate IDs, though it should be unique
+                  pendingRequests: [newReq, ...prev.pendingRequests.filter(r => r.id !== newReq.id)]
                 }));
                 soundService.playPendingAlert();
               }}
