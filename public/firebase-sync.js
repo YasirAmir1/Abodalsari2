@@ -20,10 +20,10 @@
   }
 
   var FirebaseSync = {
-    version: '1.0.0',
+    version: '1.1.0',
 
     onStateSync: function (callback) {
-      if (typeof window === 'undefined') return;
+      if (typeof window === 'undefined') return function () {};
 
       var listener = function (event) {
         if (event && event.detail && event.detail.state) {
@@ -33,26 +33,37 @@
 
       window.addEventListener('alsari:state-sync', listener);
 
+      var channelHandler = function (e) {
+        if (e.data && (e.data.type === 'APP_STATE_UPDATED' || e.data.type === 'TENANT_STATE_BROADCAST') && e.data.payload) {
+          callback(e.data.payload);
+        }
+      };
+
       if (channel) {
-        channel.addEventListener('message', function (e) {
-          if (e.data && e.data.type === 'APP_STATE_UPDATED' && e.data.payload) {
-            callback(e.data.payload);
-          }
-        });
+        channel.addEventListener('message', channelHandler);
       }
 
       return function () {
         window.removeEventListener('alsari:state-sync', listener);
+        if (channel) {
+          channel.removeEventListener('message', channelHandler);
+        }
       };
     },
 
     broadcastState: function (state) {
+      var payload = {
+        type: 'APP_STATE_UPDATED',
+        payload: state,
+        timestamp: Date.now()
+      };
       if (channel) {
-        channel.postMessage({
-          type: 'APP_STATE_UPDATED',
-          payload: state,
-          timestamp: Date.now()
-        });
+        channel.postMessage(payload);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('alsari:state-sync', {
+          detail: { state: state, source: 'local_broadcast', timestamp: Date.now() }
+        }));
       }
     }
   };

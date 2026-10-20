@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Agent, DeviceCode, Invoice, Subscriber, SubscriptionDuration } from '../types';
+import { Agent, DeviceCode, Invoice, Subscriber } from '../types';
 
 function findRowValue(row: Record<string, unknown>, keys: string[]): unknown {
   const rowKeys = Object.keys(row);
@@ -128,16 +128,6 @@ function formatPhone(val: unknown): string {
   return String(val).trim();
 }
 
-function parseDuration(val: unknown): SubscriptionDuration {
-  if (!val) return '1 شهر';
-  const s = String(val).trim().toLowerCase();
-  if (s.includes('شهرين') || s.includes('2') || s.includes('شهرآن')) return 'شهرين';
-  if (s.includes('3') || s.includes('ثلاث') || s.includes('3 اشهر')) return '3 أشهر';
-  if (s.includes('6') || s.includes('ست') || s.includes('6 اشهر')) return '6 أشهر';
-  if (s.includes('سنة') || s.includes('عام') || s.includes('12') || s.includes('سنه')) return 'سنة';
-  return '1 شهر';
-}
-
 function parseStatus(val: unknown, endDateStr: string): 'active' | 'inactive' | 'expiring_soon' {
   if (!val) {
     if (endDateStr) {
@@ -161,22 +151,6 @@ function parsePaymentStatus(val: unknown): 'paid' | 'debt' {
   const s = String(val).trim().toLowerCase();
   if (s.includes('دين') || s.includes('متبقي') || s.includes('debt') || s.includes('غير مسدد')) return 'debt';
   return 'paid';
-}
-
-function calculateDefaultPrice(subscriptionType: string): number {
-  switch (subscriptionType) {
-    case 'شهرين':
-      return 36000;
-    case '3 أشهر':
-      return 54000;
-    case '6 أشهر':
-      return 100000;
-    case 'سنة':
-      return 190000;
-    case '1 شهر':
-    default:
-      return 22000;
-  }
 }
 
 function formatExcelDate(val: unknown, addDays = 0): string {
@@ -363,10 +337,7 @@ export const excelService = {
     const data = codes.map((c, index) => ({
       'ت': index + 1,
       'كود الجهاز / السيريال (16 رقم)': c.code,
-      'الحالة': c.status === 'available' ? 'متاح' : c.status === 'assigned' ? 'مخصص لمشترك' : 'معطل',
-      'المشترك المخصص له': c.assignedToSubscriber || '-',
-      'الوكيل': c.assignedToAgent || '-',
-      'تاريخ التوليد': c.generatedDate
+      'الوكيل': c.assignedToAgent || '-'
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(data);

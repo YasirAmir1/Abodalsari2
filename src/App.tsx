@@ -505,7 +505,8 @@ export default function App() {
     subData: Partial<Subscriber>,
     isSale = true,
     isPaid = false,
-    saleKind: 'subscription' | 'device' = 'subscription'
+    saleKind: 'subscription' | 'device' = 'subscription',
+    pendingRequestId?: string
   ) => {
     const currentState = stateRef.current;
     storageService.setAllSubscribersCleared(false);
@@ -591,7 +592,10 @@ export default function App() {
       ...currentState,
       subscribers: [newSub, ...currentState.subscribers],
       invoices: updatedInvoices,
-      agents: updatedAgents
+      agents: updatedAgents,
+      pendingRequests: pendingRequestId
+        ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
+        : currentState.pendingRequests
     }, 'Could not immediately sync the new subscriber:');
 
     soundService.playSuccess();
@@ -884,7 +888,8 @@ export default function App() {
   const handleRenewSubscriber = (
     updatedSubscriber: Subscriber,
     isDebt: boolean,
-    amount: number
+    amount: number,
+    pendingRequestId?: string
   ) => {
     const currentState = stateRef.current;
     const currentSubscriber = currentState.subscribers.find((subscriber) => subscriber.id === updatedSubscriber.id);
@@ -934,6 +939,9 @@ export default function App() {
       ),
       invoices: [newInvoice, ...currentState.invoices],
       agents: updatedAgents,
+      pendingRequests: pendingRequestId
+        ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
+        : currentState.pendingRequests,
       lastUpdatedTimestamp: Date.now()
     };
 
@@ -978,23 +986,31 @@ export default function App() {
       paymentStatus?: PaymentStatus;
     }
   ) => {
-    const req = state.pendingRequests.find((r) => r.id === requestId);
+    const currentState = stateRef.current;
+    const req = currentState.pendingRequests.find((r) => r.id === requestId && r.status === 'pending');
     if (!req) return;
 
+    const isNewDeviceSale = req.subscriberId.startsWith('new-sub-') || req.duration === '-';
     const sDate = overrides?.startDate || new Date().toISOString().split('T')[0];
-    const dur = overrides?.duration || req.duration;
+    const requestedDuration = overrides?.duration || req.duration;
+    const supportedDurations: SubscriptionDuration[] = ['1 شهر', 'شهرين', '3 أشهر'];
+    const dur = isNewDeviceSale
+      ? '-'
+      : supportedDurations.includes(requestedDuration) ? requestedDuration : '1 شهر';
     const amt = overrides?.amount !== undefined ? overrides.amount : req.amount;
-    const stat = overrides?.status || 'active';
+    const stat = isNewDeviceSale ? 'inactive' : overrides?.status || 'active';
     const payStat = overrides?.paymentStatus || 'paid';
 
     const expDate = new Date(sDate);
-    if (dur === '1 شهر') expDate.setMonth(expDate.getMonth() + 1);
-    else if (dur === 'شهرين') expDate.setMonth(expDate.getMonth() + 2);
-    else if (dur === '3 أشهر') expDate.setMonth(expDate.getMonth() + 3);
-    else if (dur === '6 أشهر') expDate.setMonth(expDate.getMonth() + 6);
-    else expDate.setFullYear(expDate.getFullYear() + 1);
+    const endDate = isNewDeviceSale
+      ? '-'
+      : (() => {
+          const months = dur === 'شهرين' ? 2 : dur === '3 أشهر' ? 3 : 1;
+          expDate.setMonth(expDate.getMonth() + months);
+          return expDate.toISOString().split('T')[0];
+        })();
 
-    if (req.subscriberId.startsWith('new-sub-')) {
+    if (isNewDeviceSale) {
       handleAddSubscriber(
         {
           name: req.subscriberName,
@@ -1007,48 +1023,68 @@ export default function App() {
           paymentStatus: payStat,
           amount: amt,
           startDate: sDate,
-          endDate: expDate.toISOString().split('T')[0],
+          endDate,
           notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل'
         },
         true,
         payStat === 'paid',
-        'device'
+        isNewDeviceSale ? 'device' : 'subscription',
+        requestId
       );
     } else {
-      const sub = state.subscribers.find((s) => s.id === req.subscriberId);
-      if (sub) {
-        const updatedSub: Subscriber = {
-          ...sub,
-          status: stat,
-          subscriptionType: dur,
-          amount: amt,
-          startDate: sDate,
-          endDate: expDate.toISOString().split('T')[0],
-          paymentStatus: payStat
-        };
-
-        handleRenewSubscriber(updatedSub, payStat === 'debt', amt);
+      const sub = currentState.subscribers.find((s) => s.id === req.subscriberId);
+      if (!sub) {
+        showAlert('تعذر اعتماد التجديد لأن سجل المشترك غير موجود. أبقينا الطلب معلقاً للمراجعة.', 'تعذر اعتماد الطلب', 'error');
+        return;
       }
+
+      const updatedSub: Subscriber = {
+        ...sub,
+        status: stat,
+        subscriptionType: dur,
+        amount: amt,
+        startDate: sDate,
+        endDate,
+        paymentStatus: payStat
+      };
+
+      handleRenewSubscriber(updatedSub, payStat === 'debt', amt, requestId);
     }
-
-    setState((prev) => ({
-      ...prev,
-      pendingRequests: prev.pendingRequests.filter((r) => r.id !== requestId)
-    }));
-
-    soundService.playSuccess();
   };
 
   const handleRejectPendingRequest = (requestId: string) => {
-    const req = state.pendingRequests.find((r) => r.id === requestId);
-    setState((prev) => ({
-      ...prev,
-      pendingRequests: prev.pendingRequests.filter((r) => r.id !== requestId),
+    const currentState = stateRef.current;
+    const req = currentState.pendingRequests.find((r) => r.id === requestId);
+    if (!req) return;
+    persistStateImmediately({
+      ...currentState,
+      pendingRequests: currentState.pendingRequests.filter((r) => r.id !== requestId),
       // If it was a 'new-sub-' ID, also remove it from subscribers if it was added as 'inactive'
       subscribers: req?.subscriberId.startsWith('new-sub-') 
-        ? prev.subscribers.filter((s) => s.id !== req.subscriberId)
-        : prev.subscribers
-    }));
+        ? currentState.subscribers.filter((s) => s.id !== req.subscriberId)
+        : currentState.subscribers
+    }, 'Could not reject the pending request:');
+  };
+
+  const handleCancelAgentPendingRequest = (requestId: string): boolean => {
+    const currentState = stateRef.current;
+    const request = currentState.pendingRequests.find((item) => item.id === requestId);
+    if (
+      !request ||
+      request.status !== 'pending' ||
+      (request.agentId !== currentAgent.id && request.agentName !== currentAgent.name)
+    ) {
+      return false;
+    }
+
+    persistStateImmediately({
+      ...currentState,
+      pendingRequests: currentState.pendingRequests.filter((item) => item.id !== requestId),
+      subscribers: request.subscriberId.startsWith('new-sub-')
+        ? currentState.subscribers.filter((subscriber) => subscriber.id !== request.subscriberId)
+        : currentState.subscribers
+    }, 'Could not cancel the agent pending request:');
+    return true;
   };
 
   const handleSimulateIncomingRequest = () => {
@@ -1501,13 +1537,14 @@ export default function App() {
                   id: `req-${Date.now()}`,
                   status: 'pending'
                 };
-                setState((prev) => ({
-                  ...prev,
-                  // Ensure no duplicate IDs, though it should be unique
-                  pendingRequests: [newReq, ...prev.pendingRequests.filter(r => r.id !== newReq.id)]
-                }));
+                const currentState = stateRef.current;
+                persistStateImmediately({
+                  ...currentState,
+                  pendingRequests: [newReq, ...currentState.pendingRequests.filter((request) => request.id !== newReq.id)]
+                }, 'Could not immediately sync the agent request:');
                 soundService.playPendingAlert();
               }}
+              onDeleteRequest={handleCancelAgentPendingRequest}
               onOpenWhatsApp={setActiveWhatsAppSub}
               onUpdateBranding={handleUpdateAgentBranding}
               onSelectDeviceQr={handleOpenDeviceQr}

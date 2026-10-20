@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   QrCode,
@@ -16,6 +16,7 @@ import { jsPDF } from 'jspdf';
 import { DeviceCode } from '../types';
 import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
+import { useVirtualizedRows } from './useVirtualizedRows';
 
 interface QrCodesViewProps {
   codes: DeviceCode[];
@@ -43,6 +44,18 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   const [batchCountInput, setBatchCountInput] = useState(10);
   const [scannedResult, setScannedResult] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const printableCodes = useMemo(() => {
+    if (!showPrintModal) return [];
+    return selectedIds.length > 0 ? codes.filter((code) => selectedIdSet.has(code.id)) : codes;
+  }, [codes, selectedIdSet, selectedIds.length, showPrintModal]);
+  const {
+    scrollRef: codeTableRef,
+    handleScroll: handleCodeTableScroll,
+    visibleRows: visibleCodes,
+    topSpacerHeight: codeTopSpacerHeight,
+    bottomSpacerHeight: codeBottomSpacerHeight
+  } = useVirtualizedRows(codes, 64);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -53,11 +66,9 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   };
 
   const toggleSelectOne = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter((item) => item !== id));
-    } else {
-      setSelectedIds([...selectedIds, id]);
-    }
+    setSelectedIds((current) => current.includes(id)
+      ? current.filter((item) => item !== id)
+      : [...current, id]);
   };
 
   const handleSaveSingle = (e: React.FormEvent) => {
@@ -188,26 +199,32 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             لا توجد أكواد مسجلة بعد. استخدم زر "إضافة رقم فردي" أو "توليد دفعة سيريال QR" لإضافة أجهزة جديدة.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div
+            ref={codeTableRef}
+            onScroll={handleCodeTableScroll}
+            className="max-h-[70vh] overflow-auto"
+          >
             <table className="w-full text-right text-xs border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                   <th className="py-3 px-4 w-12 text-center">اختيار</th>
                   <th className="py-3 px-3 w-16 text-center">QR Code</th>
                   <th className="py-3 px-4">كود الجهاز / السيريال (16 رقم)</th>
-                  <th className="py-3 px-3">الحالة</th>
-                  <th className="py-3 px-3">المشترك المخصص</th>
-                  <th className="py-3 px-3">تاريخ التوليد</th>
                   <th className="py-3 px-4 text-center">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {codes.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
+                {codeTopSpacerHeight > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={4} style={{ height: codeTopSpacerHeight, padding: 0, border: 0 }} />
+                  </tr>
+                )}
+                {visibleCodes.map((c) => (
+                  <tr key={c.id} className="h-16 hover:bg-slate-50/80 transition-colors">
                     <td className="py-3 px-4 text-center">
                       <input
                         type="checkbox"
-                        checked={selectedIds.includes(c.id)}
+                        checked={selectedIdSet.has(c.id)}
                         onChange={() => toggleSelectOne(c.id)}
                         className="w-4 h-4 text-sky-600 rounded"
                       />
@@ -236,26 +253,6 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                       </div>
                     </td>
 
-                    <td className="py-3 px-3">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                          c.status === 'available'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-sky-50 text-sky-700 border border-sky-200'
-                        }`}
-                      >
-                        {c.status === 'available' ? 'متاح للتركيب' : 'مخصص لمشترك'}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-3 text-slate-600 font-medium">
-                      {c.assignedToSubscriber || '-'}
-                    </td>
-
-                    <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
-                      {c.generatedDate}
-                    </td>
-
                     <td className="py-3 px-4 text-center">
                       <button
                         onClick={() => onDeleteCode(c.id)}
@@ -267,6 +264,11 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                     </td>
                   </tr>
                 ))}
+                {codeBottomSpacerHeight > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={4} style={{ height: codeBottomSpacerHeight, padding: 0, border: 0 }} />
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -439,7 +441,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
               }
             `}</style>
             <div className="mt-4 grid grid-cols-3 gap-3" id="printable-labels">
-              {(selectedIds.length > 0 ? codes.filter((c) => selectedIds.includes(c.id)) : codes).map((c, index) => (
+              {printableCodes.map((c, index) => (
                 <div
                   key={c.id}
                   className={`p-3 border border-slate-300 rounded-xl flex flex-col items-center text-center bg-white ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}

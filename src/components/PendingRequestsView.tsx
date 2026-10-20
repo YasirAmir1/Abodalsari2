@@ -40,6 +40,9 @@ interface PendingRequestsViewProps {
   onSimulateIncomingRequest: () => void;
 }
 
+const isDeviceSaleRequest = (request: PendingRenewalRequest) =>
+  request.subscriberId.startsWith('new-sub-') || request.duration === '-';
+
 export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
   pendingRequests,
   agents,
@@ -60,6 +63,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
   const [editStartDate, setEditStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [editDuration, setEditDuration] = useState<SubscriptionDuration>('1 شهر');
   const [editPaymentStatus, setEditPaymentStatus] = useState<'paid' | 'debt'>('paid');
+  const activatingDeviceSale = activatingRequest ? isDeviceSaleRequest(activatingRequest) : false;
   const [modalInfo, setModalInfo] = useState<{
     isOpen: boolean;
     title: string;
@@ -107,11 +111,13 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
   };
 
   const handleOpenActivate = (req: PendingRenewalRequest) => {
+    const isDeviceSale = isDeviceSaleRequest(req);
     setActivatingRequest(req);
-    setEditStatus('active');
+    setEditStatus(isDeviceSale ? 'inactive' : 'active');
     setEditAmount(req.amount || 22000);
     setEditStartDate(new Date().toISOString().split('T')[0]);
-    setEditDuration(req.duration || '1 شهر');
+    const supportedDurations: SubscriptionDuration[] = ['1 شهر', 'شهرين', '3 أشهر'];
+    setEditDuration(isDeviceSale ? '-' : supportedDurations.includes(req.duration) ? req.duration : '1 شهر');
     setEditPaymentStatus('paid');
   };
 
@@ -289,8 +295,10 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                       <span className="font-mono text-slate-800 dark:text-slate-200">{req.subscriberPhone}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-600 dark:text-slate-400">نوع الباقة المطلوبة:</span>
-                      <span className="font-bold text-teal-700 dark:text-teal-300">{req.duration}</span>
+                      <span className="text-slate-600 dark:text-slate-400">نوع الطلب / الباقة:</span>
+                      <span className="font-bold text-teal-700 dark:text-teal-300">
+                        {isDeviceSaleRequest(req) ? 'بيع جهاز جديد فقط' : req.duration}
+                      </span>
                     </div>
                     <div className="flex justify-between pt-2 border-t border-slate-100 dark:border-slate-700">
                       <span className="text-slate-600 dark:text-slate-400 font-bold">المبلغ المحتسب:</span>
@@ -310,7 +318,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                     className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
                     <Check className="w-4 h-4" />
-                    <span>اعتماد وتفعيل</span>
+                    <span>{isDeviceSaleRequest(req) ? 'اعتماد بيع الجهاز' : 'اعتماد وتفعيل'}</span>
                   </button>
                   <button
                     onClick={() => onRejectRequest(req.id)}
@@ -332,7 +340,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
-                اعتماد وتفعيل طلب المشترك: {activatingRequest.subscriberName}
+                {activatingDeviceSale ? 'اعتماد بيع الجهاز' : 'اعتماد وتفعيل الاشتراك'}: {activatingRequest.subscriberName}
               </h3>
               <button onClick={() => setActivatingRequest(null)} className="text-slate-400 p-1 cursor-pointer">
                 ✕
@@ -342,14 +350,20 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
             <form onSubmit={handleConfirmActivation} className="mt-4 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">حالة المشترك</label>
-                <select
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
-                >
-                  <option value="active">فعال</option>
-                  <option value="inactive">غير فعال</option>
-                </select>
+                {activatingDeviceSale ? (
+                  <div className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                    غير فعال — بيع جهاز بدون اشتراك
+                  </div>
+                ) : (
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
+                  >
+                    <option value="active">فعال</option>
+                    <option value="inactive">غير فعال</option>
+                  </select>
+                )}
               </div>
 
               <div>
@@ -364,7 +378,9 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">تاريخ بدء الاشتراك</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  {activatingDeviceSale ? 'تاريخ البيع' : 'تاريخ بدء الاشتراك'}
+                </label>
                 <input
                   type="date"
                   required
@@ -374,7 +390,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                 />
               </div>
 
-              <div>
+              {!activatingDeviceSale && <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">نوع الاشتراك / المدة</label>
                 <select
                   value={editDuration}
@@ -384,10 +400,8 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                   <option value="1 شهر">1 شهر (30 يوماً)</option>
                   <option value="شهرين">شهرين (60 يوماً)</option>
                   <option value="3 أشهر">3 أشهر (90 يوماً)</option>
-                  <option value="6 أشهر">6 أشهر (نصف سنوي)</option>
-                  <option value="سنة">سنة كاملة (12 شهر)</option>
                 </select>
-              </div>
+              </div>}
 
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">طريقة السداد *</label>
@@ -417,7 +431,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer"
                 >
-                  تأكيد الاعتماد والتفعيل
+                  {activatingDeviceSale ? 'تأكيد اعتماد البيع' : 'تأكيد الاعتماد والتفعيل'}
                 </button>
               </div>
             </form>

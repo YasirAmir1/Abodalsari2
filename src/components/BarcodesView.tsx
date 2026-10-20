@@ -194,9 +194,6 @@ export const BarcodesView: React.FC<BarcodesViewProps> = ({
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                   <th className="py-3 px-4 w-12 text-center">اختيار</th>
                   <th className="py-3 px-4">كود الجهاز / السيريال (16 رقم)</th>
-                  <th className="py-3 px-3">الحالة</th>
-                  <th className="py-3 px-3">المشترك المخصص</th>
-                  <th className="py-3 px-3">تاريخ التوليد</th>
                   <th className="py-3 px-4 text-center">إجراءات</th>
                 </tr>
               </thead>
@@ -227,26 +224,6 @@ export const BarcodesView: React.FC<BarcodesViewProps> = ({
                           <span className="text-[10px] text-emerald-600 font-bold">تم النسخ!</span>
                         )}
                       </div>
-                    </td>
-
-                    <td className="py-3 px-3">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                          c.status === 'available'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-sky-50 text-sky-700 border border-sky-200'
-                        }`}
-                      >
-                        {c.status === 'available' ? 'متاح للتركيب' : 'مخصص لمشترك'}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-3 text-slate-600 font-medium">
-                      {c.assignedToSubscriber || '-'}
-                    </td>
-
-                    <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
-                      {c.generatedDate}
                     </td>
 
                     <td className="py-3 px-4 text-center">

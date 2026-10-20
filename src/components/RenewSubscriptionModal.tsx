@@ -39,8 +39,7 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
     if (dur === '1 شهر') d.setMonth(d.getMonth() + 1);
     else if (dur === 'شهرين') d.setMonth(d.getMonth() + 2);
     else if (dur === '3 أشهر') d.setMonth(d.getMonth() + 3);
-    else if (dur === '6 أشهر') d.setMonth(d.getMonth() + 6);
-    else d.setFullYear(d.getFullYear() + 1);
+    else d.setMonth(d.getMonth() + 3);
     return d.toISOString().split('T')[0];
   };
 
@@ -55,9 +54,7 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
       ? agentPricing?.twoMonthsPrice || 50000
       : duration === '3 أشهر'
       ? agentPricing?.threeMonthsPrice || 75000
-      : duration === '6 أشهر'
-      ? agentPricing?.sixMonthsPrice || 140000
-      : agentPricing?.oneYearPrice || 250000;
+      : agentPricing?.threeMonthsPrice || 75000;
 
   const [price, setPrice] = useState<number>(defaultPrice);
 
@@ -72,9 +69,7 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
         ? agentPricing?.twoMonthsPrice || 50000
         : newDur === '3 أشهر'
         ? agentPricing?.threeMonthsPrice || 75000
-        : newDur === '6 أشهر'
-        ? agentPricing?.sixMonthsPrice || 140000
-        : agentPricing?.oneYearPrice || 250000;
+        : agentPricing?.threeMonthsPrice || 75000;
     setPrice(newPrice);
   };
 
@@ -183,8 +178,6 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
                     <option value="1 شهر">1 شهر (شهر واحد)</option>
                     <option value="شهرين">شهرين (شهرين اثنين)</option>
                     <option value="3 أشهر">3 أشهر (3 أشهر)</option>
-                    <option value="6 أشهر">6 أشهر (نصف سنوي)</option>
-                    <option value="سنة">سنة (سنة كاملة)</option>
                   </select>
                 </div>
 

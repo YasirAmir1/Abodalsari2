@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Hourglass,
   Clock,
@@ -17,6 +17,7 @@ import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
 import { SecurityActionModal } from './SecurityActionModal';
+import { useVirtualizedRows } from './useVirtualizedRows';
 
 interface DebtsViewProps {
   agents: Agent[];
@@ -60,43 +61,71 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || null
     : null;
 
-  const debtSubscribers = subscribers.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
-  const totalSalesAmount = invoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
-  const totalPaidAmount = invoices.reduce((sum, invoice) => {
+  const debtSubscribers = useMemo(
+    () => subscribers.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial'),
+    [subscribers]
+  );
+  const totalSalesAmount = useMemo(() => invoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0), [invoices]);
+  const totalPaidAmount = useMemo(() => invoices.reduce((sum, invoice) => {
     const amount = Number(invoice.amount) || 0;
     const paidAmount = Number.isFinite(Number(invoice.paidAmount))
       ? Number(invoice.paidAmount)
       : Math.max(0, amount - (Number(invoice.remainingAmount) || 0));
     return sum + Math.max(0, paidAmount);
-  }, 0);
-  const grandTotalDebt = debtSubscribers.reduce((sum, subscriber) => sum + (Number(subscriber.amount) || 0), 0);
+  }, 0), [invoices]);
+  const grandTotalDebt = useMemo(
+    () => debtSubscribers.reduce((sum, subscriber) => sum + (Number(subscriber.amount) || 0), 0),
+    [debtSubscribers]
+  );
   const formatMoney = (amount: number) => Math.max(0, Number.isFinite(amount) ? amount : 0).toLocaleString();
 
-  const computedAgents = agents.map((ag) => {
-    const agentDebtSubs = subscribers.filter(
-      (s) => (s.paymentStatus === 'debt' || s.paymentStatus === 'partial') && (s.agentId === ag.id || s.agentName === ag.name)
-    );
-    const calculatedDebt = agentDebtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
-    const agentInvoices = invoices.filter((invoice) => invoice.agentId === ag.id || (!invoice.agentId && invoice.agentName === ag.name));
-    const agentSales = agentInvoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
-    const agentPaid = agentInvoices.reduce((sum, invoice) => {
+  const computedAgents = useMemo(() => {
+    const agentIndexesById = new Map<string, number>();
+    const agentIndexesByName = new Map<string, number[]>();
+    agents.forEach((agent, index) => {
+      agentIndexesById.set(agent.id, index);
+      const matchingIndexes = agentIndexesByName.get(agent.name) || [];
+      matchingIndexes.push(index);
+      agentIndexesByName.set(agent.name, matchingIndexes);
+    });
+    const totals = agents.map(() => ({ debt: 0, sales: 0, paid: 0 }));
+
+    subscribers.forEach((subscriber) => {
+      if (subscriber.paymentStatus !== 'debt' && subscriber.paymentStatus !== 'partial') return;
+      const matchingIndexes = new Set<number>();
+      const idIndex = agentIndexesById.get(subscriber.agentId);
+      if (idIndex !== undefined) matchingIndexes.add(idIndex);
+      (agentIndexesByName.get(subscriber.agentName) || []).forEach((index) => matchingIndexes.add(index));
+      matchingIndexes.forEach((index) => {
+        totals[index].debt += Number(subscriber.amount) || 0;
+      });
+    });
+
+    invoices.forEach((invoice) => {
+      const matchingIndexes = invoice.agentId
+        ? [agentIndexesById.get(invoice.agentId)].filter((index): index is number => index !== undefined)
+        : agentIndexesByName.get(invoice.agentName) || [];
       const amount = Number(invoice.amount) || 0;
       const paidAmount = Number.isFinite(Number(invoice.paidAmount))
         ? Number(invoice.paidAmount)
         : Math.max(0, amount - (Number(invoice.remainingAmount) || 0));
-      return sum + Math.max(0, paidAmount);
-    }, 0);
-    return {
-      ...ag,
-      invoiceSalesAmount: agentSales,
-      invoicePaidAmount: agentPaid,
-      totalDebt: calculatedDebt,
-      hasDebt: calculatedDebt > 0
-    };
-  });
+      matchingIndexes.forEach((index) => {
+        totals[index].sales += amount;
+        totals[index].paid += Math.max(0, paidAmount);
+      });
+    });
+
+    return agents.map((agent, index) => ({
+      ...agent,
+      invoiceSalesAmount: totals[index].sales,
+      invoicePaidAmount: totals[index].paid,
+      totalDebt: totals[index].debt,
+      hasDebt: totals[index].debt > 0
+    }));
+  }, [agents, invoices, subscribers]);
 
   // Filter Agents Table
-  const filteredAgents = computedAgents.filter((ag) => {
+  const filteredAgents = useMemo(() => computedAgents.filter((ag) => {
     if (selectedAgentFilter !== 'all' && ag.id !== selectedAgentFilter && ag.name !== selectedAgentFilter) {
       return false;
     }
@@ -108,13 +137,14 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
       return matchName || matchCode || matchRegion;
     }
     return true;
-  });
-  const financialSummaryAgents = activeTab === 'agents'
+  }), [computedAgents, debtSearchTerm, selectedAgentFilter]);
+  const financialSummaryAgents = useMemo(() => activeTab === 'agents'
     ? filteredAgents
-    : computedAgents.filter((ag) => selectedAgentFilter === 'all' || ag.id === selectedAgentFilter || ag.name === selectedAgentFilter);
+    : computedAgents.filter((ag) => selectedAgentFilter === 'all' || ag.id === selectedAgentFilter || ag.name === selectedAgentFilter),
+  [activeTab, computedAgents, filteredAgents, selectedAgentFilter]);
 
   // Filter Subscribers Debt Table
-  const filteredDebtSubscribers = debtSubscribers.filter((sub) => {
+  const filteredDebtSubscribers = useMemo(() => debtSubscribers.filter((sub) => {
     if (selectedAgentFilter !== 'all' && sub.agentId !== selectedAgentFilter && sub.agentName !== selectedAgentFilter) {
       return false;
     }
@@ -127,7 +157,14 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
       return matchName || matchPhone || matchDevice || matchAgent;
     }
     return true;
-  });
+  }), [debtSearchTerm, debtSubscribers, selectedAgentFilter]);
+  const {
+    scrollRef: debtSubscribersTableRef,
+    handleScroll: handleDebtSubscribersTableScroll,
+    visibleRows: visibleDebtSubscribers,
+    topSpacerHeight: debtSubscribersTopSpacerHeight,
+    bottomSpacerHeight: debtSubscribersBottomSpacerHeight
+  } = useVirtualizedRows(filteredDebtSubscribers, 64);
 
   const handleExportExcel = () => {
     if (activeTab === 'agents') {
@@ -471,9 +508,13 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
             </span>
           </div>
 
-          <div className="overflow-x-auto">
+          <div
+            ref={debtSubscribersTableRef}
+            onScroll={handleDebtSubscribersTableScroll}
+            className="max-h-[70vh] overflow-auto"
+          >
             <table className="w-full text-right text-xs border-collapse">
-              <thead>
+              <thead className="sticky top-0 z-10">
                 <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold">
                   <th className="py-3 px-4">اسم المشترك</th>
                   <th className="py-3 px-3">رقم الجهاز</th>
@@ -487,13 +528,19 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredDebtSubscribers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
+                    <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
                       لا يوجد مشتركون بديون يطابقون خيار التصنيف المحدد
                     </td>
                   </tr>
                 ) : (
-                  filteredDebtSubscribers.map((sub) => (
-                    <tr key={sub.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                  <>
+                  {debtSubscribersTopSpacerHeight > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={7} style={{ height: debtSubscribersTopSpacerHeight, padding: 0, border: 0 }} />
+                    </tr>
+                  )}
+                  {visibleDebtSubscribers.map((sub) => (
+                    <tr key={sub.id} className="h-16 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                       <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-slate-100">{sub.name}</td>
                       <td className="py-3.5 px-3 font-mono">
                         <button
@@ -543,7 +590,13 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         </button>
                       </td>
                     </tr>
-                  ))
+                  ))}
+                  {debtSubscribersBottomSpacerHeight > 0 && (
+                    <tr aria-hidden="true">
+                      <td colSpan={7} style={{ height: debtSubscribersBottomSpacerHeight, padding: 0, border: 0 }} />
+                    </tr>
+                  )}
+                  </>
                 )}
               </tbody>
             </table>

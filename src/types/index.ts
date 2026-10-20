@@ -1,6 +1,6 @@
 ﻿export type SubscriptionStatus = 'active' | 'inactive' | 'expiring_soon';
 export type PaymentStatus = 'paid' | 'debt' | 'partial' | '-' | '';
-export type SubscriptionDuration = '1 شهر' | 'شهرين' | '3 أشهر' | '6 أشهر' | 'سنة' | '-' | '';
+export type SubscriptionDuration = '1 شهر' | 'شهرين' | '3 أشهر' | '-' | '';
 
 export interface Subscriber {
   id: string;
@@ -64,8 +64,6 @@ export interface PricingRow {
   oneMonthPrice: number;
   twoMonthsPrice: number;
   threeMonthsPrice: number;
-  sixMonthsPrice: number;
-  oneYearPrice: number;
   status: 'معتمدة (المرجع)' | 'معتمدة (تطبق في البيع)' | 'مسودة';
   isReference?: boolean;
 }

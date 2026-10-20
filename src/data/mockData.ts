@@ -485,8 +485,6 @@ export const INITIAL_PRICING: PricingRow[] = [
     oneMonthPrice: 25000,
     twoMonthsPrice: 50000,
     threeMonthsPrice: 75000,
-    sixMonthsPrice: 140000,
-    oneYearPrice: 250000,
     status: 'معتمدة (المرجع)',
     isReference: true
   },
@@ -498,8 +496,6 @@ export const INITIAL_PRICING: PricingRow[] = [
     oneMonthPrice: 22000,
     twoMonthsPrice: 36000,
     threeMonthsPrice: 54000,
-    sixMonthsPrice: 100000,
-    oneYearPrice: 190000,
     status: 'معتمدة (تطبق في البيع)'
   },
   {
@@ -510,8 +506,6 @@ export const INITIAL_PRICING: PricingRow[] = [
     oneMonthPrice: 22000,
     twoMonthsPrice: 36000,
     threeMonthsPrice: 54000,
-    sixMonthsPrice: 100000,
-    oneYearPrice: 190000,
     status: 'معتمدة (تطبق في البيع)'
   },
   {
@@ -522,8 +516,6 @@ export const INITIAL_PRICING: PricingRow[] = [
     oneMonthPrice: 22000,
     twoMonthsPrice: 36000,
     threeMonthsPrice: 54000,
-    sixMonthsPrice: 100000,
-    oneYearPrice: 190000,
     status: 'معتمدة (تطبق في البيع)'
   },
   {
@@ -534,8 +526,6 @@ export const INITIAL_PRICING: PricingRow[] = [
     oneMonthPrice: 22000,
     twoMonthsPrice: 36000,
     threeMonthsPrice: 54000,
-    sixMonthsPrice: 100000,
-    oneYearPrice: 190000,
     status: 'معتمدة (تطبق في البيع)'
   },
   {
@@ -546,8 +536,6 @@ export const INITIAL_PRICING: PricingRow[] = [
     oneMonthPrice: 22000,
     twoMonthsPrice: 36000,
     threeMonthsPrice: 54000,
-    sixMonthsPrice: 100000,
-    oneYearPrice: 190000,
     status: 'معتمدة (تطبق في البيع)'
   }
 ];

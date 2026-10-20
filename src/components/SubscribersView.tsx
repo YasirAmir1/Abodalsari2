@@ -26,6 +26,7 @@ import { DeleteSubscriberModal } from './DeleteSubscriberModal';
 import { DeleteAllSubscribersModal } from './DeleteAllSubscribersModal';
 import { CustomModal } from './CustomModal';
 import { useAppDialogs } from './AppDialogProvider';
+import { useVirtualizedRows } from './useVirtualizedRows';
 
 interface SubscribersViewProps {
   subscribers: Subscriber[];
@@ -124,11 +125,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     const date = new Date(startDateStr);
     if (isNaN(date.getTime())) return '';
     const result = new Date(date);
-    if (duration === '1 شهر') result.setMonth(result.getMonth() + 1);
-    else if (duration === 'شهرين') result.setMonth(result.getMonth() + 2);
-    else if (duration === '3 أشهر') result.setMonth(result.getMonth() + 3);
-    else if (duration === '6 أشهر') result.setMonth(result.getMonth() + 6);
-    else if (duration === 'سنة') result.setFullYear(result.getFullYear() + 1);
+    const months = duration === 'شهرين' ? 2 : duration === '3 أشهر' ? 3 : 1;
+    result.setMonth(result.getMonth() + months);
     return result.toISOString().split('T')[0];
   };
 
@@ -210,7 +208,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     if (sub.deviceId) setNewSubDeviceId(sub.deviceId);
     if (sub.agentId) setNewSubAgentId(sub.agentId);
     if (sub.subscriptionType) {
-      const supportedDurations = ['1 شهر', 'شهرين', '3 أشهر', '6 أشهر', 'سنة'] as const;
+      const supportedDurations = ['1 شهر', 'شهرين', '3 أشهر'] as const;
       const duration: SubscriptionDuration = supportedDurations.find(
         (candidate) => candidate === sub.subscriptionType
       ) || '1 شهر';
@@ -229,10 +227,33 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     setNewSubEndDate(calculateEndDate(startDateVal, newSubType));
   };
 
-  const agentOwnedSubscribers = subscribersForView.filter((sub) =>
+  const agentOwnedSubscribers = useMemo(() => subscribersForView.filter((sub) =>
     (Boolean(sub.agentId) || Boolean(sub.agentName)) &&
     sub.agentId !== 'agent-main' && sub.agentName !== 'المركز الرئيسي'
-  );
+  ), [subscribersForView]);
+
+  const subscriberCountsByAgent = useMemo(() => {
+    const agentIndexesById = new Map<string, number>();
+    const agentIndexesByName = new Map<string, number[]>();
+    agents.forEach((agent, index) => {
+      agentIndexesById.set(agent.id, index);
+      const matchingIndexes = agentIndexesByName.get(agent.name) || [];
+      matchingIndexes.push(index);
+      agentIndexesByName.set(agent.name, matchingIndexes);
+    });
+
+    const counts = agents.map(() => 0);
+    subscribersForView.forEach((subscriber) => {
+      const matchingIndexes = new Set<number>();
+      const idIndex = agentIndexesById.get(subscriber.agentId);
+      if (idIndex !== undefined) matchingIndexes.add(idIndex);
+      (agentIndexesByName.get(subscriber.agentName) || []).forEach((index) => matchingIndexes.add(index));
+      matchingIndexes.forEach((index) => counts[index]++);
+    });
+    const countsByAgent = new Map<string, number>();
+    agents.forEach((agent, index) => countsByAgent.set(agent.id, counts[index]));
+    return countsByAgent;
+  }, [agents, subscribersForView]);
 
   const agentRenewalPrice = selectedAgentSubscriber
     ? getPriceByDuration(
@@ -256,7 +277,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   };
 
   const selectAgentRenewalSubscriber = (subscriber: Subscriber) => {
-    const supportedDurations = ['1 شهر', 'شهرين', '3 أشهر', '6 أشهر', 'سنة'] as const;
+    const supportedDurations = ['1 شهر', 'شهرين', '3 أشهر'] as const;
     const duration: SubscriptionDuration = supportedDurations.find(
       (candidate) => candidate === subscriber.subscriptionType
     ) || '1 شهر';
@@ -310,7 +331,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   };
 
   // Filter logic
-  const filteredSubscribers = subscribersForView.filter((sub) => {
+  const filteredSubscribers = useMemo(() => subscribersForView.filter((sub) => {
     if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
     if (!isAdmin && agentFilter !== 'all') {
       if (agentFilter === 'agent-main') {
@@ -332,11 +353,21 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
       return matchName || matchPhone || matchDevice || matchAgent;
     }
     return true;
-  });
+  }), [agentFilter, agents, isAdmin, searchTerm, statusFilter, subscribersForView]);
 
-  const activeCount = subscribersForView.filter((s) => s.status === 'active').length;
-  const inactiveCount = subscribersForView.filter((s) => s.status === 'inactive').length;
-  const expiringCount = subscribersForView.filter((s) => s.status === 'expiring_soon').length;
+  const { activeCount, inactiveCount, expiringCount } = useMemo(() => subscribersForView.reduce((counts, subscriber) => {
+    if (subscriber.status === 'active') counts.activeCount += 1;
+    if (subscriber.status === 'inactive') counts.inactiveCount += 1;
+    if (subscriber.status === 'expiring_soon') counts.expiringCount += 1;
+    return counts;
+  }, { activeCount: 0, inactiveCount: 0, expiringCount: 0 }), [subscribersForView]);
+  const {
+    scrollRef: subscriberTableRef,
+    handleScroll: handleSubscriberTableScroll,
+    visibleRows: visibleSubscribers,
+    topSpacerHeight: subscriberTopSpacerHeight,
+    bottomSpacerHeight: subscriberBottomSpacerHeight
+  } = useVirtualizedRows(filteredSubscribers, 64);
 
   const handleCreateSale = (e: React.FormEvent) => {
     e.preventDefault();
@@ -533,7 +564,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         </div>
       </div>
 
-      <div className={isAdmin ? 'hidden' : 'bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2'}>
+      {!isAdmin && (
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 ml-1">
           <span className="w-2 h-2 rounded-full bg-sky-600" />
           تصنيف حسب الوكيل المسؤول:
@@ -552,9 +584,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         </button>
 
         {agents.map((ag) => {
-          const count = subscribersForView.filter(
-            (s) => s.agentId === ag.id || s.agentName === ag.name
-          ).length;
+          const count = subscriberCountsByAgent.get(ag.id) || 0;
           const isSelected = agentFilter === ag.id;
 
           return (
@@ -579,6 +609,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           );
         })}
       </div>
+      )}
 
       {/* Sub Header: Counter & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
@@ -619,9 +650,13 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
 
       {/* Table Matching Screenshot 2 Exactly */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+        <div
+          ref={subscriberTableRef}
+          onScroll={handleSubscriberTableScroll}
+          className="max-h-[70vh] overflow-auto"
+        >
           <table className="w-full text-right text-xs border-collapse">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
                 <th className="py-3 px-4">المشترك / الهاتف</th>
                 <th className="py-3 px-3">رقم الجهاز</th>
@@ -634,7 +669,12 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredSubscribers.map((sub) => {
+              {subscriberTopSpacerHeight > 0 && (
+                <tr aria-hidden="true">
+                  <td colSpan={8} style={{ height: subscriberTopSpacerHeight, padding: 0, border: 0 }} />
+                </tr>
+              )}
+              {visibleSubscribers.map((sub) => {
                 const isActive = sub.status === 'active';
                 const isMainCenterSub = sub.agentName === 'المركز الرئيسي' || sub.agentId === 'agent-main';
 
@@ -647,7 +687,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                 return (
                   <tr
                     key={sub.id}
-                    className={`hover:bg-slate-50/80 transition-colors ${
+                    className={`h-16 hover:bg-slate-50/80 transition-colors ${
                       isActive ? 'bg-emerald-50/20' : ''
                     }`}
                   >
@@ -790,6 +830,11 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                   </tr>
                 );
               })}
+              {subscriberBottomSpacerHeight > 0 && (
+                <tr aria-hidden="true">
+                  <td colSpan={8} style={{ height: subscriberBottomSpacerHeight, padding: 0, border: 0 }} />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -971,8 +1016,6 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     <option value="1 شهر">شهر واحد</option>
                     <option value="شهرين">شهران</option>
                     <option value="3 أشهر">3 أشهر</option>
-                    <option value="6 أشهر">6 أشهر</option>
-                    <option value="سنة">سنة</option>
                   </select>
                 </div>
                 <div>
@@ -1202,8 +1245,6 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     <option value="1 شهر">1 شهر (30 يوماً)</option>
                     <option value="شهرين">شهرين (60 يوماً)</option>
                     <option value="3 أشهر">3 أشهر (90 يوماً)</option>
-                    <option value="6 أشهر">6 أشهر (نصف سنوي)</option>
-                    <option value="سنة">سنة كاملة (12 شهر)</option>
                   </select>
                 </div>}
               </div>

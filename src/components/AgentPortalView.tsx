@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Tv,
   Users,
@@ -12,11 +12,13 @@ import {
   CheckCircle,
   AlertCircle,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2
 } from 'lucide-react';
 import { Agent, PendingRenewalRequest, PricingRow, Product, Subscriber, SubscriptionDuration } from '../types';
 import { getPriceByDuration } from '../utils/pricingUtils';
 import { useAppDialogs } from './AppDialogProvider';
+import { useVirtualizedRows } from './useVirtualizedRows';
 
 const SubscriberDetail: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({
   label,
@@ -41,7 +43,7 @@ interface AgentPortalViewProps {
   onOpenWhatsApp: (sub: Subscriber) => void;
   onUpdateBranding: (agentId: string, branding: Partial<Agent>) => void;
   onSelectDeviceQr?: (deviceId: string, subscriberName?: string, agentName?: string) => void;
-  onDeleteRequest?: (requestId: string) => void;
+  onDeleteRequest: (requestId: string) => boolean;
 }
 
 export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
@@ -56,7 +58,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   onSelectDeviceQr,
   onDeleteRequest
 }) => {
-  const { showAlert } = useAppDialogs();
+  const { showAlert, showConfirm } = useAppDialogs();
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showDeviceSaleModal, setShowDeviceSaleModal] = useState(false);
   const [expandedSubscriberId, setExpandedSubscriberId] = useState<string | null>(null);
@@ -75,9 +77,54 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const [newSubNotes, setNewSubNotes] = useState('');
 
   // Agent's subscribers
-  const agentSubs = subscribers.filter(
+  const agentSubs = useMemo(() => subscribers.filter(
     (s) => s.agentId === currentAgent.id || s.agentName === currentAgent.name
+  ), [currentAgent.id, currentAgent.name, subscribers]);
+  const activeAgentSubsCount = useMemo(
+    () => agentSubs.filter((subscriber) => subscriber.status === 'active').length,
+    [agentSubs]
   );
+  const subSuggestions = useMemo(() => {
+    const query = subSearchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    const matches: Subscriber[] = [];
+    for (const subscriber of agentSubs) {
+      if (subscriber.name.toLowerCase().includes(query) || subscriber.deviceId.includes(subSearchQuery.trim())) {
+        matches.push(subscriber);
+        if (matches.length === 8) break;
+      }
+    }
+    return matches;
+  }, [agentSubs, subSearchQuery]);
+  const {
+    scrollRef: agentSubscribersTableRef,
+    handleScroll: handleAgentSubscribersTableScroll,
+    visibleRows: visibleAgentSubs,
+    topSpacerHeight: agentSubscribersTopSpacerHeight,
+    bottomSpacerHeight: agentSubscribersBottomSpacerHeight
+  } = useVirtualizedRows(agentSubs, 64, 650, 8, expandedSubscriberId ? Number.MAX_SAFE_INTEGER : 80);
+  const agentPendingRequests = useMemo(
+    () => pendingRequests.filter((request) =>
+      request.status === 'pending' &&
+      (request.agentId === currentAgent.id || request.agentName === currentAgent.name)
+    ),
+    [currentAgent.id, currentAgent.name, pendingRequests]
+  );
+
+  const handleCancelPendingRequest = async (request: PendingRenewalRequest) => {
+    const confirmed = await showConfirm(
+      `هل تريد إلغاء طلب ${request.subscriberName}؟`,
+      'تأكيد إلغاء الطلب'
+    );
+    if (!confirmed) return;
+
+    if (onDeleteRequest(request.id)) {
+      showAlert('تم إلغاء الطلب المعلق.', 'إلغاء الطلب', 'success');
+    } else {
+      showAlert('تعذر إلغاء الطلب؛ ربما تمت معالجته من الإدارة.', 'الطلب غير متاح', 'warning');
+    }
+  };
 
   const handleSubmitOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,6 +240,61 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
         </div>
       </div>
 
+      {/* Requests awaiting the main center's approval */}
+      <section className="bg-white dark:bg-slate-900 rounded-3xl border border-amber-200 dark:border-amber-900/60 shadow-xs overflow-hidden">
+        <div className="p-4 border-b border-amber-100 dark:border-amber-900/50 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">الطلبات المعلقة لدى الإدارة</h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">طلبات التجديد وبيع الأجهزة التي تنتظر الاعتماد</p>
+          </div>
+          <span className="shrink-0 px-3 py-1 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs font-black">
+            {agentPendingRequests.length}
+          </span>
+        </div>
+
+        {agentPendingRequests.length === 0 ? (
+          <div className="px-4 py-7 text-center text-xs font-semibold text-slate-400">لا توجد طلبات بانتظار الاعتماد</div>
+        ) : (
+          <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {agentPendingRequests.map((request) => {
+              const isDeviceSale = request.subscriberId.startsWith('new-sub-') || request.duration === '-';
+              return (
+                <article key={request.id} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className={`inline-flex px-2 py-1 rounded-full text-[10px] font-black ${
+                        isDeviceSale
+                          ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300'
+                          : 'bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-300'
+                      }`}>
+                        {isDeviceSale ? 'بيع جهاز جديد' : 'تجديد اشتراك'}
+                      </span>
+                      <h4 className="mt-2 font-extrabold text-sm text-slate-900 dark:text-slate-100">{request.subscriberName}</h4>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelPendingRequest(request)}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-900/70 text-[11px] font-bold transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      إلغاء الطلب
+                    </button>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
+                    <div><span className="text-slate-500 dark:text-slate-400">الهاتف: </span><span className="font-mono font-bold text-slate-800 dark:text-slate-200">{request.subscriberPhone || '—'}</span></div>
+                    <div><span className="text-slate-500 dark:text-slate-400">رقم الجهاز: </span><span className="font-mono font-bold text-slate-800 dark:text-slate-200">{request.deviceId || '—'}</span></div>
+                    <div><span className="text-slate-500 dark:text-slate-400">{isDeviceSale ? 'نوع البيع: ' : 'مدة الاشتراك: '}</span><span className="font-bold text-slate-800 dark:text-slate-200">{isDeviceSale ? 'جهاز جديد فقط' : request.duration}</span></div>
+                    <div><span className="text-slate-500 dark:text-slate-400">المبلغ: </span><span className="font-mono font-black text-slate-900 dark:text-slate-100">{(Number(request.amount) || 0).toLocaleString()} د.ع</span></div>
+                    <div className="col-span-2"><span className="text-slate-500 dark:text-slate-400">تاريخ الطلب: </span><span className="font-mono text-slate-700 dark:text-slate-300">{request.requestDate || '—'}</span></div>
+                    {request.notes && <div className="col-span-2 text-slate-600 dark:text-slate-300 break-words">{request.notes}</div>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* 4 Agent Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
@@ -227,7 +329,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
             {agentSubs.length} <span className="text-xs font-bold text-slate-400">مشترك</span>
           </div>
           <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            {agentSubs.filter((s) => s.status === 'active').length} فعال حالياً
+            {activeAgentSubsCount} فعال حالياً
           </div>
         </div>
       </div>
@@ -243,9 +345,13 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div
+          ref={agentSubscribersTableRef}
+          onScroll={handleAgentSubscribersTableScroll}
+          className="max-h-[70vh] overflow-auto"
+        >
           <table className="w-full text-right text-xs border-collapse">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold">
                 <th className="py-3 px-4">اسم المشترك</th>
                 <th className="py-3 px-3">رقم الجهاز</th>
@@ -265,7 +371,13 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                agentSubs.map((sub) => {
+                <>
+                {agentSubscribersTopSpacerHeight > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={8} style={{ height: agentSubscribersTopSpacerHeight, padding: 0, border: 0 }} />
+                  </tr>
+                )}
+                {visibleAgentSubs.map((sub) => {
                   const isExpanded = expandedSubscriberId === sub.id;
                   const statusLabel = sub.status === 'active'
                     ? 'فعال'
@@ -282,7 +394,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
 
                   return (
                     <React.Fragment key={sub.id}>
-                      <tr className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                      <tr className="h-16 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                         <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">{sub.name || '—'}</td>
                         <td className="py-3 px-3 font-mono">
                           <button
@@ -364,7 +476,13 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                       )}
                     </React.Fragment>
                   );
-                })
+                })}
+                {agentSubscribersBottomSpacerHeight > 0 && (
+                  <tr aria-hidden="true">
+                    <td colSpan={8} style={{ height: agentSubscribersBottomSpacerHeight, padding: 0, border: 0 }} />
+                  </tr>
+                )}
+                </>
               )}
             </tbody>
           </table>
@@ -411,9 +529,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                   {/* Autocomplete Suggestions Dropdown */}
                   {showSubSuggestions && subSearchQuery.trim().length > 0 && (
                     <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 max-h-44 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                      {agentSubs
-                        .filter((s) => s.name.toLowerCase().includes(subSearchQuery.toLowerCase()) || s.deviceId.includes(subSearchQuery))
-                        .map((s) => (
+                      {subSuggestions.map((s) => (
                           <button
                             key={s.id}
                             type="button"
@@ -431,7 +547,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                               {s.status === 'active' ? 'فعال' : 'منتهي'}
                             </span>
                           </button>
-                        ))}
+                      ))}
                     </div>
                   )}
                 </div>
@@ -447,8 +563,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                   <option value="1 شهر">1 شهر (سعر الوكيل: 22,000 د.ع)</option>
                   <option value="شهرين">شهرين (سعر الوكيل: 36,000 د.ع)</option>
                   <option value="3 أشهر">3 أشهر (سعر الوكيل: 54,000 د.ع)</option>
-                  <option value="6 أشهر">6 أشهر (سعر الوكيل: 100,000 د.ع)</option>
-                  <option value="سنة">سنة كاملة (سعر الوكيل: 190,000 د.ع)</option>
                 </select>
               </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ShoppingCart,
   Search,
@@ -16,6 +16,7 @@ import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
 import { SecurityActionModal } from './SecurityActionModal';
+import { useVirtualizedRows } from './useVirtualizedRows';
 
 interface SalesInvoicesViewProps {
   invoices: Invoice[];
@@ -38,7 +39,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
 
-  const filteredInvoices = invoices.filter((inv) => {
+  const filteredInvoices = useMemo(() => invoices.filter((inv) => {
     if (agentFilter !== 'all' && inv.agentId !== agentFilter) return false;
     if (paymentFilter !== 'all' && inv.paymentStatus !== paymentFilter) return false;
     if (searchTerm) {
@@ -51,11 +52,18 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
       );
     }
     return true;
-  });
+  }), [agentFilter, invoices, paymentFilter, searchTerm]);
 
-  const totalSalesSum = calculateTotalSales(invoices);
-  const totalPaidSum = invoices.reduce((s, i) => s + (i.paidAmount || 0), 0);
-  const totalRemainingDebt = invoices.reduce((s, i) => s + (i.remainingAmount || 0), 0);
+  const totalSalesSum = useMemo(() => calculateTotalSales(invoices), [invoices]);
+  const totalPaidSum = useMemo(() => invoices.reduce((s, i) => s + (i.paidAmount || 0), 0), [invoices]);
+  const totalRemainingDebt = useMemo(() => invoices.reduce((s, i) => s + (i.remainingAmount || 0), 0), [invoices]);
+  const {
+    scrollRef: invoicesTableRef,
+    handleScroll: handleInvoicesTableScroll,
+    visibleRows: visibleInvoices,
+    topSpacerHeight: invoicesTopSpacerHeight,
+    bottomSpacerHeight: invoicesBottomSpacerHeight
+  } = useVirtualizedRows(filteredInvoices, 64);
 
   return (
     <div className="space-y-6">
@@ -149,9 +157,13 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
 
       {/* Invoices Table */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+        <div
+          ref={invoicesTableRef}
+          onScroll={handleInvoicesTableScroll}
+          className="max-h-[70vh] overflow-auto"
+        >
           <table className="w-full text-right text-xs border-collapse">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
                 <th className="py-3 px-4">رقم الفاتورة</th>
                 <th className="py-3 px-4">المشترك / الجهاز</th>
@@ -165,8 +177,13 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredInvoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
+              {invoicesTopSpacerHeight > 0 && (
+                <tr aria-hidden="true">
+                  <td colSpan={9} style={{ height: invoicesTopSpacerHeight, padding: 0, border: 0 }} />
+                </tr>
+              )}
+              {visibleInvoices.map((inv) => (
+                <tr key={inv.id} className="h-16 hover:bg-slate-50/80 transition-colors">
                   <td className="py-3 px-4 font-mono font-bold text-sky-800">
                     {inv.invoiceNumber}
                   </td>
@@ -243,6 +260,11 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                   </td>
                 </tr>
               ))}
+              {invoicesBottomSpacerHeight > 0 && (
+                <tr aria-hidden="true">
+                  <td colSpan={9} style={{ height: invoicesBottomSpacerHeight, padding: 0, border: 0 }} />
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
