@@ -15,12 +15,16 @@ export interface SyncEventDetail {
   timestamp: number;
 }
 
+export const SYNC_INTERVAL_MS = 60_000;
+
 export class FirebaseSyncManager {
   private static instance: FirebaseSyncManager;
   private unsubscribeFirestore: (() => void) | null = null;
   private unsubscribeStatus: (() => void) | null = null;
   private isListening = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private periodicSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private isResyncing = false;
   private reconnectDelayMs = 1000;
   private generation = 0;
   private stateCallback: ((state: AppState) => void) | null = null;
@@ -67,6 +71,7 @@ export class FirebaseSyncManager {
       this.dispatchStatus(status);
     });
     this.startFirestoreListener(generation);
+    this.startPeriodicSync(generation);
 
     return () => {
       if (generation === this.generation) this.stopListening();
@@ -123,6 +128,27 @@ export class FirebaseSyncManager {
     }
   }
 
+  private startPeriodicSync(generation: number) {
+    this.clearPeriodicSyncTimer();
+    this.periodicSyncTimer = setInterval(() => {
+      if (!this.isListening || generation !== this.generation || this.isResyncing) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+      this.isResyncing = true;
+      void this.reconcile(generation)
+        .catch((error) => console.warn('[FirebaseSync] Periodic reconciliation failed:', error))
+        .finally(() => {
+          if (generation === this.generation) this.isResyncing = false;
+        });
+    }, SYNC_INTERVAL_MS);
+  }
+
+  private clearPeriodicSyncTimer() {
+    if (!this.periodicSyncTimer) return;
+    clearInterval(this.periodicSyncTimer);
+    this.periodicSyncTimer = null;
+  }
+
   private scheduleReconnect(generation: number) {
     if (!this.isListening || generation !== this.generation || this.reconnectTimer) return;
     const delay = this.reconnectDelayMs;
@@ -144,6 +170,8 @@ export class FirebaseSyncManager {
     this.generation += 1;
     this.stateCallback = null;
     this.clearReconnectTimer();
+    this.clearPeriodicSyncTimer();
+    this.isResyncing = false;
     this.unsubscribeFirestore?.();
     this.unsubscribeFirestore = null;
     this.unsubscribeStatus?.();
@@ -151,10 +179,15 @@ export class FirebaseSyncManager {
   }
 
   public async resync(): Promise<AppState | null> {
-    const remote = await firebaseService.fetchRemoteState();
-    if (!remote) return null;
+    return this.reconcile(this.generation);
+  }
+
+  private async reconcile(generation: number): Promise<AppState | null> {
+    const remote = await firebaseService.fetchRemoteState({ includeEmpty: true });
+    if (!remote || !this.isListening || generation !== this.generation) return null;
     const filtered = storageService.filterOutDeleted(remote);
     storageService.saveState(filtered);
+    this.dispatchState(filtered, 'remote_firestore');
     return filtered;
   }
 }
