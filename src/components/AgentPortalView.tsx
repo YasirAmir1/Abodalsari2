@@ -41,6 +41,7 @@ interface AgentPortalViewProps {
   onOpenWhatsApp: (sub: Subscriber) => void;
   onUpdateBranding: (agentId: string, branding: Partial<Agent>) => void;
   onSelectDeviceQr?: (deviceId: string, subscriberName?: string, agentName?: string) => void;
+  onDeleteRequest?: (requestId: string) => void;
 }
 
 export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
@@ -52,7 +53,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   onSubmitRenewalOrder,
   onOpenWhatsApp,
   onUpdateBranding,
-  onSelectDeviceQr
+  onSelectDeviceQr,
+  onDeleteRequest
 }) => {
   const { showAlert } = useAppDialogs();
   const [showOrderModal, setShowOrderModal] = useState(false);
@@ -566,37 +568,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
           </div>
         </div>
       )}
-      {/* Agent's Sent Requests */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-        <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2 mb-4">
-          <Send className="w-5 h-5 text-sky-600" />
-          الطلبات المرسلة للمركز ({pendingRequests.filter(r => r.agentId === currentAgent.id).length})
-        </h3>
-        {pendingRequests.filter(r => r.agentId === currentAgent.id).length === 0 ? (
-          <div className="text-center py-6 text-slate-400 text-xs">لا توجد طلبات معلقة حالياً.</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {pendingRequests
-              .filter(r => r.agentId === currentAgent.id)
-              .map((req) => (
-                <div key={req.id} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
-                  <div className="flex justify-between font-bold">
-                    <span>{req.subscriberName}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                      {req.status === 'pending' ? 'قيد الانتظار' : req.status}
-                    </span>
-                  </div>
-                  <div className="text-slate-500 font-mono text-[10px]">{req.deviceId}</div>
-                  <div className="flex justify-between font-semibold text-slate-700 dark:text-slate-300">
-                    <span>{req.duration}</span>
-                    <span>{req.amount.toLocaleString()} د.ع</span>
-                  </div>
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
-
     </div>
   );
 };
