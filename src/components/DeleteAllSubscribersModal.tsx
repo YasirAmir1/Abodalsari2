@@ -52,10 +52,10 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in"
+      className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-start sm:items-center justify-center overflow-y-auto p-2 sm:p-4 z-50 animate-in fade-in"
       dir="rtl"
     >
-      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-red-200 dark:border-red-900/60 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full my-auto p-4 sm:p-6 shadow-2xl border border-red-200 dark:border-red-900/60 max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-y-auto overscroll-contain">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-red-100 dark:border-red-950">
           <div className="flex items-center gap-3 text-red-700 dark:text-red-400">
@@ -81,7 +81,7 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
         </div>
 
         {/* Impact Warning Banner */}
-        <div className="mt-4 p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/80 rounded-2xl space-y-2.5">
+        <div className="mt-3 sm:mt-4 p-3 sm:p-4 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/80 rounded-2xl space-y-2 sm:space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="font-bold text-xs text-red-900 dark:text-red-200 flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400" />
@@ -109,7 +109,7 @@ export const DeleteAllSubscribersModal: React.FC<DeleteAllSubscribersModalProps>
         </div>
 
         {/* Confirmation Form */}
-        <form onSubmit={handleConfirm} className="mt-5 space-y-4 text-xs">
+        <form onSubmit={handleConfirm} className="mt-4 sm:mt-5 space-y-3 sm:space-y-4 text-xs">
           {/* Step 1 Checkbox */}
           <label className={`flex items-start gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}>
             <input
