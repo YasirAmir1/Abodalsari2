@@ -1502,6 +1502,7 @@ export default function App() {
               subscribers={state.subscribers}
               products={state.products}
               pricing={state.pricing}
+              pendingRequests={state.pendingRequests}
               onSubmitRenewalOrder={(order) => {
                 const newReq: PendingRenewalRequest = {
                   ...order,
