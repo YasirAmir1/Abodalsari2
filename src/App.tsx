@@ -1041,9 +1041,14 @@ export default function App() {
   };
 
   const handleRejectPendingRequest = (requestId: string) => {
+    const req = state.pendingRequests.find((r) => r.id === requestId);
     setState((prev) => ({
       ...prev,
-      pendingRequests: prev.pendingRequests.filter((r) => r.id !== requestId)
+      pendingRequests: prev.pendingRequests.filter((r) => r.id !== requestId),
+      // If it was a 'new-sub-' ID, also remove it from subscribers if it was added as 'inactive'
+      subscribers: req?.subscriberId.startsWith('new-sub-') 
+        ? prev.subscribers.filter((s) => s.id !== req.subscriberId)
+        : prev.subscribers
     }));
   };
 
