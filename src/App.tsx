@@ -1016,23 +1016,17 @@ export default function App() {
 
     const isNewDeviceSale = req.subscriberId.startsWith('new-sub-') || req.duration === '-';
     const sDate = overrides?.startDate || new Date().toISOString().split('T')[0];
-    const requestedDuration = overrides?.duration || req.duration;
+    const requestedDuration = overrides?.duration || (req.duration && req.duration !== '-' ? req.duration : '1 شهر');
     const supportedDurations: SubscriptionDuration[] = ['1 شهر', 'شهرين', '3 أشهر'];
-    const dur = isNewDeviceSale
-      ? '-'
-      : supportedDurations.includes(requestedDuration) ? requestedDuration : '1 شهر';
+    const dur = supportedDurations.includes(requestedDuration) ? requestedDuration : '1 شهر';
     const amt = overrides?.amount !== undefined ? overrides.amount : req.amount;
-    const stat = isNewDeviceSale ? 'inactive' : overrides?.status || 'active';
+    const stat = overrides?.status || 'active';
     const payStat = overrides?.paymentStatus || 'paid';
 
     const expDate = new Date(sDate);
-    const endDate = isNewDeviceSale
-      ? '-'
-      : (() => {
-          const months = dur === 'شهرين' ? 2 : dur === '3 أشهر' ? 3 : 1;
-          expDate.setMonth(expDate.getMonth() + months);
-          return expDate.toISOString().split('T')[0];
-        })();
+    const months = dur === 'شهرين' ? 2 : dur === '3 أشهر' ? 3 : 1;
+    expDate.setMonth(expDate.getMonth() + months);
+    const endDate = expDate.toISOString().split('T')[0];
 
     if (isNewDeviceSale) {
       handleAddSubscriber(
