@@ -22,6 +22,7 @@ import {
 import { calculateAgentSales, calculateAgentDebt } from '../utils/calculationUtils';
 import { Agent, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
+import { SecurityActionModal } from './SecurityActionModal';
 
 interface AgentsViewProps {
   agents: Agent[];
@@ -55,6 +56,7 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
   const [settlingAgent, setSettlingAgent] = useState<Agent | null>(null);
   const [settleAmount, setSettleAmount] = useState<number>(0);
   const [settleNote, setSettleNote] = useState('');
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
 
   const [brandingAgent, setBrandingAgent] = useState<Agent | null>(null);
   const [customShopName, setCustomShopName] = useState('');
@@ -78,7 +80,13 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
   const handleConfirmSettle = (e: React.FormEvent) => {
     e.preventDefault();
     if (!settlingAgent || settleAmount <= 0) return;
+    setShowSecurityModal(true);
+  };
+
+  const handleExecuteSettle = () => {
+    if (!settlingAgent || settleAmount <= 0) return;
     onSettleDebt(settlingAgent.id, settleAmount, settleNote);
+    setShowSecurityModal(false);
     setSettlingAgent(null);
   };
 
@@ -636,6 +644,27 @@ export const AgentsView: React.FC<AgentsViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* High-Security Warning & Final Administrative Action Modal for Agent Debt Settlement */}
+      {showSecurityModal && settlingAgent && (
+        <SecurityActionModal
+          isOpen={showSecurityModal}
+          actionType="SETTLE_AGENT_DEBT"
+          actionName={`تسديد وقبض ديون الوكيل (${settlingAgent.name})`}
+          targetDescription={`أنت على وشك تأكيد تسديد وقبض مالي بمبلغ ${settleAmount.toLocaleString()} د.ع يخصم من ديون الوكيل (${settlingAgent.name}) ويثبت نهائياً في سجلات المركز الرئيسي.`}
+          targetId={settlingAgent.id}
+          details={[
+            { label: 'اسم الوكيل', value: settlingAgent.name },
+            { label: 'رمز الوكيل', value: settlingAgent.code },
+            { label: 'مبلغ التسديد المقبوض', value: `${settleAmount.toLocaleString()} د.ع`, isHighlight: true },
+            { label: 'الدين المتبقي بعد التسديد', value: `${Math.max(0, settlingAgent.totalDebt - settleAmount).toLocaleString()} د.ع` },
+            { label: 'رقم / ملاحظة الوصل', value: settleNote || 'بدون ملاحظة' }
+          ]}
+          confirmButtonText="تأكيد وقبض تسديد دين الوكيل"
+          onConfirm={handleExecuteSettle}
+          onClose={() => setShowSecurityModal(false)}
+        />
       )}
     </div>
   );

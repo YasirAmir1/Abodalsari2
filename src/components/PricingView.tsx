@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Agent, PricingRow } from '../types';
 import { useAppDialogs } from './AppDialogProvider';
+import { SecurityActionModal } from './SecurityActionModal';
 
 interface PricingViewProps {
   pricing: PricingRow[];
@@ -26,6 +27,7 @@ interface PricingViewProps {
 export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSavePricing, onUpdateAgent }) => {
   const { showAlert } = useAppDialogs();
   const [rows, setRows] = useState<PricingRow[]>(pricing);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [editingAgentCredentials, setEditingAgentCredentials] = useState<string | null>(null);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
@@ -113,8 +115,13 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSav
   };
 
   const handleSaveAll = () => {
+    setShowSecurityModal(true);
+  };
+
+  const handleConfirmSavePricing = () => {
     onSavePricing(rows);
-    showAlert('تم حفظ وتثبيت أسعار الوكلاء والمركز بنجاح!', 'تثبيت الأسعار', 'success');
+    showAlert('تم حفظ وتثبيت أسعار الوكلاء والمركز بنجاح في قاعدة البيانات!', 'تثبيت الأسعار', 'success');
+    setShowSecurityModal(false);
   };
 
   const centerRow = rows.find((r) => r.isReference) || rows[0];
@@ -412,6 +419,25 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSav
           </div>
         </div>
       </div>
+
+      {/* High-Security Warning & Final Administrative Action Modal for Price Fixing */}
+      {showSecurityModal && (
+        <SecurityActionModal
+          isOpen={showSecurityModal}
+          actionType="SAVE_PRICING"
+          actionName="حفظ وتثبيت الأسعار لكافة الوكلاء والمركز الرئيسي"
+          targetDescription="أنت على وشك تثبيت جدول الأسعار الجديد رسمياً واعتماده لكافة الوكلاء والمركز الرئيسي. سيتم إلزام كافة عمليات البيع وتجديد الاشتراكات القادمة عبر الشبكة بالأسعار المحدثة من تاريخ التنفيذ."
+          details={[
+            { label: 'إجمالي جهات البيع المشمولة', value: `${rows.length} جهة (المركز الرئيسي + ${rows.length - 1} وكيل)` },
+            { label: 'سعر الاشتراك الشهري (المرجع)', value: `${rows.find(r => r.isReference)?.oneMonthPrice?.toLocaleString() || 25000} د.ع`, isHighlight: true },
+            { label: 'سعر الجهاز الجديد (المرجع)', value: `${rows.find(r => r.isReference)?.newDevicePrice?.toLocaleString() || 50000} د.ع` },
+            { label: 'تاريخ وساعة التثبيت الإداري', value: new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }
+          ]}
+          confirmButtonText="تأكيد تثبيت الأسعار لكافة الوكلاء والمركز"
+          onConfirm={handleConfirmSavePricing}
+          onClose={() => setShowSecurityModal(false)}
+        />
+      )}
     </div>
   );
 };

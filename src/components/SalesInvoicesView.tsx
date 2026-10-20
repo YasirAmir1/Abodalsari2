@@ -15,6 +15,7 @@ import { calculateTotalSales } from '../utils/calculationUtils';
 import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
+import { SecurityActionModal } from './SecurityActionModal';
 
 interface SalesInvoicesViewProps {
   invoices: Invoice[];
@@ -35,6 +36,7 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState('all');
   const [paymentFilter, setPaymentFilter] = useState('all');
+  const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
 
   const filteredInvoices = invoices.filter((inv) => {
     if (agentFilter !== 'all' && inv.agentId !== agentFilter) return false;
@@ -225,19 +227,15 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
                     <div className="flex items-center justify-center gap-1">
                       <button
                         onClick={() => onOpenReceipt(inv)}
-                        className="p-1.5 rounded-lg text-sky-700 hover:bg-sky-50 transition-colors"
+                        className="p-1.5 rounded-lg text-sky-700 hover:bg-sky-50 transition-colors cursor-pointer"
                         title="معاينة وطباعة وصل القبض"
                       >
                         <Printer className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={async () => {
-                          if (await showConfirm('هل أنت متأكد من حذف هذه الفاتورة؟', 'حذف الفاتورة')) {
-                            onDeleteInvoice(inv.id);
-                          }
-                        }}
-                        className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
-                        title="حذف الفاتورة"
+                        onClick={() => setDeletingInvoice(inv)}
+                        className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                        title="حذف الفاتورة نهائياً (إجراء أمني)"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -249,6 +247,32 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* High-Security Warning & Final Administrative Action Modal for Invoice Deletion */}
+      {deletingInvoice && (
+        <SecurityActionModal
+          isOpen={!!deletingInvoice}
+          actionType="DELETE_INVOICE"
+          actionName={`حذف فاتورة المبيعات (${deletingInvoice.invoiceNumber})`}
+          targetDescription={`أنت على وشك حذف الفاتورة رقم ${deletingInvoice.invoiceNumber} الصادرة للمشترك (${deletingInvoice.subscriberName}) نهائياً من سجلات النظام المالية والفوترة، وتعديل المبالغ والديون المحتسبة المرتبطة بها.`}
+          targetId={deletingInvoice.id}
+          details={[
+            { label: 'رقم الفاتورة', value: deletingInvoice.invoiceNumber },
+            { label: 'اسم المشترك', value: deletingInvoice.subscriberName },
+            { label: 'معرف الجهاز', value: deletingInvoice.deviceId },
+            { label: 'الوكيل المسجل', value: deletingInvoice.agentName },
+            { label: 'قيمة الفاتورة', value: `${deletingInvoice.amount.toLocaleString()} د.ع`, isHighlight: true },
+            { label: 'حالة السداد', value: deletingInvoice.paymentStatus === 'paid' ? 'مسدد نقداً' : 'دين قائم' },
+            { label: 'تاريخ الفاتورة', value: deletingInvoice.date }
+          ]}
+          confirmButtonText="تأكيد حذف الفاتورة نهائياً"
+          onConfirm={() => {
+            onDeleteInvoice(deletingInvoice.id);
+            setDeletingInvoice(null);
+          }}
+          onClose={() => setDeletingInvoice(null)}
+        />
+      )}
     </div>
   );
 };

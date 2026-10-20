@@ -16,6 +16,7 @@ import {
 import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
+import { SecurityActionModal } from './SecurityActionModal';
 
 interface DebtsViewProps {
   agents: Agent[];
@@ -46,6 +47,15 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const [debtSearchTerm, setDebtSearchTerm] = useState<string>('');
   const [subscriberToPay, setSubscriberToPay] = useState<Subscriber | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [securityModalConfig, setSecurityModalConfig] = useState<{
+    isOpen: boolean;
+    actionName: string;
+    targetDescription: string;
+    targetId?: string;
+    details: Array<{ label: string; value: string | number; isHighlight?: boolean }>;
+    confirmButtonText: string;
+    onExecute: () => void;
+  } | null>(null);
   const paymentSubscriber = subscriberToPay
     ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || null
     : null;
@@ -390,13 +400,24 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                           {hasDebt ? (
                             <div className="flex items-center justify-center gap-2">
                               <button
-                                onClick={async () => {
-                                  if (await showConfirm(`هل أنت متأكد من حذف/تصفير دين الوكيل ${ag.name} بالكامل؟`, 'تصفير دين الوكيل')) {
-                                    onSettleAgentDebt(ag.id, ag.totalDebt);
-                                  }
+                                onClick={() => {
+                                  setSecurityModalConfig({
+                                    isOpen: true,
+                                    actionName: `تصفير وحذف ديون الوكيل (${ag.name})`,
+                                    targetDescription: `أنت على وشك تصفير وحذف كافة الديون المسجلة على الوكيل (${ag.name}) بالكامل بمبلغ ${ag.totalDebt.toLocaleString()} د.ع، وتحويل رصيد ديونه إلى صفر. هذا الإجراء الإداري نهائي ولا يمكن التراجع عنه بعد تنفيذه.`,
+                                    targetId: ag.id,
+                                    details: [
+                                      { label: 'اسم الوكيل', value: ag.name },
+                                      { label: 'رمز الوكيل', value: ag.code },
+                                      { label: 'المنطقة', value: ag.region },
+                                      { label: 'إجمالي الدين المراد تصفيره', value: `${ag.totalDebt.toLocaleString()} د.ع`, isHighlight: true }
+                                    ],
+                                    confirmButtonText: 'تأكيد تصفير دين الوكيل نهائياً',
+                                    onExecute: () => onSettleAgentDebt(ag.id, ag.totalDebt)
+                                  });
                                 }}
                                 className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                                title="حذف/تصفير الدين بالكامل"
+                                title="حذف/تصفير الدين بالكامل (إجراء أمني عالي الخطورة)"
                               >
                                 حذف الدين
                               </button>
@@ -409,13 +430,25 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <button
-                            onClick={async () => {
-                              if (await showConfirm(`تحذير: هل أنت متأكد من تصفير (المبيعات، الديون، والمبالغ المسددة) للوكيل ${ag.name}؟ هذا الإجراء نهائي.`, 'تصفير سجلات الوكيل')) {
-                                onResetAgentData(ag.id);
-                              }
+                            onClick={() => {
+                              setSecurityModalConfig({
+                                isOpen: true,
+                                actionName: `تصفير شامل لسجلات ومبيعات الوكيل (${ag.name})`,
+                                targetDescription: `تحذير أمني عالي الخطورة: سيتم تصفير ومسح كافة المبيعات والديون والتسديدات المسجلة للوكيل (${ag.name}) نهائياً لتبدأ حساباته ومبيعاته من الصفر. هذا الإجراء الإداري نهائي لا رجعة فيه.`,
+                                targetId: ag.id,
+                                details: [
+                                  { label: 'اسم الوكيل', value: ag.name },
+                                  { label: 'رمز الوكيل', value: ag.code },
+                                  { label: 'المبيعات التي ستصفر', value: `${ag.totalSales.toLocaleString()} د.ع`, isHighlight: true },
+                                  { label: 'الديون التي ستصفر', value: `${ag.totalDebt.toLocaleString()} د.ع`, isHighlight: true },
+                                  { label: 'المبالغ المسددة السابقة', value: `${ag.totalPaid.toLocaleString()} د.ع` }
+                                ],
+                                confirmButtonText: 'تأكيد التصفير الشامل للوكيل',
+                                onExecute: () => onResetAgentData(ag.id)
+                              });
                             }}
                             className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1 mx-auto"
-                            title="تصفير كافة المبيعات والديون للوكيل"
+                            title="تصفير كافة المبيعات والديون للوكيل (إجراء أمني عالي الخطورة)"
                           >
                             <span>تصفير</span>
                           </button>
@@ -593,6 +626,24 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* High-Security Warning & Final Administrative Action Modal for Debt Zeroing */}
+      {securityModalConfig && (
+        <SecurityActionModal
+          isOpen={securityModalConfig.isOpen}
+          actionType="RESET_DEBT"
+          actionName={securityModalConfig.actionName}
+          targetDescription={securityModalConfig.targetDescription}
+          targetId={securityModalConfig.targetId}
+          details={securityModalConfig.details}
+          confirmButtonText={securityModalConfig.confirmButtonText}
+          onConfirm={() => {
+            securityModalConfig.onExecute();
+            setSecurityModalConfig(null);
+          }}
+          onClose={() => setSecurityModalConfig(null)}
+        />
       )}
     </div>
   );
