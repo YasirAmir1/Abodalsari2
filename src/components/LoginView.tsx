@@ -69,7 +69,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
       }
 
       if (!matchedUser && (cleanUser === 'admin' || cleanUser === 'abodsari' || cleanUser === 'المركز الرئيسي')) {
-        if (cleanPass === 'admin123' || cleanPass === '123' || cleanPass === '123456') {
+        if (cleanPass === 'admin123' || cleanPass === '123' || cleanPass === '123456' || (cleanUser === 'abodsari' && cleanPass === 'sariabod')) {
           matchedUser = users.find((u) => u.role === 'مدير رئيسي') || {
             id: 'user-admin',
             username: 'admin',

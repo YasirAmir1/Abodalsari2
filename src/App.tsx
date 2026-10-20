@@ -155,12 +155,10 @@ export default function App() {
     try {
       const isOnline = typeof navigator === 'undefined' || navigator.onLine;
       let remote: AppState | null = null;
+      
       if (isOnline) {
-        try {
-          remote = await firebaseService.fetchFreshRemoteState();
-        } catch (netErr) {
-          console.warn('Network or Firestore fetch exception caught during refresh:', netErr);
-        }
+        // Force server fetch with a longer timeout to be robust
+        remote = await firebaseService.fetchFreshRemoteState();
       }
 
       if (!isMountedRef.current) return;
@@ -177,36 +175,24 @@ export default function App() {
         setState(filtered);
         storageService.saveState(filtered);
         setIsRemoteReady(true);
-        setSyncToast('تم تحديث البيانات ومزامنتها بنجاح من الخادم 🔄');
+        setSyncToast('تم تحديث ومزامنة البيانات بنجاح مع الخادم 🔄');
         soundService.playSuccess();
         if (merged) {
           void firebaseService.saveRemoteState(filtered, true).catch((error) => {
-            console.error('Could not restore locally pending subscribers to Firestore:', error);
+            console.error('Sync reconciliation error:', error);
           });
         }
       } else {
-        const local = storageService.loadState();
-        if (local) {
-          stateRef.current = local;
-          setState(local);
-        }
-        if (!isOnline) {
-          setSyncToast('أنت غير متصل بالإنترنت. يتم عرض البيانات المحلية الحالية.');
+        // If fetch failed or returned null while online, be honest about it
+        if (isOnline) {
+          setSyncToast('تعذر الاتصال بالخادم لجلب بيانات جديدة. يرجى المحاولة لاحقاً.');
         } else {
-          setSyncToast('تم تحديث ومزامنة البيانات الحالية بنجاح.');
-          soundService.playSuccess();
+          setSyncToast('أنت غير متصل بالإنترنت. يتم عرض البيانات المحلية.');
         }
       }
     } catch (e: any) {
-      console.error('Detailed Refresh & Sync error log:', e);
-      if (isMountedRef.current) {
-        const local = storageService.loadState();
-        if (local) {
-          stateRef.current = local;
-          setState(local);
-        }
-        setSyncToast('تم تحديث البيانات المحلية بنجاح.');
-      }
+      console.error('Refresh sync error:', e);
+      setSyncToast('حدث خطأ أثناء مزامنة البيانات.');
     } finally {
       if (isMountedRef.current) {
         setIsRefreshing(false);
