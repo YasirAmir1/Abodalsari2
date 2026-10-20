@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Tv,
   Users,
@@ -54,7 +54,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
 }) => {
   const { showAlert } = useAppDialogs();
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [orderSentToast, setOrderSentToast] = useState(false);
   const [expandedSubscriberId, setExpandedSubscriberId] = useState<string | null>(null);
 
   // Order form state
@@ -102,8 +101,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
     setSelectedSubId('');
     setSubSearchQuery('');
     setOrderNotes('');
-    setOrderSentToast(true);
-    setTimeout(() => setOrderSentToast(false), 4000);
+    showAlert('تم إرسال طلب التجديد بنجاح إلى المركز الرئيسي مع إشعار صوتي فوري!', 'تأكيد إرسال الطلب', 'success');
   };
 
   return (
@@ -443,14 +441,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
               </div>
             </form>
           </div>
-        </div>
-      )}
-
-      {/* Success Sent Toast */}
-      {orderSentToast && (
-        <div className="fixed bottom-6 left-6 bg-sky-900 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-bold animate-in fade-in z-50 border border-sky-400" dir="rtl">
-          <CheckCircle className="w-5 h-5 text-amber-400" />
-          <span>تم إرسال طلب التجديد بنجاح إلى المركز الرئيسي مع إشعار صوتي فوري!</span>
         </div>
       )}
     </div>

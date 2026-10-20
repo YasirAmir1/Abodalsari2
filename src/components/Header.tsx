@@ -92,16 +92,17 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* Refresh Data */}
+        {/* Refresh Data Button */}
         <button
           onClick={onRefresh}
           disabled={isRefreshing}
-          className={`w-9 h-9 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors shadow-xs cursor-pointer ${
-            isRefreshing ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+          className={`h-9 px-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-xs cursor-pointer ${
+            isRefreshing ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'
           }`}
           title="تحديث البيانات ومزامنتها"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-sky-600 dark:text-sky-400' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-600 dark:text-sky-400' : 'text-slate-600 dark:text-slate-300'}`} />
+          <span className="hidden sm:inline">{isRefreshing ? 'جاري التحديث...' : 'تحديث البيانات'}</span>
         </button>
 
         {/* Logout Button */}

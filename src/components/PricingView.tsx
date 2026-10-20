@@ -14,6 +14,7 @@ import {
   Edit2
 } from 'lucide-react';
 import { Agent, PricingRow } from '../types';
+import { useAppDialogs } from './AppDialogProvider';
 
 interface PricingViewProps {
   pricing: PricingRow[];
@@ -23,8 +24,8 @@ interface PricingViewProps {
 }
 
 export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSavePricing, onUpdateAgent }) => {
+  const { showAlert } = useAppDialogs();
   const [rows, setRows] = useState<PricingRow[]>(pricing);
-  const [showSavedToast, setShowSavedToast] = useState(false);
   const [editingAgentCredentials, setEditingAgentCredentials] = useState<string | null>(null);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
@@ -113,8 +114,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSav
 
   const handleSaveAll = () => {
     onSavePricing(rows);
-    setShowSavedToast(true);
-    setTimeout(() => setShowSavedToast(false), 3000);
+    showAlert('تم حفظ وتثبيت أسعار الوكلاء والمركز بنجاح!', 'تثبيت الأسعار', 'success');
   };
 
   const centerRow = rows.find((r) => r.isReference) || rows[0];
@@ -412,14 +412,6 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSav
           </div>
         </div>
       </div>
-
-      {/* Success Toast */}
-      {showSavedToast && (
-        <div className="fixed bottom-6 left-6 bg-emerald-600 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-xs font-bold animate-in fade-in z-50">
-          <CheckCircle2 className="w-4 h-4" />
-          <span>تم حفظ وتثبيت أسعار الوكلاء والمركز بنجاح!</span>
-        </div>
-      )}
     </div>
   );
 };
