@@ -32,32 +32,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
     setIsLoading(true);
 
     try {
-      // 1. Full data synchronization from database to get latest state & credentials
-      const remote = await firebaseService.fetchRemoteState();
-      let currentUsers = users;
-      let currentAgents = agents;
-      if (remote) {
-        if (remote.users) currentUsers = remote.users;
-        if (remote.agents) currentAgents = remote.agents;
-      }
-
       let matchedUser: SystemUser | null = null;
 
-      // Check in System Users
-      const foundSysUser = currentUsers.find(
+      // 1. Check local users and agents immediately (instant login)
+      const foundSysUser = users.find(
         (u) => u.username.toLowerCase() === cleanUser || u.displayName.toLowerCase().includes(cleanUser)
       );
 
-      if (foundSysUser) {
-        // Admin / Staff user authentication
-        if (cleanPass.length >= 3) {
-          matchedUser = foundSysUser;
-        }
+      if (foundSysUser && cleanPass.length >= 3) {
+        matchedUser = foundSysUser;
       }
 
-      // Check in Agents if not found
       if (!matchedUser) {
-        const foundAgent = currentAgents.find(
+        const foundAgent = agents.find(
           (ag) =>
             (ag.username && ag.username.toLowerCase() === cleanUser) ||
             ag.name.toLowerCase().includes(cleanUser) ||
@@ -81,10 +68,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
         }
       }
 
-      // Master Admin fallback check
       if (!matchedUser && (cleanUser === 'admin' || cleanUser === 'abodsari' || cleanUser === 'المركز الرئيسي')) {
         if (cleanPass === 'admin123' || cleanPass === '123' || cleanPass === '123456') {
-          matchedUser = currentUsers.find((u) => u.role === 'مدير رئيسي') || {
+          matchedUser = users.find((u) => u.role === 'مدير رئيسي') || {
             id: 'user-admin',
             username: 'admin',
             displayName: 'المركز الرئيسي (الأدمن)',
@@ -96,13 +82,68 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
       }
 
       if (matchedUser) {
+        setIsLoading(false);
+        onLogin(matchedUser);
+        return;
+      }
+
+      // 2. If not found locally, try a quick remote fetch with a short 2-second timeout
+      let remote: AppState | null = null;
+      try {
+        remote = await Promise.race([
+          firebaseService.fetchRemoteState(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
+        ]);
+      } catch {}
+
+      let currentUsers = users;
+      let currentAgents = agents;
+      if (remote) {
+        if (remote.users) currentUsers = remote.users;
+        if (remote.agents) currentAgents = remote.agents;
+      }
+
+      const foundSysUserRemote = currentUsers.find(
+        (u) => u.username.toLowerCase() === cleanUser || u.displayName.toLowerCase().includes(cleanUser)
+      );
+
+      if (foundSysUserRemote && cleanPass.length >= 3) {
+        matchedUser = foundSysUserRemote;
+      }
+
+      if (!matchedUser) {
+        const foundAgentRemote = currentAgents.find(
+          (ag) =>
+            (ag.username && ag.username.toLowerCase() === cleanUser) ||
+            ag.name.toLowerCase().includes(cleanUser) ||
+            ag.code.toLowerCase() === cleanUser
+        );
+
+        if (foundAgentRemote) {
+          const agentPass = foundAgentRemote.password || '123';
+          if (cleanPass === agentPass || cleanPass === '123' || cleanPass === '123456' || cleanPass.length >= 3) {
+            matchedUser = {
+              id: `user-${foundAgentRemote.id}`,
+              username: foundAgentRemote.username || foundAgentRemote.code,
+              displayName: foundAgentRemote.name,
+              role: 'وكيل معتمد',
+              agentId: foundAgentRemote.id,
+              agentCode: foundAgentRemote.code,
+              passwordMasked: '••••••••',
+              createdAt: new Date().toISOString().split('T')[0]
+            };
+          }
+        }
+      }
+
+      if (matchedUser) {
         onLogin(matchedUser, remote || undefined);
       } else {
         setError('اسم المستخدم أو كلمة المرور غير صحيحة. يرجى التحقق من البيانات والمحاولة مرة أخرى.');
       }
     } catch (err) {
-      console.error('Login sync error:', err);
-      setError('تعذر الاتصال بقاعدة البيانات للتحقق من بيانات الدخول. يرجى التحقق من الاتصال بالإنترنت.');
+      console.error('Login error:', err);
+      setError('اسم المستخدم أو كلمة المرور غير صحيحة أو تعذر الاتصال.');
     } finally {
       setIsLoading(false);
     }

@@ -68,7 +68,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const [newSubName, setNewSubName] = useState('');
   const [newSubPhone, setNewSubPhone] = useState('');
   const [newDeviceId, setNewDeviceId] = useState('');
-  const [newSubDuration, setNewSubDuration] = useState<SubscriptionDuration>('1 شهر');
   const [newSubNotes, setNewSubNotes] = useState('');
 
   // Agent's subscribers
@@ -118,7 +117,11 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
       showAlert('يرجى إدخال اسم المشترك الجديد', 'خطأ في البيانات');
       return;
     }
-    const price = getPriceByDuration(currentAgent.id, newSubDuration, pricing);
+    const agentPricing = pricing.find((row) => row.agentId === currentAgent.id)
+      || pricing.find((row) => row.isReference)
+      || pricing[0];
+    const devicePrice = agentPricing?.newDevicePrice ?? 50000;
+
     const rawDev = (newDeviceId || '').trim();
     const finalDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : `00${Math.floor(100000 + Math.random() * 900000)}`;
 
@@ -129,8 +132,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
       subscriberPhone: newSubPhone,
       agentId: currentAgent.id,
       agentName: currentAgent.name,
-      duration: newSubDuration,
-      amount: price,
+      duration: '-',
+      amount: devicePrice,
       requestDate: new Date().toISOString().split('T')[0],
       notes: `طلب بيع وتسجيل جهاز جديد: ${newSubNotes}`
     });
@@ -537,20 +540,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">باقة الاشتراك الأولى</label>
-                <select
-                  value={newSubDuration}
-                  onChange={(e) => setNewSubDuration(e.target.value as SubscriptionDuration)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
-                >
-                  <option value="1 شهر">1 شهر (سعر الوكيل: 22,000 د.ع)</option>
-                  <option value="شهرين">شهرين (سعر الوكيل: 36,000 د.ع)</option>
-                  <option value="3 أشهر">3 أشهر (سعر الوكيل: 54,000 د.ع)</option>
-                  <option value="6 أشهر">6 أشهر (سعر الوكيل: 100,000 د.ع)</option>
-                  <option value="سنة">سنة كاملة (سعر الوكيل: 190,000 د.ع)</option>
-                </select>
-              </div>
+
 
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">ملاحظة إضافية للمركز</label>
