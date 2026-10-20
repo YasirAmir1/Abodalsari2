@@ -553,7 +553,7 @@ export default function App() {
     if (isSale) {
       registeredInvoice = {
         id: `inv-${Date.now()}`,
-        invoiceNumber: `INV-2026-${String(currentState.invoices.length + 1).padStart(3, '0')}`,
+        invoiceNumber: `INV-${Date.now()}`,
         subscriberId: newSub.id,
         subscriberName: newSub.name,
         deviceId: newSub.deviceId,
@@ -896,7 +896,7 @@ export default function App() {
 
     const newInvoice: Invoice = {
       id: `inv-${Date.now()}`,
-      invoiceNumber: `INV-${new Date().getFullYear()}-${String(currentState.invoices.length + 1).padStart(3, '0')}`,
+      invoiceNumber: `INV-${Date.now()}`,
       subscriberId: finalSubscriber.id,
       subscriberName: finalSubscriber.name,
       deviceId: finalSubscriber.deviceId,
