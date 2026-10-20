@@ -156,7 +156,7 @@ export default function App() {
     try {
       let remote: AppState | null = null;
       try {
-        remote = await firebaseService.fetchRemoteState();
+        remote = await firebaseService.fetchRemoteState({ includeEmpty: true });
       } catch (netErr) {
         console.warn('Network or Firestore fetch exception caught during refresh:', netErr);
       }

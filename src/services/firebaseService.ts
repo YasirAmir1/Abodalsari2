@@ -334,7 +334,7 @@ export const firebaseService = {
     return () => broadcastChannel.removeEventListener('message', handler);
   },
 
-  async fetchRemoteState(): Promise<AppState | null> {
+  async fetchRemoteState(options: { includeEmpty?: boolean } = {}): Promise<AppState | null> {
     if (activeRemoteSubscriptions > 0) {
       if (!remoteStreamReady) {
         updateSyncStatus('syncing');
@@ -343,7 +343,10 @@ export const firebaseService = {
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000))
         ]);
       }
-      return tenantHasRemoteData && remoteState ? sanitize(remoteState) : null;
+      // An empty tenant is a valid result for the manual refresh action, while
+      // login retains its existing fallback to local credentials and data.
+      if (!remoteStreamReady || (!tenantHasRemoteData && !options.includeEmpty)) return null;
+      return sanitize(remoteState || emptyState());
     }
 
     // Login happens before the authenticated app session starts its long-lived
@@ -366,7 +369,11 @@ export const firebaseService = {
         (state, source) => {
           if (source === 'remote_firestore') finish(state);
         },
-        () => finish(tenantHasRemoteData && remoteState ? remoteState : null),
+        () => finish(
+          remoteStreamReady && (tenantHasRemoteData || options.includeEmpty)
+            ? remoteState || emptyState()
+            : null
+        ),
         () => finish(null)
       );
     });
