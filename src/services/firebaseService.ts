@@ -340,15 +340,36 @@ export const firebaseService = {
 
   async fetchFreshRemoteState(): Promise<AppState | null> {
     try {
-      const [metaSnap, ...collectionSnaps] = await Promise.all([
-        getDocFromServer(TENANT_METADATA_REF).catch(() => getDoc(TENANT_METADATA_REF)),
-        ...CORE_COLLECTIONS.map(({ collectionName }) => {
-          const colRef = collection(db, 'tenants', TENANT_ID, collectionName);
-          return getDocsFromServer(colRef).catch(() => getDocs(colRef));
-        })
-      ]);
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      if (isOffline) {
+        return remoteState ? sanitize(remoteState) : null;
+      }
 
-      const metadata = metaSnap.exists() ? metaSnap.data() as Record<string, unknown> : {};
+      let metaSnap: any = null;
+      try {
+        metaSnap = await getDocFromServer(TENANT_METADATA_REF);
+      } catch {
+        try {
+          metaSnap = await getDoc(TENANT_METADATA_REF);
+        } catch {}
+      }
+
+      const collectionSnaps = await Promise.all(
+        CORE_COLLECTIONS.map(async ({ collectionName }) => {
+          const colRef = collection(db, 'tenants', TENANT_ID, collectionName);
+          try {
+            return await getDocsFromServer(colRef);
+          } catch {
+            try {
+              return await getDocs(colRef);
+            } catch {
+              return { docs: [] };
+            }
+          }
+        })
+      );
+
+      const metadata = metaSnap && metaSnap.exists?.() ? metaSnap.data() as Record<string, unknown> : {};
       const tables: Record<CoreStateKey, CoreRecord[]> = {
         subscribers: [],
         agents: [],
@@ -358,22 +379,23 @@ export const firebaseService = {
 
       CORE_COLLECTIONS.forEach(({ stateKey }, index) => {
         const snap = collectionSnaps[index];
-        tables[stateKey] = snap.docs.map((item) => {
-          const data = item.data();
-          return { ...data, id: String(data.id || item.id) };
-        }) as CoreRecord[];
+        if (snap && Array.isArray(snap.docs)) {
+          tables[stateKey] = snap.docs.map((item: any) => {
+            const data = item.data();
+            return { ...data, id: String(data.id || item.id) };
+          }) as CoreRecord[];
+        }
       });
 
       const state = stateFromRemoteTables(tables, metadata);
-      const hasData = metaSnap.exists() || CORE_COLLECTIONS.some(({ stateKey }) => tables[stateKey].length > 0);
+      const hasData = (metaSnap && metaSnap.exists?.()) || CORE_COLLECTIONS.some(({ stateKey }) => tables[stateKey].length > 0);
       if (hasData) {
         remoteState = sanitize(state);
         tenantHasRemoteData = true;
       }
-      return hasData ? sanitize(state) : null;
-    } catch (err) {
-      console.error('[FirebaseService] fetchFreshRemoteState error:', err);
-      return null;
+      return hasData ? sanitize(state) : (remoteState ? sanitize(remoteState) : null);
+    } catch {
+      return remoteState ? sanitize(remoteState) : null;
     }
   },
 
