@@ -7,7 +7,6 @@ import {
   BellRing,
   Users2,
   QrCode,
-  FileText,
   Package,
   DollarSign,
   LogOut
@@ -22,7 +21,6 @@ export type NavTab =
   | 'pending'
   | 'agents'
   | 'barcodes'
-  | 'reports'
   | 'products'
   | 'pricing'
   | 'agent_portal';
@@ -62,7 +60,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'pending' as NavTab, label: 'الطلبات المعلقة', icon: BellRing, badge: pendingCount > 0 ? String(pendingCount) : undefined, badgeColor: 'bg-amber-500' },
     { id: 'agents' as NavTab, label: 'الوكلاء', icon: Users2 },
     { id: 'barcodes' as NavTab, label: 'أكواد وأجهزة QR', icon: QrCode },
-    { id: 'reports' as NavTab, label: 'التقارير والاهداف', icon: FileText },
     { id: 'products' as NavTab, label: 'المنتجات', icon: Package },
     { id: 'pricing' as NavTab, label: 'الأسعار', icon: DollarSign }
   ];

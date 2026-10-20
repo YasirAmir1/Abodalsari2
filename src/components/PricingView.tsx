@@ -13,18 +13,28 @@ import {
   EyeOff,
   Edit2
 } from 'lucide-react';
-import { Agent, PricingRow } from '../types';
+import { Agent, Invoice, PricingRow, Subscriber } from '../types';
 import { useAppDialogs } from './AppDialogProvider';
 import { SecurityActionModal } from './SecurityActionModal';
+import { ReportsView } from './ReportsView';
 
 interface PricingViewProps {
   pricing: PricingRow[];
   agents: Agent[];
+  subscribers: Subscriber[];
+  invoices: Invoice[];
   onSavePricing: (rows: PricingRow[]) => void;
   onUpdateAgent: (agentId: string, branding: Partial<Agent>) => void;
 }
 
-export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSavePricing, onUpdateAgent }) => {
+export const PricingView: React.FC<PricingViewProps> = ({
+  pricing,
+  agents,
+  subscribers,
+  invoices,
+  onSavePricing,
+  onUpdateAgent
+}) => {
   const { showAlert } = useAppDialogs();
   const [rows, setRows] = useState<PricingRow[]>(pricing);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
@@ -419,6 +429,8 @@ export const PricingView: React.FC<PricingViewProps> = ({ pricing, agents, onSav
           </div>
         </div>
       </div>
+
+      <ReportsView agents={agents} subscribers={subscribers} invoices={invoices} />
 
       {/* High-Security Warning & Final Administrative Action Modal for Price Fixing */}
       {showSecurityModal && (

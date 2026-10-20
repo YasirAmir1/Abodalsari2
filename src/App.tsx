@@ -36,7 +36,6 @@ import { QrCodesView } from './components/QrCodesView';
 import { PricingView } from './components/PricingView';
 import { SalesInvoicesView } from './components/SalesInvoicesView';
 import { DebtsView } from './components/DebtsView';
-import { ReportsView } from './components/ReportsView';
 import { AgentPortalView } from './components/AgentPortalView';
 import { WhatsAppModal } from './components/WhatsAppModal';
 import { ReceiptModal } from './components/ReceiptModal';
@@ -1327,7 +1326,6 @@ export default function App() {
     pending: 'الطلبات المعلقة (طلبات التجديد الواردة)',
     agents: 'ملخص الأداء المالي والميداني للوكلاء',
     barcodes: 'إدارة أكواد وأجهزة QR',
-    reports: 'التقارير التحليلية وأبراج البث',
     products: 'إدارة المنتجات والمعدات والمخزن',
     pricing: 'جدول أسعار الوكلاء والمركز',
     agent_portal: `بوابة الوكيل (${currentAgent.name})`
@@ -1469,14 +1467,6 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'reports' && (
-            <ReportsView
-              agents={state.agents}
-              subscribers={state.subscribers}
-              invoices={state.invoices}
-            />
-          )}
-
           {currentTab === 'products' && (
             <ProductsView
               products={state.products}
@@ -1491,6 +1481,8 @@ export default function App() {
             <PricingView
               pricing={state.pricing}
               agents={state.agents}
+              subscribers={state.subscribers}
+              invoices={state.invoices}
               onSavePricing={handleSavePricing}
               onUpdateAgent={handleUpdateAgentBranding}
             />

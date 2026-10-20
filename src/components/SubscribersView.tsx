@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Search,
@@ -66,6 +66,43 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
+
+  const subscribersForView = useMemo(() => {
+    if (!isAdmin) return subscribers;
+
+    const uniqueSubscribers: Subscriber[] = [];
+    const indexesById = new Map<string, number>();
+    const indexesByDeviceId = new Map<string, number>();
+
+    subscribers.forEach((subscriber) => {
+      const id = (subscriber.id || '').trim();
+      const rawDeviceId = (subscriber.deviceId || '').trim().replace(/\s+/g, '');
+      const deviceId = rawDeviceId
+        ? (rawDeviceId.startsWith('00') ? rawDeviceId : `00${rawDeviceId}`)
+        : '';
+      const duplicateIndex = (id ? indexesById.get(id) : undefined)
+        ?? (deviceId ? indexesByDeviceId.get(deviceId) : undefined);
+
+      if (duplicateIndex === undefined) {
+        const index = uniqueSubscribers.push(subscriber) - 1;
+        if (id) indexesById.set(id, index);
+        if (deviceId) indexesByDeviceId.set(deviceId, index);
+        return;
+      }
+
+      const existing = uniqueSubscribers[duplicateIndex];
+      const subscriberHasAgent = (Boolean(subscriber.agentId) && subscriber.agentId !== 'agent-main')
+        || (Boolean(subscriber.agentName) && subscriber.agentName !== 'المركز الرئيسي');
+      const existingHasAgent = (Boolean(existing.agentId) && existing.agentId !== 'agent-main')
+        || (Boolean(existing.agentName) && existing.agentName !== 'المركز الرئيسي');
+
+      if (subscriberHasAgent && !existingHasAgent) uniqueSubscribers[duplicateIndex] = subscriber;
+      if (id) indexesById.set(id, duplicateIndex);
+      if (deviceId) indexesByDeviceId.set(deviceId, duplicateIndex);
+    });
+
+    return uniqueSubscribers;
+  }, [isAdmin, subscribers]);
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -157,7 +194,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
       return;
     }
 
-    const exactMatch = subscribers.find((s) => s.name.trim().toLowerCase() === trimmed);
+    const exactMatch = subscribersForView.find((s) => s.name.trim().toLowerCase() === trimmed);
     if (exactMatch) {
       selectExistingSubscriber(exactMatch);
     } else {
@@ -192,7 +229,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     setNewSubEndDate(calculateEndDate(startDateVal, newSubType));
   };
 
-  const agentOwnedSubscribers = subscribers.filter((sub) =>
+  const agentOwnedSubscribers = subscribersForView.filter((sub) =>
     (Boolean(sub.agentId) || Boolean(sub.agentName)) &&
     sub.agentId !== 'agent-main' && sub.agentName !== 'المركز الرئيسي'
   );
@@ -273,9 +310,9 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   };
 
   // Filter logic
-  const filteredSubscribers = subscribers.filter((sub) => {
+  const filteredSubscribers = subscribersForView.filter((sub) => {
     if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
-    if (agentFilter !== 'all') {
+    if (!isAdmin && agentFilter !== 'all') {
       if (agentFilter === 'agent-main') {
         const isMain = sub.agentId === 'agent-main' || sub.agentName === 'المركز الرئيسي';
         if (!isMain) return false;
@@ -297,9 +334,9 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     return true;
   });
 
-  const activeCount = subscribers.filter((s) => s.status === 'active').length;
-  const inactiveCount = subscribers.filter((s) => s.status === 'inactive').length;
-  const expiringCount = subscribers.filter((s) => s.status === 'expiring_soon').length;
+  const activeCount = subscribersForView.filter((s) => s.status === 'active').length;
+  const inactiveCount = subscribersForView.filter((s) => s.status === 'inactive').length;
+  const expiringCount = subscribersForView.filter((s) => s.status === 'expiring_soon').length;
 
   const handleCreateSale = (e: React.FormEvent) => {
     e.preventDefault();
@@ -434,7 +471,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
             }`}
           >
             <span>الكل</span>
-            <span className="text-[10px] opacity-80">{subscribers.length}</span>
+            <span className="text-[10px] opacity-80">{subscribersForView.length}</span>
           </button>
 
           <button
@@ -496,7 +533,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         </div>
       </div>
 
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2">
+      <div className={isAdmin ? 'hidden' : 'bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2'}>
         <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 ml-1">
           <span className="w-2 h-2 rounded-full bg-sky-600" />
           تصنيف حسب الوكيل المسؤول:
@@ -511,11 +548,11 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           }`}
         >
           <span>كافة الوكلاء والمركز</span>
-          <span className="text-[10px] opacity-80 font-mono">({subscribers.length})</span>
+          <span className="text-[10px] opacity-80 font-mono">({subscribersForView.length})</span>
         </button>
 
         {agents.map((ag) => {
-          const count = subscribers.filter(
+          const count = subscribersForView.filter(
             (s) => s.agentId === ag.id || s.agentName === ag.name
           ).length;
           const isSelected = agentFilter === ag.id;
@@ -546,23 +583,25 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
       {/* Sub Header: Counter & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
           <div className="text-xs text-slate-500 font-bold">
-            عرض {filteredSubscribers.length} من إجمالي {subscribers.length} مشترك
+            عرض {filteredSubscribers.length} من إجمالي {subscribersForView.length} مشترك
           </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* Agent Filter Dropdown */}
-          <select
-            value={agentFilter}
-            onChange={(e) => setAgentFilter(e.target.value)}
-            className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
-          >
-            <option value="all">كافة الوكلاء والمركز</option>
-            {agents.map((ag) => (
-              <option key={ag.id} value={ag.id}>
-                {ag.name}
-              </option>
-            ))}
-          </select>
+          {!isAdmin && (
+            <select
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value)}
+              className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 font-medium"
+            >
+              <option value="all">كافة الوكلاء والمركز</option>
+              {agents.map((ag) => (
+                <option key={ag.id} value={ag.id}>
+                  {ag.name}
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Search Input */}
           <div className="relative w-full sm:w-72">
@@ -595,7 +634,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredSubscribers.slice(0, 60).map((sub) => {
+              {filteredSubscribers.map((sub) => {
                 const isActive = sub.status === 'active';
                 const isMainCenterSub = sub.agentName === 'المركز الرئيسي' || sub.agentId === 'agent-main';
 
@@ -1053,7 +1092,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                 {/* Auto-suggestions list for existing subscribers */}
                 {showNameSuggestions && newSubName.trim().length > 0 && (
                   <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-30 max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
-                    {subscribers
+                    {subscribersForView
                       .filter((s) => s.name.toLowerCase().includes(newSubName.toLowerCase()))
                       .slice(0, 5)
                       .map((s) => (
@@ -1467,7 +1506,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
       {/* Modal: Delete All Subscribers Confirmation */}
       {showDeleteAllModal && (
         <DeleteAllSubscribersModal
-          subscribersCount={subscribers.length}
+          subscribersCount={subscribersForView.length}
           onClose={() => setShowDeleteAllModal(false)}
           onConfirmDeleteAll={async () => {
             if (onDeleteAllSubscribersHandler) {
