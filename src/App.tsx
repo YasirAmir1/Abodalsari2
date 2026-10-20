@@ -20,6 +20,7 @@ import {
 import { RefreshCw } from 'lucide-react';
 import { AppState, storageService } from './services/storageService';
 import { firebaseService } from './services/firebaseService';
+import { syncManager } from './services/firebase-sync';
 import { soundService } from './services/soundService';
 import { excelService } from './services/excelService';
 
@@ -45,7 +46,7 @@ import { useAppDialogs } from './components/AppDialogProvider';
 
 const USER_SESSION_KEY = 'alsari_auth_user_v1';
 
-function mergePendingSubscriberAdds(remoteState: AppState, localState: AppState): { state: AppState; merged: boolean } {
+function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { state: AppState; merged: boolean } {
   const remoteTimestamp = remoteState.lastUpdatedTimestamp || 0;
   const localTimestamp = localState.lastUpdatedTimestamp || 0;
   if (localTimestamp < remoteTimestamp) return { state: remoteState, merged: false };
@@ -57,28 +58,29 @@ function mergePendingSubscriberAdds(remoteState: AppState, localState: AppState)
   const pendingSubscribers = localSubscribers.filter(
     (subscriber) => !remoteIds.has(subscriber.id) && (!subscriber.deviceId || !remoteDeviceIds.has(subscriber.deviceId))
   );
-  if (pendingSubscribers.length === 0) return { state: remoteState, merged: false };
 
-  const pendingSubscriberIds = new Set(pendingSubscribers.map((subscriber) => subscriber.id));
   const remoteInvoices = remoteState.invoices || [];
   const invoiceIds = new Set(remoteInvoices.map((invoice) => invoice.id));
-  const pendingInvoices = (localState.invoices || []).filter(
-    (invoice) => pendingSubscriberIds.has(invoice.subscriberId) && !invoiceIds.has(invoice.id)
-  );
-  const pendingAgentIds = new Set(pendingSubscribers.map((subscriber) => subscriber.agentId));
+  const pendingInvoices = (localState.invoices || []).filter((invoice) => !invoiceIds.has(invoice.id));
+  const remoteRequestIds = new Set((remoteState.pendingRequests || []).map((request) => request.id));
+  const pendingRequests = (localState.pendingRequests || []).filter((request) => !remoteRequestIds.has(request.id));
+  const remoteAgentIds = new Set((remoteState.agents || []).map((agent) => agent.id));
   const localAgentsById = new Map<string, Agent>();
   (localState.agents || []).forEach((agent) => localAgentsById.set(agent.id, agent));
   const remoteAgents = remoteState.agents || [];
-  const remoteAgentIds = new Set(remoteAgents.map((agent) => agent.id));
-  const pendingAgents = (localState.agents || []).filter(
-    (agent) => pendingAgentIds.has(agent.id) && !remoteAgentIds.has(agent.id)
-  );
+  const pendingAgents = (localState.agents || []).filter((agent) => !remoteAgentIds.has(agent.id));
+  const pendingAgentIds = new Set(pendingSubscribers.map((subscriber) => subscriber.agentId));
+
+  if (pendingSubscribers.length === 0 && pendingInvoices.length === 0 && pendingRequests.length === 0 && pendingAgents.length === 0) {
+    return { state: remoteState, merged: false };
+  }
 
   return {
     state: {
       ...remoteState,
       subscribers: [...pendingSubscribers, ...remoteSubscribers],
       invoices: [...pendingInvoices, ...remoteInvoices],
+      pendingRequests: [...pendingRequests, ...(remoteState.pendingRequests || [])],
       agents: [
         ...pendingAgents,
         ...remoteAgents.map((agent) =>
@@ -162,7 +164,7 @@ export default function App() {
       if (!isMountedRef.current) return;
 
       if (remote && typeof remote === 'object' && remote.subscribers) {
-        const { state: reconciled, merged } = mergePendingSubscriberAdds(remote, stateRef.current);
+        const { state: reconciled, merged } = mergePendingLocalAdds(remote, stateRef.current);
         const filtered = storageService.filterOutDeleted(reconciled);
         // Mark as remote update so state-effect does NOT echo back to Firestore
         if (saveTimeoutRef.current) {
@@ -297,14 +299,18 @@ export default function App() {
 
   // --- Effect 2: Real-time Firestore listener (cross-device sync) ---
   useEffect(() => {
-    // Clear quota at start so listener always connects
+    if (!currentUser) {
+      syncManager.stopListening();
+      setIsRemoteReady(false);
+      return;
+    }
 
-    const unsubscribe = firebaseService.subscribeToRemoteState((remoteState) => {
+    const unsubscribe = syncManager.startListening((remoteState) => {
       if (!remoteState) return;
 
       // Recover subscriber additions that were saved locally while an earlier
       // Firestore write was pending or unavailable, then apply local tombstones.
-      const { state: reconciledState, merged } = mergePendingSubscriberAdds(remoteState, stateRef.current);
+      const { state: reconciledState, merged } = mergePendingLocalAdds(remoteState, stateRef.current);
       const filteredState = storageService.filterOutDeleted(reconciledState);
 
       // Save to localStorage immediately so a subsequent reload retains fresh remote state
@@ -326,18 +332,20 @@ export default function App() {
           }
         });
       }
-    }, () => {
-      if (isMountedRef.current) setIsRemoteReady(true);
-    }, () => {
-      if (isMountedRef.current) {
-        setSyncToast('تعذر الاتصال بقاعدة البيانات المباشرة. لن تصل التحديثات للأجهزة الأخرى حالياً.');
+    });
+
+    const unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
+      if (status === 'connected' && isMountedRef.current) setIsRemoteReady(true);
+      if (status === 'error' && isMountedRef.current) {
+        setSyncToast('تعذر الاتصال بقاعدة البيانات المباشرة. ستستأنف المزامنة عند عودة الاتصال.');
       }
     });
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      unsubscribe();
+      unsubscribeStatus();
     };
-  }, []);
+  }, [currentUser?.id]);
 
   // Current selected agent
   const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents[1];
@@ -376,6 +384,8 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    syncManager.stopListening();
+    setIsRemoteReady(false);
     setCurrentUser(null);
     try {
       localStorage.removeItem(USER_SESSION_KEY);

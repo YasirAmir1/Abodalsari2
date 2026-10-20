@@ -1,64 +1,300 @@
-import { initializeApp, getApps } from 'firebase/app';
+import { getApps, initializeApp } from 'firebase/app';
 import {
-  initializeFirestore,
-  memoryLocalCache,
-  getFirestore,
+  collection,
   doc,
-  getDocFromServer,
-  setDoc,
-  onSnapshot
+  getFirestore,
+  initializeFirestore,
+  onSnapshot,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  serverTimestamp,
+  writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { AppState, storageService } from './storageService';
+import type { AppState } from './storageService';
 
-// Initialize Firebase App safely
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const databaseId = firebaseConfig.firestoreDatabaseId || '(default)';
 
-// Initialize Firestore with in-memory cache to prevent old pending writes from persisting and retrying
 export const db = (() => {
   try {
-    return initializeFirestore(app, { localCache: memoryLocalCache() }, firebaseConfig.firestoreDatabaseId || '(default)');
+    return initializeFirestore(
+      app,
+      { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) },
+      databaseId
+    );
   } catch {
-    return getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
+    return getFirestore(app, databaseId);
   }
 })();
 
-export const STATE_DOC_REF = doc(db, 'app_state', 'global_state');
+const tenantConfig = firebaseConfig as typeof firebaseConfig & { tenantId?: string };
+const configuredTenantId = tenantConfig.tenantId?.trim();
+export const TENANT_ID = (configuredTenantId || firebaseConfig.projectId || 'default')
+  .replace(/[^a-zA-Z0-9_-]/g, '_');
+const shouldMigrateLegacyState = !configuredTenantId;
+
+const TENANT_METADATA_REF = doc(db, 'tenants', TENANT_ID, 'metadata', 'state');
+const LEGACY_STATE_REF = doc(db, 'app_state', 'global_state');
+
+type CoreStateKey = 'subscribers' | 'agents' | 'invoices' | 'pendingRequests';
+type CoreRecord = { id: string; [key: string]: unknown };
+const CORE_COLLECTIONS: Array<{ stateKey: CoreStateKey; collectionName: string }> = [
+  { stateKey: 'subscribers', collectionName: 'subscribers' },
+  { stateKey: 'agents', collectionName: 'agents' },
+  { stateKey: 'pendingRequests', collectionName: 'requests' },
+  { stateKey: 'invoices', collectionName: 'sales' }
+];
 
 export type SyncStatus = 'connected' | 'syncing' | 'offline' | 'error';
 
-// Multi-Tab & Cross-Session Instant Sync Channel
 const broadcastChannel: BroadcastChannel | null = (() => {
   try {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      return new BroadcastChannel('alsari_realtime_sync_v1');
+      return new BroadcastChannel(`alsari_realtime_sync_v2_${TENANT_ID}`);
     }
   } catch {}
   return null;
 })();
 
+let currentSyncStatus: SyncStatus = typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'syncing';
+let remoteStreamReady = false;
+let activeRemoteSubscriptions = 0;
+let tenantHasRemoteData = false;
 let lastSavedPayload = '';
-let lastRemotePayload = '';
-let currentSyncStatus: SyncStatus = typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'connected';
+let remoteState: AppState | null = null;
+let saveQueue: Promise<void> = Promise.resolve();
+let resolveInitialReady: ((state: AppState | null) => void) | null = null;
+let initialReadyPromise: Promise<AppState | null>;
+function resetInitialReadyPromise() {
+  initialReadyPromise = new Promise<AppState | null>((resolve) => {
+    resolveInitialReady = resolve;
+  });
+}
+resetInitialReadyPromise();
 const statusListeners = new Set<(status: SyncStatus) => void>();
 
-function updateSyncStatus(newStatus: SyncStatus) {
-  if (currentSyncStatus !== newStatus) {
-    currentSyncStatus = newStatus;
-    statusListeners.forEach((listener) => {
-      try { listener(newStatus); } catch {}
+function updateSyncStatus(status: SyncStatus) {
+  if (currentSyncStatus === status) return;
+  currentSyncStatus = status;
+  statusListeners.forEach((listener) => {
+    try { listener(status); } catch {}
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    updateSyncStatus(remoteStreamReady ? 'connected' : 'syncing');
+  });
+  window.addEventListener('offline', () => updateSyncStatus('offline'));
+}
+
+function emptyState(): AppState {
+  return {
+    subscribers: [],
+    agents: [],
+    products: [],
+    pricing: [],
+    invoices: [],
+    codes: [],
+    users: [],
+    pendingRequests: [],
+    lastUpdatedTimestamp: 0
+  };
+}
+
+function sanitize<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitize(entry)) as T;
+  }
+  if (value && typeof value === 'object') {
+    const clean: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+      if (entry !== undefined && typeof entry !== 'function') clean[key] = sanitize(entry);
     });
+    return clean as T;
+  }
+  return value;
+}
+
+function recordId(record: CoreRecord): string {
+  return String(record.id || '').trim();
+}
+
+function recordsFor(state: AppState, key: CoreStateKey): CoreRecord[] {
+  return ((state[key] || []) as unknown as CoreRecord[]).filter((record) => recordId(record));
+}
+
+function recordsFromSnapshot(snapshot: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }): CoreRecord[] {
+  return snapshot.docs.map((item) => {
+    const data = item.data();
+    return { ...data, id: String(data.id || item.id) };
+  }) as CoreRecord[];
+}
+
+function normalizeLegacyState(value: unknown): AppState | null {
+  try {
+    const raw = value as { payload?: string; state?: AppState };
+    const parsed = typeof raw?.payload === 'string'
+      ? JSON.parse(raw.payload) as Partial<AppState>
+      : raw?.state as Partial<AppState> | undefined;
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      ...emptyState(),
+      ...parsed,
+      subscribers: Array.isArray(parsed.subscribers) ? parsed.subscribers : [],
+      agents: Array.isArray(parsed.agents) ? parsed.agents : [],
+      products: Array.isArray(parsed.products) ? parsed.products : [],
+      pricing: Array.isArray(parsed.pricing) ? parsed.pricing : [],
+      invoices: Array.isArray(parsed.invoices) ? parsed.invoices : [],
+      codes: Array.isArray(parsed.codes) ? parsed.codes : [],
+      users: Array.isArray(parsed.users) ? parsed.users : [],
+      pendingRequests: Array.isArray(parsed.pendingRequests) ? parsed.pendingRequests : [],
+      lastUpdatedTimestamp: parsed.lastUpdatedTimestamp || Date.now()
+    };
+  } catch (error) {
+    console.error('Could not parse legacy Firestore state:', error);
+    return null;
   }
 }
 
-// Window online/offline event handlers for automatic reconnection
-if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    updateSyncStatus('connected');
+function metadataFor(state: AppState, migrationComplete = false) {
+  return sanitize({
+    tenantId: TENANT_ID,
+    schemaVersion: 2,
+    migrationComplete,
+    products: state.products || [],
+    pricing: state.pricing || [],
+    codes: state.codes || [],
+    users: state.users || [],
+    deletedSubscriberIds: state.deletedSubscriberIds || [],
+    lastUpdatedTimestamp: state.lastUpdatedTimestamp || Date.now()
   });
-  window.addEventListener('offline', () => {
-    updateSyncStatus('offline');
+}
+
+function metadataToState(metadata: Record<string, unknown>, base: AppState): AppState {
+  return {
+    ...base,
+    products: Array.isArray(metadata.products) ? metadata.products as AppState['products'] : base.products,
+    pricing: Array.isArray(metadata.pricing) ? metadata.pricing as AppState['pricing'] : base.pricing,
+    codes: Array.isArray(metadata.codes) ? metadata.codes as AppState['codes'] : base.codes,
+    users: Array.isArray(metadata.users) ? metadata.users as AppState['users'] : base.users,
+    deletedSubscriberIds: Array.isArray(metadata.deletedSubscriberIds)
+      ? metadata.deletedSubscriberIds as string[]
+      : base.deletedSubscriberIds,
+    lastUpdatedTimestamp: typeof metadata.lastUpdatedTimestamp === 'number'
+      ? metadata.lastUpdatedTimestamp
+      : base.lastUpdatedTimestamp
+  };
+}
+
+function applyDesiredChanges(baseState: AppState, desiredState: AppState): AppState {
+  const merged: AppState = { ...baseState };
+  CORE_COLLECTIONS.forEach(({ stateKey }) => {
+    const before = new Map(recordsFor(baseState, stateKey).map((record) => [recordId(record), record]));
+    const after = new Map(recordsFor(desiredState, stateKey).map((record) => [recordId(record), record]));
+    const combined = new Map(before);
+    before.forEach((_record, id) => {
+      if (!after.has(id)) combined.delete(id);
+    });
+    after.forEach((record, id) => {
+      const previous = before.get(id);
+      if (!previous || JSON.stringify(sanitize(previous)) !== JSON.stringify(sanitize(record))) {
+        combined.set(id, sanitize(record));
+      }
+    });
+    (merged as unknown as Record<CoreStateKey, CoreRecord[]>)[stateKey] = Array.from(combined.values());
   });
+
+  return {
+    ...merged,
+    products: JSON.stringify(sanitize(baseState.products)) === JSON.stringify(sanitize(desiredState.products))
+      ? baseState.products
+      : desiredState.products,
+    pricing: JSON.stringify(sanitize(baseState.pricing)) === JSON.stringify(sanitize(desiredState.pricing))
+      ? baseState.pricing
+      : desiredState.pricing,
+    codes: JSON.stringify(sanitize(baseState.codes)) === JSON.stringify(sanitize(desiredState.codes))
+      ? baseState.codes
+      : desiredState.codes,
+    users: JSON.stringify(sanitize(baseState.users)) === JSON.stringify(sanitize(desiredState.users))
+      ? baseState.users
+      : desiredState.users,
+    deletedSubscriberIds: desiredState.deletedSubscriberIds,
+    lastUpdatedTimestamp: desiredState.lastUpdatedTimestamp || Date.now()
+  };
+}
+
+function stateFromRemoteTables(
+  tables: Record<CoreStateKey, CoreRecord[]>,
+  metadata: Record<string, unknown>
+): AppState {
+  const base = metadataToState(metadata, emptyState());
+  return {
+    ...base,
+    subscribers: tables.subscribers as AppState['subscribers'],
+    agents: tables.agents as AppState['agents'],
+    invoices: tables.invoices as AppState['invoices'],
+    pendingRequests: tables.pendingRequests as AppState['pendingRequests']
+  };
+}
+
+type WriteOperation =
+  | { type: 'set'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }
+  | { type: 'delete'; ref: ReturnType<typeof doc> };
+
+async function commitOperations(operations: WriteOperation[], metadata: Record<string, unknown>) {
+  const allOperations: WriteOperation[] = [
+    ...operations,
+    { type: 'set', ref: TENANT_METADATA_REF, data: { ...metadata, updatedAt: serverTimestamp() } }
+  ];
+  const batchLimit = 450;
+  for (let offset = 0; offset < allOperations.length; offset += batchLimit) {
+    const batch = writeBatch(db);
+    allOperations.slice(offset, offset + batchLimit).forEach((operation) => {
+      if (operation.type === 'delete') batch.delete(operation.ref);
+      else batch.set(operation.ref, operation.data);
+    });
+    await batch.commit();
+  }
+}
+
+function fullStateOperations(state: AppState): WriteOperation[] {
+  const operations: WriteOperation[] = [];
+  CORE_COLLECTIONS.forEach(({ stateKey, collectionName }) => {
+    const collectionRef = collection(db, 'tenants', TENANT_ID, collectionName);
+    recordsFor(state, stateKey).forEach((record) => {
+      operations.push({
+        type: 'set',
+        ref: doc(collectionRef, encodeURIComponent(recordId(record))),
+        data: { ...sanitize(record), tenantId: TENANT_ID }
+      });
+    });
+  });
+  return operations;
+}
+
+function diffOperations(previous: AppState, next: AppState): WriteOperation[] {
+  const operations: WriteOperation[] = [];
+  CORE_COLLECTIONS.forEach(({ stateKey, collectionName }) => {
+    const collectionRef = collection(db, 'tenants', TENANT_ID, collectionName);
+    const before = new Map(recordsFor(previous, stateKey).map((record) => [recordId(record), record]));
+    const after = new Map(recordsFor(next, stateKey).map((record) => [recordId(record), record]));
+
+    before.forEach((_record, id) => {
+      if (!after.has(id)) operations.push({ type: 'delete', ref: doc(collectionRef, encodeURIComponent(id)) });
+    });
+    after.forEach((record, id) => {
+      if (JSON.stringify(sanitize(before.get(id))) !== JSON.stringify(sanitize(record))) {
+        operations.push({
+          type: 'set',
+          ref: doc(collectionRef, encodeURIComponent(id)),
+          data: { ...sanitize(record), tenantId: TENANT_ID }
+        });
+      }
+    });
+  });
+  return operations;
 }
 
 export const firebaseService = {
@@ -73,130 +309,270 @@ export const firebaseService = {
   onSyncStatusChange(callback: (status: SyncStatus) => void): () => void {
     statusListeners.add(callback);
     callback(currentSyncStatus);
-    return () => {
-      statusListeners.delete(callback);
-    };
+    return () => statusListeners.delete(callback);
   },
 
   broadcastLocalChange(state: AppState) {
     try {
-      if (broadcastChannel) {
-        broadcastChannel.postMessage({
-          type: 'APP_STATE_UPDATED',
-          payload: state,
-          timestamp: Date.now()
-        });
-      }
+      broadcastChannel?.postMessage({
+        type: 'APP_STATE_UPDATED',
+        tenantId: TENANT_ID,
+        payload: state,
+        timestamp: Date.now()
+      });
     } catch {}
   },
 
   subscribeToLocalBroadcast(callback: (state: AppState) => void): () => void {
     if (!broadcastChannel) return () => {};
     const handler = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'APP_STATE_UPDATED' && event.data.payload) {
+      if (event.data?.type === 'APP_STATE_UPDATED' && event.data.tenantId === TENANT_ID && event.data.payload) {
         callback(event.data.payload as AppState);
       }
     };
     broadcastChannel.addEventListener('message', handler);
-    return () => {
-      broadcastChannel.removeEventListener('message', handler);
-    };
+    return () => broadcastChannel.removeEventListener('message', handler);
   },
 
   async fetchRemoteState(): Promise<AppState | null> {
-    try {
-      updateSyncStatus('syncing');
-      const snap = await getDocFromServer(STATE_DOC_REF);
-      updateSyncStatus('connected');
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data && data.payload) {
-          return JSON.parse(data.payload) as AppState;
-        }
+    if (activeRemoteSubscriptions > 0) {
+      if (!remoteStreamReady) {
+        updateSyncStatus('syncing');
+        await Promise.race([
+          initialReadyPromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000))
+        ]);
       }
-    } catch (e: any) {
-      console.warn('Error fetching remote state:', e);
-      updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
+      return tenantHasRemoteData && remoteState ? sanitize(remoteState) : null;
     }
-    return null;
+
+    // Login happens before the authenticated app session starts its long-lived
+    // listener. Use a temporary snapshot stream to fetch the current tenant
+    // state, then release all listeners immediately.
+    return new Promise<AppState | null>((resolve) => {
+      let settled = false;
+      let unsubscribe: (() => void) | null = null;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+      const finish = (state: AppState | null) => {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        unsubscribe?.();
+        resolve(state ? sanitize(state) : null);
+      };
+      timeout = setTimeout(() => finish(null), 15000);
+
+      unsubscribe = this.subscribeToRemoteState(
+        (state, source) => {
+          if (source === 'remote_firestore') finish(state);
+        },
+        () => finish(tenantHasRemoteData && remoteState ? remoteState : null),
+        () => finish(null)
+      );
+    });
   },
 
-  async saveRemoteState(state: AppState, immediate = false): Promise<void> {
-    // Notify all local tabs/sessions immediately (< 50ms)
+  async saveRemoteState(state: AppState, _immediate = false): Promise<void> {
     this.broadcastLocalChange(state);
+    const requestedState = sanitize(state);
+    const requestedPayload = JSON.stringify(requestedState);
+    if (requestedPayload === lastSavedPayload && JSON.stringify(sanitize(remoteState)) === lastSavedPayload) return;
 
-    try {
-      const payload = JSON.stringify(state);
-      if (payload === lastSavedPayload) {
-        return;
+    const saveTask = saveQueue.then(async () => {
+      if (!remoteStreamReady) {
+        await Promise.race([
+          initialReadyPromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
+        ]);
       }
+      if (!remoteStreamReady) throw new Error('Firestore live collections are not ready for writes.');
 
+      const baseState = remoteState || emptyState();
+      const nextTimestamp = requestedState.lastUpdatedTimestamp || Date.now();
+      const nextState: AppState = { ...requestedState, lastUpdatedTimestamp: nextTimestamp };
+      const operations = diffOperations(baseState, nextState);
       updateSyncStatus('syncing');
-      await setDoc(STATE_DOC_REF, {
-        payload,
-        updatedAt: new Date().toISOString(),
-        lastUpdatedTimestamp: state.lastUpdatedTimestamp || Date.now()
-      }, { merge: true });
-      lastSavedPayload = payload;
+      await commitOperations(operations, metadataFor(nextState, true));
+
+      remoteState = applyDesiredChanges(baseState, nextState);
+      tenantHasRemoteData = true;
+      lastSavedPayload = JSON.stringify(sanitize(remoteState));
       updateSyncStatus('connected');
-    } catch (e: any) {
-      console.warn('Error saving state to Firestore:', e);
-      updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
-      throw e;
-    }
+    });
+    saveQueue = saveTask.catch(() => {});
+    return saveTask;
   },
 
   subscribeToRemoteState(
-    callback: (state: AppState) => void,
+    callback: (state: AppState, source?: 'remote_firestore' | 'local_broadcast') => void,
     onServerReady?: () => void,
     onSyncError?: (error: unknown) => void
   ): () => void {
+    activeRemoteSubscriptions += 1;
+    const unsubscriptions: Array<() => void> = [];
+    const remoteTables: Record<CoreStateKey, CoreRecord[]> = {
+      subscribers: [],
+      agents: [],
+      invoices: [],
+      pendingRequests: []
+    };
+    const loadedTables = new Set<CoreStateKey>();
+    let metadata: Record<string, unknown> = {};
+    let metadataExists = false;
+    let metadataLoaded = false;
+    let legacyLoaded = !shouldMigrateLegacyState;
+    let legacyState: AppState | null = null;
+    let legacyUnsubscribe: (() => void) | null = null;
+    let initialReady = false;
+    let migrationStarted = false;
+    let stopped = false;
+
+    const unsubscribeAll = () => {
+      if (stopped) return;
+      stopped = true;
+      unsubscriptions.splice(0).forEach((unsubscribe) => {
+        try { unsubscribe(); } catch {}
+      });
+      activeRemoteSubscriptions = Math.max(0, activeRemoteSubscriptions - 1);
+      if (activeRemoteSubscriptions === 0) {
+        remoteStreamReady = false;
+        resetInitialReadyPromise();
+        updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'syncing');
+      }
+    };
+
+    const notify = (nextState: AppState) => {
+      const cleanState = sanitize(nextState);
+      remoteState = cleanState;
+      tenantHasRemoteData = metadataExists || CORE_COLLECTIONS.some(({ stateKey }) => remoteTables[stateKey].length > 0);
+      callback(cleanState, 'remote_firestore');
+    };
+
+    const finishInitialLoad = (state: AppState | null) => {
+      if (stopped || initialReady) return;
+      initialReady = true;
+      remoteStreamReady = true;
+      if (state) {
+        remoteState = sanitize(state);
+        tenantHasRemoteData = true;
+        callback(remoteState, 'remote_firestore');
+      } else {
+        remoteState = emptyState();
+        tenantHasRemoteData = false;
+      }
+      resolveInitialReady?.(tenantHasRemoteData ? remoteState : null);
+      resolveInitialReady = null;
+      if (!stopped) {
+        updateSyncStatus('connected');
+        onServerReady?.();
+      }
+    };
+
+    const maybeFinishInitialLoad = () => {
+      if (stopped || initialReady || migrationStarted) return;
+      if (loadedTables.size !== CORE_COLLECTIONS.length || !metadataLoaded || !legacyLoaded) return;
+
+      const state = stateFromRemoteTables(remoteTables, metadata);
+      const hasTenantData = metadataExists || CORE_COLLECTIONS.some(({ stateKey }) => remoteTables[stateKey].length > 0);
+      const metadataMigrationComplete = metadata.migrationComplete === true;
+
+      if (shouldMigrateLegacyState && legacyState && !hasTenantData && !metadataMigrationComplete) {
+        migrationStarted = true;
+        updateSyncStatus('syncing');
+        const operations = fullStateOperations(legacyState);
+        void commitOperations(operations, metadataFor(legacyState, true)).then(() => {
+          CORE_COLLECTIONS.forEach(({ stateKey }) => {
+            remoteTables[stateKey] = recordsFor(legacyState!, stateKey);
+          });
+          metadata = metadataFor(legacyState!, true);
+          metadataExists = true;
+          finishInitialLoad(legacyState);
+        }).catch((error) => {
+          migrationStarted = false;
+          updateSyncStatus('error');
+          onSyncError?.(error);
+          unsubscribeAll();
+        });
+        return;
+      }
+
+      finishInitialLoad(hasTenantData ? state : null);
+    };
+
     try {
-      const unsubscribeFirestore = onSnapshot(
-        STATE_DOC_REF,
-        { includeMetadataChanges: true },
-        (snap) => {
-          if (snap.metadata.fromCache) {
+      CORE_COLLECTIONS.forEach(({ stateKey, collectionName }) => {
+        const collectionRef = collection(db, 'tenants', TENANT_ID, collectionName);
+        const unsubscribe = onSnapshot(collectionRef, { includeMetadataChanges: true }, (snapshot) => {
+          remoteTables[stateKey] = recordsFromSnapshot(snapshot);
+          if (snapshot.metadata.fromCache) {
             updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'syncing');
+            if (initialReady) notify(stateFromRemoteTables(remoteTables, metadata));
+            return;
+          }
+          if (snapshot.metadata.hasPendingWrites) return;
+          loadedTables.add(stateKey);
+          if (!initialReady) {
+            maybeFinishInitialLoad();
             return;
           }
           updateSyncStatus('connected');
-          if (!snap.metadata.hasPendingWrites) onServerReady?.();
-          if (snap.metadata.hasPendingWrites) {
-            return;
-          }
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data && data.payload) {
-              if (data.payload === lastRemotePayload) return;
-              try {
-                const parsed = JSON.parse(data.payload) as AppState;
-                lastRemotePayload = data.payload;
-                if (data.payload !== lastSavedPayload) callback(parsed);
-              } catch (parseErr) {
-                console.error('Failed to parse remote payload', parseErr);
-              }
-            }
-          }
-        },
-        (error) => {
-          console.warn('Firestore snapshot error:', error);
+          notify(stateFromRemoteTables(remoteTables, metadata));
+        }, (error) => {
           updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
           onSyncError?.(error);
+          unsubscribeAll();
+        });
+        unsubscriptions.push(unsubscribe);
+      });
+
+      unsubscriptions.push(onSnapshot(TENANT_METADATA_REF, { includeMetadataChanges: true }, (snapshot) => {
+        if (snapshot.metadata.fromCache) {
+          updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'syncing');
+          return;
         }
-      );
+        if (snapshot.metadata.hasPendingWrites) return;
+        metadata = snapshot.exists() ? snapshot.data() as Record<string, unknown> : {};
+        metadataExists = snapshot.exists();
+        metadataLoaded = true;
+        if (!initialReady) {
+          maybeFinishInitialLoad();
+          return;
+        }
+        updateSyncStatus('connected');
+        notify(stateFromRemoteTables(remoteTables, metadata));
+      }, (error) => {
+        updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
+        onSyncError?.(error);
+        unsubscribeAll();
+      }));
 
-      // Also listen to local broadcast for instantaneous multi-tab sync
-      const unsubscribeBroadcast = this.subscribeToLocalBroadcast(callback);
+      if (shouldMigrateLegacyState) {
+        const stopLegacyListener = onSnapshot(LEGACY_STATE_REF, { includeMetadataChanges: true }, (snapshot) => {
+          if (snapshot.metadata.fromCache) return;
+          if (snapshot.metadata.hasPendingWrites) return;
+          legacyState = snapshot.exists() ? normalizeLegacyState(snapshot.data()) : null;
+          legacyLoaded = true;
+          legacyUnsubscribe?.();
+          legacyUnsubscribe = null;
+          maybeFinishInitialLoad();
+        }, (error) => {
+          updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
+          onSyncError?.(error);
+          unsubscribeAll();
+        });
+        legacyUnsubscribe = stopLegacyListener;
+        unsubscriptions.push(stopLegacyListener);
+      }
 
-      return () => {
-        unsubscribeFirestore();
-        unsubscribeBroadcast();
-      };
+      unsubscriptions.push(this.subscribeToLocalBroadcast((state) => {
+        callback(state, 'local_broadcast');
+      }));
     } catch (error) {
+      updateSyncStatus('error');
       onSyncError?.(error);
-      return this.subscribeToLocalBroadcast(callback);
+      unsubscribeAll();
     }
+
+    return unsubscribeAll;
   }
 };
-

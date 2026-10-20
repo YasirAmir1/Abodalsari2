@@ -1,27 +1,29 @@
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- * 
- * Global Firebase Real-Time Synchronization Architecture & Event Manager
- * Provides instant (< 1s) cross-device and multi-session state synchronization
- * using Firebase Firestore onSnapshot listeners and BroadcastChannel.
+ * App-wide dispatcher for the Firestore snapshot streams owned by
+ * firebaseService. Firestore handles normal network reconnection itself;
+ * this manager only restarts a stream if Firestore reports a terminal error.
  */
 
-import { onSnapshot, doc } from 'firebase/firestore';
-import { db, STATE_DOC_REF, firebaseService, SyncStatus } from './firebaseService';
-import { AppState, storageService } from './storageService';
+import { firebaseService } from './firebaseService';
+import type { SyncStatus } from './firebaseService';
+import { storageService } from './storageService';
+import type { AppState } from './storageService';
 
 export interface SyncEventDetail {
   state: AppState;
-  source: 'remote_firestore' | 'local_broadcast' | 'local_storage';
+  source: 'remote_firestore' | 'local_broadcast';
   timestamp: number;
 }
 
 export class FirebaseSyncManager {
   private static instance: FirebaseSyncManager;
   private unsubscribeFirestore: (() => void) | null = null;
+  private unsubscribeStatus: (() => void) | null = null;
   private isListening = false;
-  private reconnectTimer: any = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelayMs = 1000;
+  private generation = 0;
+  private stateCallback: ((state: AppState) => void) | null = null;
 
   private constructor() {
     this.setupNetworkWatchers();
@@ -37,95 +39,123 @@ export class FirebaseSyncManager {
   private setupNetworkWatchers() {
     if (typeof window === 'undefined') return;
 
-    window.addEventListener('online', () => {
-      console.log('[FirebaseSync] Network restored. Resuming real-time listeners...');
-      this.resync();
-    });
-
-    window.addEventListener('offline', () => {
-      console.warn('[FirebaseSync] Network offline. State will queue locally.');
-    });
+    window.addEventListener('online', this.handleNetworkOnline);
+    window.addEventListener('offline', this.handleNetworkOffline);
   }
 
-  /**
-   * Initializes real-time listener on Firestore state document.
-   * Broadcasts updates to the entire app via custom events and callbacks.
-   */
+  private handleNetworkOnline = () => {
+    // Active Firestore listeners reconnect automatically. Restart only after
+    // a terminal listener error has already closed the stream.
+    if (this.isListening && !this.unsubscribeFirestore) {
+      this.clearReconnectTimer();
+      this.startFirestoreListener(this.generation);
+    }
+  };
+
+  private handleNetworkOffline = () => {
+    // Firestore's persistent local cache keeps reads available and queues
+    // writes while offline; retain the listener for automatic resumption.
+  };
+
   public startListening(onStateUpdate: (state: AppState) => void): () => void {
-    if (this.isListening && this.unsubscribeFirestore) {
-      this.unsubscribeFirestore();
-    }
-
+    this.stopListening();
     this.isListening = true;
+    this.stateCallback = onStateUpdate;
+    const generation = ++this.generation;
 
-    try {
-      this.unsubscribeFirestore = firebaseService.subscribeToRemoteState((remoteState) => {
-        if (!remoteState) return;
-
-        const currentLocal = storageService.loadState();
-        const remoteTime = remoteState.lastUpdatedTimestamp || 0;
-        const localTime = currentLocal.lastUpdatedTimestamp || 0;
-
-        if (localTime > remoteTime && remoteTime > 0) {
-          return;
-        }
-
-        const filtered = storageService.filterOutDeleted(remoteState);
-
-        // Dispatch window event for external consumers, extensions, or WebView bridges
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent<SyncEventDetail>('alsari:state-sync', {
-              detail: {
-                state: filtered,
-                source: 'remote_firestore',
-                timestamp: Date.now()
-              }
-            })
-          );
-        }
-
-        onStateUpdate(filtered);
-      });
-    } catch (err) {
-      console.error('[FirebaseSync] Listener failed, will retry in 5s:', err);
-      this.scheduleReconnect(onStateUpdate);
-    }
+    this.unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
+      this.dispatchStatus(status);
+    });
+    this.startFirestoreListener(generation);
 
     return () => {
-      this.stopListening();
+      if (generation === this.generation) this.stopListening();
     };
   }
 
-  private scheduleReconnect(onStateUpdate: (state: AppState) => void) {
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => {
-      if (this.isListening) {
-        this.startListening(onStateUpdate);
+  private startFirestoreListener(generation: number) {
+    if (!this.isListening || generation !== this.generation || this.unsubscribeFirestore) return;
+
+    try {
+      let unsubscribe: (() => void) | null = null;
+      let erroredBeforeAssignment = false;
+      unsubscribe = firebaseService.subscribeToRemoteState(
+        (remoteState, source = 'remote_firestore') => {
+          if (!this.isListening || generation !== this.generation) return;
+          const filtered = storageService.filterOutDeleted(remoteState);
+          this.dispatchState(filtered, source);
+        },
+        () => {
+          this.reconnectDelayMs = 1000;
+          this.clearReconnectTimer();
+        },
+        (error) => {
+          if (!this.isListening || generation !== this.generation) return;
+          console.error('[FirebaseSync] Firestore stream closed:', error);
+          this.unsubscribeFirestore = null;
+          if (!unsubscribe) erroredBeforeAssignment = true;
+          this.scheduleReconnect(generation);
+        }
+      );
+      if (erroredBeforeAssignment) {
+        unsubscribe?.();
+      } else {
+        this.unsubscribeFirestore = unsubscribe;
       }
-    }, 5000);
+    } catch (error) {
+      console.error('[FirebaseSync] Could not start Firestore stream:', error);
+      this.scheduleReconnect(generation);
+    }
+  }
+
+  private dispatchState(state: AppState, source: SyncEventDetail['source']) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent<SyncEventDetail>('alsari:state-sync', {
+        detail: { state, source, timestamp: Date.now() }
+      }));
+    }
+    this.stateCallback?.(state);
+  }
+
+  private dispatchStatus(status: SyncStatus) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent<SyncStatus>('alsari:sync-status', { detail: status }));
+    }
+  }
+
+  private scheduleReconnect(generation: number) {
+    if (!this.isListening || generation !== this.generation || this.reconnectTimer) return;
+    const delay = this.reconnectDelayMs;
+    this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 30000);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.startFirestoreListener(generation);
+    }, delay);
+  }
+
+  private clearReconnectTimer() {
+    if (!this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
   public stopListening() {
     this.isListening = false;
-    if (this.unsubscribeFirestore) {
-      this.unsubscribeFirestore();
-      this.unsubscribeFirestore = null;
-    }
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.generation += 1;
+    this.stateCallback = null;
+    this.clearReconnectTimer();
+    this.unsubscribeFirestore?.();
+    this.unsubscribeFirestore = null;
+    this.unsubscribeStatus?.();
+    this.unsubscribeStatus = null;
   }
 
   public async resync(): Promise<AppState | null> {
     const remote = await firebaseService.fetchRemoteState();
-    if (remote) {
-      const filtered = storageService.filterOutDeleted(remote);
-      storageService.saveState(filtered);
-      return filtered;
-    }
-    return null;
+    if (!remote) return null;
+    const filtered = storageService.filterOutDeleted(remote);
+    storageService.saveState(filtered);
+    return filtered;
   }
 }
 
