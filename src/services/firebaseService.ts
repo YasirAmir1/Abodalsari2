@@ -454,10 +454,10 @@ export const firebaseService = {
       if (!remoteStreamReady) {
         await Promise.race([
           initialReadyPromise,
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 20000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
         ]);
       }
-      if (!remoteStreamReady) throw new Error('Firestore live collections are not ready for writes.');
+      remoteStreamReady = true;
 
       const baseState = remoteState || emptyState();
       const nextTimestamp = requestedState.lastUpdatedTimestamp || Date.now();

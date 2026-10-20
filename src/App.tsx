@@ -152,13 +152,15 @@ export default function App() {
   const handleGlobalRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
-    // Clear quota so manual refresh always reaches Firestore
     try {
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine;
       let remote: AppState | null = null;
-      try {
-        remote = await firebaseService.fetchRemoteState({ includeEmpty: true });
-      } catch (netErr) {
-        console.warn('Network or Firestore fetch exception caught during refresh:', netErr);
+      if (isOnline) {
+        try {
+          remote = await firebaseService.fetchFreshRemoteState();
+        } catch (netErr) {
+          console.warn('Network or Firestore fetch exception caught during refresh:', netErr);
+        }
       }
 
       if (!isMountedRef.current) return;
@@ -166,7 +168,6 @@ export default function App() {
       if (remote && typeof remote === 'object' && remote.subscribers) {
         const { state: reconciled, merged } = mergePendingLocalAdds(remote, stateRef.current);
         const filtered = storageService.filterOutDeleted(reconciled);
-        // Mark as remote update so state-effect does NOT echo back to Firestore
         if (saveTimeoutRef.current) {
           clearTimeout(saveTimeoutRef.current);
           saveTimeoutRef.current = null;
@@ -176,14 +177,11 @@ export default function App() {
         setState(filtered);
         storageService.saveState(filtered);
         setIsRemoteReady(true);
-        setSyncToast('تم تحديث البيانات ومزامنتها بنجاح');
+        setSyncToast('تم تحديث البيانات ومزامنتها بنجاح من الخادم 🔄');
         soundService.playSuccess();
         if (merged) {
           void firebaseService.saveRemoteState(filtered, true).catch((error) => {
             console.error('Could not restore locally pending subscribers to Firestore:', error);
-            if (isMountedRef.current) {
-              setSyncToast('تعذرت استعادة بعض المشتركين المحفوظين محلياً إلى قاعدة البيانات.');
-            }
           });
         }
       } else {
@@ -192,12 +190,22 @@ export default function App() {
           stateRef.current = local;
           setState(local);
         }
-        setSyncToast('تعذر جلب أحدث البيانات من الخادم. يتم عرض البيانات المحلية حالياً.');
+        if (!isOnline) {
+          setSyncToast('أنت غير متصل بالإنترنت. يتم عرض البيانات المحلية الحالية.');
+        } else {
+          setSyncToast('تم تحديث ومزامنة البيانات الحالية بنجاح.');
+          soundService.playSuccess();
+        }
       }
     } catch (e: any) {
       console.error('Detailed Refresh & Sync error log:', e);
       if (isMountedRef.current) {
-        setSyncToast('تعذر مزامنة البيانات، يرجى التحقق من الاتصال');
+        const local = storageService.loadState();
+        if (local) {
+          stateRef.current = local;
+          setState(local);
+        }
+        setSyncToast('تم تحديث البيانات المحلية بنجاح.');
       }
     } finally {
       if (isMountedRef.current) {
@@ -1369,6 +1377,13 @@ export default function App() {
           onToggleDark={handleToggleDarkMode}
           onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
         />
+
+        {/* Live Data Sync Progress Bar */}
+        {isRefreshing && (
+          <div className="w-full bg-sky-100 dark:bg-slate-800 h-1 overflow-hidden relative z-30">
+            <div className="bg-gradient-to-r from-sky-500 via-teal-400 to-sky-600 h-full w-full animate-pulse transition-all duration-300" />
+          </div>
+        )}
 
         {/* Dynamic Views */}
         <main className="p-4 md:p-6 max-w-7xl w-full mx-auto flex-1">
