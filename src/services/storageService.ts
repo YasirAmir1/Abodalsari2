@@ -265,6 +265,7 @@ export const storageService = {
         ...state,
         lastUpdatedTimestamp: state.lastUpdatedTimestamp || Date.now()
       };
+      console.log('State saved at:', new Date(toSave.lastUpdatedTimestamp).toLocaleTimeString());
       localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     } catch (e) {
       console.error('Failed to save state to localStorage:', e);

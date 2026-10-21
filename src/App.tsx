@@ -340,6 +340,31 @@ export default function App() {
   const isRemoteUpdateRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+
+  // Centralized state update function
+  const updateAppState = (
+    updates: Partial<AppState>,
+    failureMessage = 'تعذرت مزامنة البيانات:'
+  ) => {
+    const currentState = stateRef.current;
+    const nextState = {
+      ...currentState,
+      ...updates,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    // If subscribers or invoices changed, recompute agent metrics
+    if (updates.subscribers || updates.invoices) {
+      nextState.agents = computeUpdatedAgents(
+        updates.agents || currentState.agents,
+        updates.subscribers || currentState.subscribers,
+        updates.invoices || currentState.invoices
+      );
+    }
+
+    persistStateImmediately(nextState, failureMessage);
+  };
+
   const persistStateImmediately = (nextState: AppState, failureMessage: string, atomic = false) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -455,10 +480,12 @@ export default function App() {
 
     const unsubscribe = syncManager.startListening((remoteState) => {
       if (!remoteState) return;
+      console.log('Received remote state:', remoteState);
 
       // Recover subscriber additions that were saved locally while an earlier
       // Firestore write was pending or unavailable, then apply local tombstones.
       const { state: reconciledState, merged } = mergePendingLocalAdds(remoteState, stateRef.current);
+      console.log('Reconciled state merged:', merged);
       const filteredState = storageService.filterOutDeleted(reconciledState);
       const stateWithAgentMetrics = {
         ...filteredState,
@@ -581,6 +608,28 @@ export default function App() {
     } catch {
       // ignore
     }
+  };
+
+  const handleManualSync = async () => {
+    setSyncToast('جاري المزامنة...');
+    try {
+      const freshRemote = await firebaseService.fetchFreshRemoteState();
+      if (freshRemote) {
+        const filtered = storageService.filterOutDeleted(freshRemote);
+        // Mark as remote so Effect 1 does NOT write it back to Firestore
+        isRemoteUpdateRef.current = true;
+        stateRef.current = filtered;
+        storageService.saveState(filtered);
+        setState(filtered);
+        setSyncToast('تم تحديث البيانات بنجاح.');
+      } else {
+        setSyncToast('لا توجد بيانات جديدة.');
+      }
+    } catch (err) {
+      console.error('Manual sync failed:', err);
+      setSyncToast('فشلت المزامنة. حاول مجدداً.');
+    }
+    setTimeout(() => setSyncToast(null), 3000);
   };
 
   const handleToggleAgentMode = () => {
@@ -754,15 +803,13 @@ export default function App() {
       });
     }
 
-    persistStateImmediately({
-      ...currentState,
+    updateAppState({
       subscribers: [newSub, ...currentState.subscribers],
       invoices: updatedInvoices,
-      agents: updatedAgents,
       pendingRequests: pendingRequestId
         ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
         : currentState.pendingRequests
-    }, 'Could not immediately sync the new subscriber:', true);
+    }, 'Could not immediately sync the new subscriber:');
 
     soundService.playSuccess();
 
@@ -791,8 +838,11 @@ export default function App() {
     }
     const fixedSub = { ...updated, deviceId: cleanDevId, status: finalStatus };
     const updatedSubscribers = currentState.subscribers.map((s) => (s.id === updated.id ? fixedSub : s));
-    const nextState = syncAgentsAndPersist(currentState, updatedSubscribers, currentState.invoices);
-    persistStateImmediately(nextState, 'Could not immediately sync the subscriber update:');
+    
+    updateAppState(
+      { subscribers: updatedSubscribers },
+      'Could not immediately sync the subscriber update:'
+    );
   };
 
   const handleImportSubscribers = ({ subscribers: importedSubs, newAgents = [] }: { subscribers: Subscriber[], newAgents: Agent[] }) => {
@@ -858,10 +908,8 @@ export default function App() {
       };
     });
 
-    persistStateImmediately({
-      ...currentState,
-      subscribers: updatedSubscribers,
-      agents: updatedAgents
+    updateAppState({
+      subscribers: updatedSubscribers
     }, 'Could not immediately sync imported subscribers:');
     soundService.playSuccess();
   };
@@ -916,22 +964,12 @@ export default function App() {
       };
     });
 
-    const newState: AppState = {
-      ...state,
+    updateAppState({
       subscribers: remainingSubscribers,
       invoices: remainingInvoices,
-      pendingRequests: remainingPendingRequests,
-      agents: updatedAgents,
-      lastUpdatedTimestamp: Date.now()
-    };
-
-    storageService.saveState(newState);
-    setState(newState);
-    try {
-      await firebaseService.saveRemoteState(newState);
-    } catch (e) {
-      console.warn('Immediate remote save on delete failed:', e);
-    }
+      pendingRequests: remainingPendingRequests
+    }, 'Could not immediately sync subscriber deletion:');
+    
     soundService.playSuccess();
   };
 
@@ -1010,12 +1048,14 @@ export default function App() {
       (req) => req.subscriberId !== subscriberId && (subDeviceId ? req.deviceId !== subDeviceId : true)
     );
 
-    const nextState = syncAgentsAndPersist(currentState, updatedSubscribers, remainingInvoices);
-    const finalState: AppState = {
-      ...nextState,
-      pendingRequests: remainingPendingRequests
-    };
-    persistStateImmediately(finalState, 'Could not immediately sync subscriber deactivation:');
+    updateAppState(
+      {
+        subscribers: updatedSubscribers,
+        invoices: remainingInvoices,
+        pendingRequests: remainingPendingRequests
+      },
+      'Could not immediately sync subscriber deactivation:'
+    );
     soundService.playSuccess();
   };
 
@@ -1075,37 +1115,15 @@ export default function App() {
       return ag;
     });
 
-    const newState: AppState = {
-      ...currentState,
+    updateAppState({
       subscribers: currentState.subscribers.map((subscriber) =>
         subscriber.id === finalSubscriber.id ? finalSubscriber : subscriber
       ),
       invoices: [newInvoice, ...currentState.invoices],
-      agents: updatedAgents,
       pendingRequests: pendingRequestId
         ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
-        : currentState.pendingRequests,
-      lastUpdatedTimestamp: Date.now()
-    };
-
-    // Keep the local snapshot and the single Firestore payload in sync. The
-    // persistence effect will deduplicate this payload after its debounce.
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
-    stateRef.current = newState;
-    storageService.saveState(newState);
-    setState(newState);
-    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
-      console.error('Could not immediately sync subscriber renewal:', error);
-      if (isMountedRef.current) {
-        setSyncToast('تم تسجيل التجديد محلياً وتعذرت مزامنته حالياً');
-        setTimeout(() => {
-          if (isMountedRef.current) setSyncToast(null);
-        }, 3500);
-      }
-    });
+        : currentState.pendingRequests
+    }, 'Could not immediately sync subscriber renewal:');
 
     soundService.playSuccess();
 
@@ -1227,29 +1245,11 @@ export default function App() {
       lastUpdatedTimestamp: Date.now()
     };
 
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
-    stateRef.current = nextFullState;
-    storageService.saveState(nextFullState);
-    setState(nextFullState);
-
-    void firebaseService.executeApprovalTransaction({
-      subscriber: targetSubscriber,
-      invoice: newInvoice,
-      agent: targetAgent,
-      requestId,
-      nextFullState
-    }).catch((error) => {
-      console.error('Could not execute approval transaction:', error);
-      if (isMountedRef.current) {
-        setSyncToast('تم اعتماد الطلب محلياً وتعذرت المزامنة الفورية');
-        setTimeout(() => {
-          if (isMountedRef.current) setSyncToast(null);
-        }, 3500);
-      }
-    });
+    updateAppState({
+      subscribers: updatedSubscribers,
+      invoices: updatedInvoices,
+      pendingRequests: updatedPendingRequests
+    }, 'Could not immediately sync pending request approval:');
 
     appFeatures.broadcastAdminUpdate({
       action: 'APPROVE_PENDING_REQUEST',
@@ -1679,6 +1679,7 @@ export default function App() {
           isDark={isDarkMode}
           onToggleDark={handleToggleDarkMode}
           onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
+          onSync={handleManualSync}
         />
 
         {/* Dynamic Views */}

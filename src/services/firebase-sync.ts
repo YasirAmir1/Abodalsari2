@@ -185,6 +185,7 @@ export class FirebaseSyncManager {
   private async reconcile(generation: number): Promise<AppState | null> {
     const remote = await (firebaseService as any).fetchFreshRemoteState?.() || await firebaseService.fetchRemoteState({ includeEmpty: true });
     if (!remote || !this.isListening || generation !== this.generation) return null;
+    console.log('[FirebaseSync] Reconciliation fetched remote state:', remote);
     const filtered = storageService.filterOutDeleted(remote);
     storageService.saveState(filtered);
     this.dispatchState(filtered, 'remote_firestore');

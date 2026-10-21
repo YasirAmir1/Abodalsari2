@@ -1,10 +1,10 @@
-import React from 'react';
 import {
   Calendar,
   Sun,
   Moon,
   LogOut,
-  Menu
+  Menu,
+  RefreshCw
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -18,6 +18,7 @@ interface HeaderProps {
   isDark?: boolean;
   onToggleDark?: () => void;
   onToggleSidebar?: () => void;
+  onSync?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,7 +31,8 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   isDark = false,
   onToggleDark,
-  onToggleSidebar
+  onToggleSidebar,
+  onSync
 }) => {
   return (
     <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 select-none transition-colors">
@@ -73,6 +75,17 @@ export const Header: React.FC<HeaderProps> = ({
           <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
           <span>{new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
         </div>
+
+        {/* Sync Button */}
+        {onSync && (
+          <button
+            onClick={onSync}
+            className="w-9 h-9 rounded-full border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 flex items-center justify-center text-sky-600 dark:text-sky-400 transition-all shadow-xs active:scale-95 cursor-pointer"
+            title="مزامنة الآن"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Dark Mode Toggle */}
         <button
