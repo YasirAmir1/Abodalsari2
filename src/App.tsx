@@ -1,3 +1,33 @@
+
+function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoices: Invoice[]): Agent[] {
+  return agents.map((agent) => {
+    const agentSubscribers = subscribers.filter(
+      (sub) => sub.agentId === agent.id || (sub.agentName && agent.agentName.trim() === agent.name.trim())
+    );
+    const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
+    const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
+    const totalDebt = agentSubscribers
+      .filter((sub) => sub.paymentStatus === 'debt' || sub.paymentStatus === 'partial')
+      .reduce((sum, sub) => sum + (Number.isFinite(sub.amount) ? sub.amount : 0), 0);
+    const agentInvoices = invoices.filter(
+      (inv) => inv.agentId === agent.id || (inv.agentName && agent.agentName.trim() === agent.name.trim())
+    );
+    const totalSales = agentInvoices.reduce((sum, inv) => sum + (Number.isFinite(inv.amount) ? inv.amount : 0), 0);
+    const totalPaid = Math.max(0, totalSales - totalDebt);
+
+    return {
+      ...agent,
+      devicesCount: agentSubscribers.length,
+      activeSubscriptions: activeSubscribers.length,
+      inactiveSubscriptions: inactiveSubscribers.length,
+      totalSales,
+      totalDebt,
+      totalPaid,
+      hasDebt: totalDebt > 0
+    };
+  });
+}
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -1055,61 +1085,118 @@ export default function App() {
     const amt = overrides?.amount !== undefined ? overrides.amount : req.amount;
     const stat = overrides?.status || 'active';
     const payStat = overrides?.paymentStatus || 'paid';
-
     const expDate = new Date(sDate);
     const months = dur === 'شهرين' ? 2 : dur === '3 أشهر' ? 3 : 1;
     expDate.setMonth(expDate.getMonth() + months);
     const endDate = expDate.toISOString().split('T')[0];
 
+    let targetSubscriber: Subscriber;
+    let updatedSubscribers: Subscriber[];
+
     if (isNewDeviceSale) {
-      handleAddSubscriber(
-        {
-          name: req.subscriberName,
-          phone: req.subscriberPhone,
-          deviceId: req.deviceId,
-          agentId: req.agentId,
-          agentName: req.agentName,
-          subscriptionType: dur,
-          status: stat,
-          paymentStatus: payStat,
-          amount: amt,
-          startDate: sDate,
-          endDate,
-          notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل'
-        },
-        true,
-        payStat === 'paid',
-        isNewDeviceSale ? 'device' : 'subscription',
-        requestId
-      );
+      const rawDev = (req.deviceId || '').trim();
+      const cleanDev = rawDev ? (rawDev.startsWith('00') ? rawDev : '00' + rawDev) : '00' + Math.floor(100000 + Math.random() * 900000);
+      targetSubscriber = {
+        id: req.subscriberId.startsWith('new-sub-') ? req.subscriberId : 'sub-' + Date.now(),
+        name: req.subscriberName,
+        phone: req.subscriberPhone,
+        deviceId: cleanDev,
+        agentId: req.agentId,
+        agentName: req.agentName,
+        subscriptionType: dur,
+        status: stat,
+        paymentStatus: payStat,
+        amount: amt,
+        originalAmount: amt,
+        paidAmount: payStat === 'paid' ? amt : 0,
+        startDate: sDate,
+        endDate,
+        notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل'
+      };
+      updatedSubscribers = [targetSubscriber, ...currentState.subscribers];
     } else {
       const sub = currentState.subscribers.find((s) => s.id === req.subscriberId);
       if (!sub) {
         showAlert('تعذر اعتماد التجديد لأن سجل المشترك غير موجود. أبقينا الطلب معلقاً للمراجعة.', 'تعذر اعتماد الطلب', 'error');
         return;
       }
-
-      const updatedSub: Subscriber = {
+      targetSubscriber = {
         ...sub,
         status: stat,
         subscriptionType: dur,
         amount: amt,
         startDate: sDate,
         endDate,
-        paymentStatus: payStat
+        paymentStatus: payStat,
+        paidAmount: payStat === 'paid' ? (sub.paidAmount || 0) + amt : sub.paidAmount
       };
-
-      handleRenewSubscriber(updatedSub, payStat === 'debt', amt, requestId);
+      updatedSubscribers = currentState.subscribers.map((s) => (s.id === targetSubscriber.id ? targetSubscriber : s));
     }
+
+    const newInvoice: Invoice = {
+      id: 'inv-' + Date.now(),
+      invoiceNumber: 'INV-' + Date.now(),
+      subscriberId: targetSubscriber.id,
+      subscriberName: targetSubscriber.name,
+      deviceId: targetSubscriber.deviceId,
+      agentId: targetSubscriber.agentId,
+      agentName: targetSubscriber.agentName,
+      packageType: 'تجديد باقة ' + dur,
+      amount: amt,
+      paidAmount: payStat === 'paid' ? amt : 0,
+      remainingAmount: payStat === 'debt' ? amt : 0,
+      paymentStatus: payStat,
+      date: sDate,
+      notes: req.notes || 'اعتماد طلب رسمي معتمد'
+    };
+
+    const updatedInvoices = [newInvoice, ...currentState.invoices];
+    const updatedPendingRequests = currentState.pendingRequests.filter((r) => r.id !== requestId);
+    const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
+    const targetAgent = updatedAgents.find((ag) => ag.id === targetSubscriber.agentId) || updatedAgents[0];
+
+    const nextFullState: AppState = {
+      ...currentState,
+      subscribers: updatedSubscribers,
+      invoices: updatedInvoices,
+      pendingRequests: updatedPendingRequests,
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    stateRef.current = nextFullState;
+    storageService.saveState(nextFullState);
+    setState(nextFullState);
+
+    void firebaseService.executeApprovalTransaction({
+      subscriber: targetSubscriber,
+      invoice: newInvoice,
+      agent: targetAgent,
+      requestId,
+      nextFullState
+    }).catch((error) => {
+      console.error('Could not execute approval transaction:', error);
+      if (isMountedRef.current) {
+        setSyncToast('تم اعتماد الطلب محلياً وتعذرت المزامنة الفورية');
+        setTimeout(() => {
+          if (isMountedRef.current) setSyncToast(null);
+        }, 3500);
+      }
+    });
 
     appFeatures.broadcastAdminUpdate({
       action: 'APPROVE_PENDING_REQUEST',
       requestId,
-      subscriberId: req.subscriberId,
-      agentId: req.agentId,
+      subscriberId: targetSubscriber.id,
+      agentId: targetSubscriber.agentId,
       timestamp: Date.now()
     });
-    firebaseService.broadcastLocalChange(stateRef.current);
+    firebaseService.broadcastLocalChange(nextFullState);
+    soundService.playSuccess();
   };
 
   const handleRejectPendingRequest = (requestId: string) => {

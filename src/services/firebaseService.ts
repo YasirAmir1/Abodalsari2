@@ -1,6 +1,7 @@
 import { getApps, initializeApp } from 'firebase/app';
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   getDoc,
@@ -532,6 +533,14 @@ export const firebaseService = {
     return saveTask;
   },
 
+  async deleteInvoice(id: string): Promise<void> {
+    try {
+      const invRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), encodeURIComponent(id));
+      await deleteDoc(invRef);
+    } catch (e) {
+      console.error('Failed to delete remote invoice:', e);
+    }
+  },
   subscribeToRemoteState(
     callback: (state: AppState, source?: 'remote_firestore' | 'local_broadcast') => void,
     onServerReady?: () => void,
