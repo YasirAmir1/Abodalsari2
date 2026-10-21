@@ -82,18 +82,24 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
       }
 
       if (matchedUser) {
+        let remoteState: AppState | undefined = undefined;
+        try {
+          const fetched = await Promise.race([
+            firebaseService.fetchFreshRemoteState(),
+            new Promise<AppState | null>((resolve) => setTimeout(() => resolve(null), 3000))
+          ]);
+          if (fetched) remoteState = fetched;
+        } catch {}
+
         setIsLoading(false);
-        onLogin(matchedUser);
+        onLogin(matchedUser, remoteState);
         return;
       }
 
-      // 2. If not found locally, try a quick remote fetch with a short 2-second timeout
+      // 2. If not found locally, try a quick remote fetch
       let remote: AppState | null = null;
       try {
-        remote = await Promise.race([
-          firebaseService.fetchRemoteState(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
-        ]);
+        remote = await firebaseService.fetchFreshRemoteState() || await firebaseService.fetchRemoteState();
       } catch {}
 
       let currentUsers = users;

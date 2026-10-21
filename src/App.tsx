@@ -157,7 +157,14 @@ export default function App() {
       let remote: AppState | null = null;
       
       if (isOnline) {
-        // Force server fetch with a longer timeout to be robust
+        // Step 1: Immediately push local pending changes/modifications to central Firestore database
+        try {
+          await firebaseService.saveRemoteState(stateRef.current, true);
+        } catch (pushErr) {
+          console.warn('Pushing local changes prior to refresh:', pushErr);
+        }
+
+        // Step 2: Fetch and pull the latest fresh global state from server
         remote = await firebaseService.fetchFreshRemoteState();
       }
 
@@ -175,7 +182,7 @@ export default function App() {
         setState(filtered);
         storageService.saveState(filtered);
         setIsRemoteReady(true);
-        setSyncToast('تم تحديث ومزامنة البيانات بنجاح مع الخادم 🔄');
+        setSyncToast('تم رفع التعديلات المحلية وجلب أحدث البيانات من السحابة بنجاح 🔄');
         soundService.playSuccess();
         if (merged) {
           void firebaseService.saveRemoteState(filtered, true).catch((error) => {
@@ -183,11 +190,10 @@ export default function App() {
           });
         }
       } else {
-        // If fetch failed or returned null while online, be honest about it
         if (isOnline) {
-          setSyncToast('تعذر الاتصال بالخادم لجلب بيانات جديدة. يرجى المحاولة لاحقاً.');
+          setSyncToast('تم رفع التعديلات المحلية. تعذر جلب بيانات جديدة من الخادم حالياً.');
         } else {
-          setSyncToast('أنت غير متصل بالإنترنت. يتم عرض البيانات المحلية.');
+          setSyncToast('أنت غير متصل بالإنترنت. تم حفظ البيانات محلياً.');
         }
       }
     } catch (e: any) {
@@ -367,20 +373,7 @@ export default function App() {
   const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents[1];
 
   // Auth Handlers
-  const handleLogin = (user: SystemUser, remoteState?: AppState) => {
-    if (remoteState) {
-      const latestState = storageService.filterOutDeleted(remoteState);
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-      isRemoteUpdateRef.current = true;
-      stateRef.current = latestState;
-      storageService.saveState(latestState);
-      setState(latestState);
-      setIsRemoteReady(true);
-    }
-
+  const handleLogin = async (user: SystemUser, remoteState?: AppState) => {
     setCurrentUser(user);
     try {
       localStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
@@ -397,6 +390,24 @@ export default function App() {
       setCurrentTab('dashboard');
     }
     soundService.playSuccess();
+
+    try {
+      const freshRemote = remoteState || await firebaseService.fetchFreshRemoteState();
+      if (freshRemote) {
+        const filtered = storageService.filterOutDeleted(freshRemote);
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+          saveTimeoutRef.current = null;
+        }
+        isRemoteUpdateRef.current = true;
+        stateRef.current = filtered;
+        storageService.saveState(filtered);
+        setState(filtered);
+        setIsRemoteReady(true);
+      }
+    } catch (err) {
+      console.warn('Could not fetch initial cloud state on login:', err);
+    }
   };
 
   const handleLogout = () => {
@@ -1451,7 +1462,7 @@ export default function App() {
 
           {currentTab === 'subscribers' && (
             <SubscribersView
-              subscribers={state.subscribers}
+              subscribers={isAgentMode ? state.subscribers.filter((s) => s.agentId === currentAgent.id || s.agentName === currentAgent.name) : state.subscribers}
               agents={state.agents}
               pricing={state.pricing}
               onAddSubscriber={handleAddSubscriber}
@@ -1463,15 +1474,15 @@ export default function App() {
               onOpenWhatsApp={setActiveWhatsAppSub}
               onSelectDeviceQr={handleOpenDeviceQr}
               onImportSubscribers={handleImportSubscribers}
-              currentAgentFilter={subscribersAgentFilter}
+              currentAgentFilter={isAgentMode ? currentAgent.id : subscribersAgentFilter}
               isMainCenterView={!isAgentMode}
-              isAdmin={currentUser.role === 'مدير رئيسي' && !isAgentMode}
+              isAdmin={currentUser?.role === 'مدير رئيسي' && !isAgentMode}
             />
           )}
 
           {currentTab === 'sales' && (
             <SalesInvoicesView
-              invoices={state.invoices}
+              invoices={isAgentMode ? state.invoices.filter((i) => i.agentId === currentAgent.id || i.agentName === currentAgent.name) : state.invoices}
               agents={state.agents}
               onOpenReceipt={setActiveReceiptInvoice}
               onDeleteInvoice={handleDeleteInvoice}
@@ -1481,9 +1492,9 @@ export default function App() {
 
           {currentTab === 'debts' && (
             <DebtsView
-              agents={state.agents}
-              invoices={state.invoices}
-              subscribers={state.subscribers}
+              agents={isAgentMode ? state.agents.filter((a) => a.id === currentAgent.id) : state.agents}
+              invoices={isAgentMode ? state.invoices.filter((i) => i.agentId === currentAgent.id || i.agentName === currentAgent.name) : state.invoices}
+              subscribers={isAgentMode ? state.subscribers.filter((s) => s.agentId === currentAgent.id || s.agentName === currentAgent.name) : state.subscribers}
               onSettleAgentDebt={handleSettleAgentDebt}
               onSettleSubscriberDebt={handleSettleSubscriberDebt}
               onResetAgentData={handleResetAgentData}
@@ -1495,7 +1506,7 @@ export default function App() {
 
           {currentTab === 'pending' && (
             <PendingRequestsView
-              pendingRequests={state.pendingRequests}
+              pendingRequests={isAgentMode ? state.pendingRequests.filter((r) => r.agentId === currentAgent.id || r.agentName === currentAgent.name) : state.pendingRequests}
               agents={state.agents}
               subscribers={state.subscribers}
               onApproveRequest={handleApprovePendingRequest}
