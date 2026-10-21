@@ -1214,7 +1214,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                   className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 text-sm font-semibold"
                 >
                   <option value="renewal">تجديد اشتراك</option>
-                  <option value="device">بيع جهاز جديد فقط</option>
+                  <option value="device">جهاز جديد</option>
                 </select>
               </div>
 
