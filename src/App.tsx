@@ -1,17 +1,58 @@
 
+function syncAgentsAndPersist(
+  currentState: AppState,
+  updatedSubscribers: Subscriber[],
+  updatedInvoices: Invoice[],
+  failureMessage = 'Could not sync agent state:'
+): AppState {
+  const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
+  return {
+    ...currentState,
+    subscribers: updatedSubscribers,
+    invoices: updatedInvoices,
+    agents: updatedAgents,
+    lastUpdatedTimestamp: Date.now()
+  };
+}
+
+
+
+function normalizeStr(str?: string): string {
+  if (!str) return '';
+  return str.trim().toLowerCase().replace(/\s+/g, ' ').replace(/أ/g, 'ا').replace(/إ/g, 'ا').replace(/آ/g, 'ا').replace(/ة/g, 'ه');
+}
+
+function doesSubscriberBelongToAgent(sub: Subscriber, agent: Agent): boolean {
+  if (!sub || !agent) return false;
+  if (sub.agentId && agent.id && sub.agentId === agent.id) return true;
+  const subName = normalizeStr(sub.agentName);
+  const agentName = normalizeStr(agent.name);
+  const agentCode = normalizeStr(agent.code);
+  if (subName && agentName && (subName === agentName || subName.includes(agentName) || agentName.includes(subName))) return true;
+  if (subName && agentCode && (subName === agentCode || subName.includes(agentCode))) return true;
+  return false;
+}
+
+function doesInvoiceBelongToAgent(inv: Invoice, agent: Agent): boolean {
+  if (!inv || !agent) return false;
+  if (inv.agentId && agent.id && inv.agentId === agent.id) return true;
+  const invName = normalizeStr(inv.agentName);
+  const agentName = normalizeStr(agent.name);
+  const agentCode = normalizeStr(agent.code);
+  if (invName && agentName && (invName === agentName || invName.includes(agentName) || agentName.includes(invName))) return true;
+  if (invName && agentCode && (invName === agentCode || invName.includes(agentCode))) return true;
+  return false;
+}
+
 function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoices: Invoice[]): Agent[] {
   return agents.map((agent) => {
-    const agentSubscribers = subscribers.filter(
-      (sub) => sub.agentId === agent.id || (sub.agentName && agent.agentName.trim() === agent.name.trim())
-    );
+    const agentSubscribers = subscribers.filter((sub) => doesSubscriberBelongToAgent(sub, agent));
     const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
     const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
     const totalDebt = agentSubscribers
       .filter((sub) => sub.paymentStatus === 'debt' || sub.paymentStatus === 'partial')
       .reduce((sum, sub) => sum + (Number.isFinite(sub.amount) ? sub.amount : 0), 0);
-    const agentInvoices = invoices.filter(
-      (inv) => inv.agentId === agent.id || (inv.agentName && agent.agentName.trim() === agent.name.trim())
-    );
+    const agentInvoices = invoices.filter((inv) => doesInvoiceBelongToAgent(inv, agent));
     const totalSales = agentInvoices.reduce((sum, inv) => sum + (Number.isFinite(inv.amount) ? inv.amount : 0), 0);
     const totalPaid = Math.max(0, totalSales - totalDebt);
 
@@ -27,6 +68,7 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
     };
   });
 }
+
 
 /**
  * @license
@@ -146,7 +188,11 @@ function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { s
 
 export default function App() {
   const { showAlert } = useAppDialogs();
-  const [state, setState] = useState<AppState>(() => storageService.loadState());
+  const [state, setState] = useState<AppState>(() => {
+    const loaded = storageService.loadState();
+    const freshAgents = computeUpdatedAgents(loaded.agents, loaded.subscribers, loaded.invoices);
+    return { ...loaded, agents: freshAgents };
+  });
   const [isRemoteReady, setIsRemoteReady] = useState(false);
   const stateRef = useRef(state);
 
@@ -703,11 +749,17 @@ export default function App() {
     if (cleanDevId && !cleanDevId.startsWith('00')) {
       cleanDevId = '00' + cleanDevId;
     }
-    const fixedSub = { ...updated, deviceId: cleanDevId };
-    persistStateImmediately({
-      ...currentState,
-      subscribers: currentState.subscribers.map((s) => (s.id === updated.id ? fixedSub : s))
-    }, 'Could not immediately sync the subscriber update:');
+    const todayStr = new Date().toISOString().split('T')[0];
+    let finalStatus = updated.status;
+    if (updated.endDate && updated.endDate !== '-' && updated.endDate >= todayStr) {
+      if (updated.status !== 'inactive') {
+        finalStatus = 'active';
+      }
+    }
+    const fixedSub = { ...updated, deviceId: cleanDevId, status: finalStatus };
+    const updatedSubscribers = currentState.subscribers.map((s) => (s.id === updated.id ? fixedSub : s));
+    const nextState = syncAgentsAndPersist(currentState, updatedSubscribers, currentState.invoices);
+    persistStateImmediately(nextState, 'Could not immediately sync the subscriber update:');
   };
 
   const handleImportSubscribers = ({ subscribers: importedSubs, newAgents = [] }: { subscribers: Subscriber[], newAgents: Agent[] }) => {
@@ -899,11 +951,10 @@ export default function App() {
   // 3. Remove all related pending renewal requests
   // 4. Fully recalculate agent financials and counters (removes agent debt and sales that came from this subscriber)
   const handleDeactivateSubscriber = async (subscriberId: string) => {
-    const sub = state.subscribers.find((s) => s.id === subscriberId);
+    const currentState = stateRef.current;
+    const sub = currentState.subscribers.find((s) => s.id === subscriberId);
     if (!sub) return;
-
     const subDeviceId = sub.deviceId;
-
     const deactivatedSub: Subscriber = {
       ...sub,
       status: 'inactive',
@@ -913,65 +964,25 @@ export default function App() {
       subscriptionType: '-',
       paymentStatus: '-'
     };
-
-    const updatedSubscribers = state.subscribers.map((s) =>
+    const updatedSubscribers = currentState.subscribers.map((s) =>
       s.id === subscriberId ? deactivatedSub : s
     );
-
-    // Remove sales invoices associated with this subscriber (by id or deviceId)
-    const remainingInvoices = state.invoices.filter(
+    const remainingInvoices = currentState.invoices.filter(
       (inv) => inv.subscriberId !== subscriberId && (subDeviceId ? inv.deviceId !== subDeviceId : true)
     );
-
-    // Remove any pending requests associated with this subscriber
-    const remainingPendingRequests = state.pendingRequests.filter(
+    const remainingPendingRequests = currentState.pendingRequests.filter(
       (req) => req.subscriberId !== subscriberId && (subDeviceId ? req.deviceId !== subDeviceId : true)
     );
 
-    // Recalculate agent stats based on updatedSubscribers & remainingInvoices
-    const updatedAgents = state.agents.map((ag) => {
-      const agSubs = updatedSubscribers.filter((s) => s.agentId === ag.id);
-      const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
-      const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
-      const totalAgentSales = remainingInvoices
-        .filter((invoice) => invoice.agentId === ag.id)
-        .reduce((sum, invoice) => sum + (invoice.amount || 0), 0);
-
-      // Total paid is sales minus remaining debt
-      const totalAgentPaid = Math.max(0, totalAgentSales - totalAgentDebt);
-
-      return {
-        ...ag,
-        devicesCount: agSubs.length,
-        activeSubscriptions: activeSubs.length,
-        inactiveSubscriptions: agSubs.length - activeSubs.length,
-        totalDebt: totalAgentDebt,
-        totalSales: totalAgentSales,
-        totalPaid: totalAgentPaid,
-        hasDebt: totalAgentDebt > 0
-      };
-    });
-
-    const newState: AppState = {
-      ...state,
-      subscribers: updatedSubscribers,
-      invoices: remainingInvoices,
-      pendingRequests: remainingPendingRequests,
-      agents: updatedAgents,
-      lastUpdatedTimestamp: Date.now()
+    const nextState = syncAgentsAndPersist(currentState, updatedSubscribers, remainingInvoices);
+    const finalState: AppState = {
+      ...nextState,
+      pendingRequests: remainingPendingRequests
     };
-
-    storageService.saveState(newState);
-    setState(newState);
-    try {
-      await firebaseService.saveRemoteState(newState);
-    } catch (e) {
-      console.warn('Immediate remote save on deactivate failed:', e);
-    }
+    persistStateImmediately(finalState, 'Could not immediately sync subscriber deactivation:');
     soundService.playSuccess();
   };
-  // Instant Renewal Handler
+
   const handleRenewSubscriber = (
     updatedSubscriber: Subscriber,
     isDebt: boolean,

@@ -1,3 +1,20 @@
+
+function normalizeStr(str?: string): string {
+  if (!str) return '';
+  return str.trim().toLowerCase().replace(/\s+/g, ' ').replace(/أ/g, 'ا').replace(/إ/g, 'ا').replace(/آ/g, 'ا').replace(/ة/g, 'ه');
+}
+
+function doesSubscriberBelongToAgent(sub: { agentId?: string; agentName?: string }, agent: Agent): boolean {
+  if (!sub || !agent) return false;
+  if (sub.agentId && agent.id && sub.agentId === agent.id) return true;
+  const subName = normalizeStr(sub.agentName);
+  const agentName = normalizeStr(agent.name);
+  const agentCode = normalizeStr(agent.code);
+  if (subName && agentName && (subName === agentName || subName.includes(agentName) || agentName.includes(subName))) return true;
+  if (subName && agentCode && (subName === agentCode || subName.includes(agentCode))) return true;
+  return false;
+}
+
 import React, { useMemo, useState } from 'react';
 import {
   Tv,
@@ -78,8 +95,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
 
   // Agent's subscribers
   const agentSubs = useMemo(() => subscribers.filter(
-    (s) => s.agentId === currentAgent.id || s.agentName === currentAgent.name
-  ), [currentAgent.id, currentAgent.name, subscribers]);
+    (s) => doesSubscriberBelongToAgent(s, currentAgent)
+  ), [currentAgent, subscribers]);
   const activeAgentSubsCount = useMemo(
     () => agentSubs.filter((subscriber) => subscriber.status === 'active').length,
     [agentSubs]
@@ -107,9 +124,9 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const agentPendingRequests = useMemo(
     () => pendingRequests.filter((request) =>
       request.status === 'pending' &&
-      (request.agentId === currentAgent.id || request.agentName === currentAgent.name)
+      doesSubscriberBelongToAgent(request, currentAgent)
     ),
-    [currentAgent.id, currentAgent.name, pendingRequests]
+    [currentAgent, pendingRequests]
   );
 
   const handleCancelPendingRequest = async (request: PendingRenewalRequest) => {

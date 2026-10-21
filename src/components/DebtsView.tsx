@@ -1,3 +1,24 @@
+
+function normalizeStr(str?: string): string {
+  if (!str) return '';
+  return str.trim().toLowerCase().replace(/\s+/g, ' ').replace(/أ/g, 'ا').replace(/إ/g, 'ا').replace(/آ/g, 'ا').replace(/ة/g, 'ه');
+}
+
+function doesSubscriberBelongToAgentFilter(sub: Subscriber, filterId: string, agents: Agent[]): boolean {
+  if (filterId === 'all') return true;
+  const targetAgent = agents.find((a) => a.id === filterId || normalizeStr(a.name) === normalizeStr(filterId));
+  if (!targetAgent) {
+    return sub.agentId === filterId || normalizeStr(sub.agentName) === normalizeStr(filterId);
+  }
+  if (sub.agentId && targetAgent.id && sub.agentId === targetAgent.id) return true;
+  const subName = normalizeStr(sub.agentName);
+  const agentName = normalizeStr(targetAgent.name);
+  const agentCode = normalizeStr(targetAgent.code);
+  if (subName && agentName && (subName === agentName || subName.includes(agentName) || agentName.includes(subName))) return true;
+  if (subName && agentCode && (subName === agentCode || subName.includes(agentCode))) return true;
+  return false;
+}
+
 import React, { useMemo, useState } from 'react';
 import {
   Hourglass,
@@ -145,7 +166,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
 
   // Filter Subscribers Debt Table
   const filteredDebtSubscribers = useMemo(() => debtSubscribers.filter((sub) => {
-    if (selectedAgentFilter !== 'all' && sub.agentId !== selectedAgentFilter && sub.agentName !== selectedAgentFilter) {
+    if (!doesSubscriberBelongToAgentFilter(sub, selectedAgentFilter, agents)) {
       return false;
     }
     if (debtSearchTerm.trim()) {
