@@ -32,8 +32,9 @@ import {
   ChevronUp,
   Trash2
 } from 'lucide-react';
-import { Agent, PendingRenewalRequest, PricingRow, Product, Subscriber, SubscriptionDuration } from '../types';
+import { Agent, Invoice, PendingRenewalRequest, PricingRow, Product, Subscriber, SubscriptionDuration } from '../types';
 import { getPriceByDuration } from '../utils/pricingUtils';
+import { calculateAgentDebt } from '../utils/calculationUtils';
 import { useAppDialogs } from './AppDialogProvider';
 import { useVirtualizedRows } from './useVirtualizedRows';
 
@@ -53,6 +54,7 @@ const SubscriberDetail: React.FC<{ label: string; value: React.ReactNode; classN
 interface AgentPortalViewProps {
   currentAgent: Agent;
   subscribers: Subscriber[];
+  invoices?: Invoice[];
   products: Product[];
   pricing: PricingRow[];
   pendingRequests: PendingRenewalRequest[];
@@ -66,6 +68,7 @@ interface AgentPortalViewProps {
 export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   currentAgent,
   subscribers,
+  invoices = [],
   products,
   pricing,
   pendingRequests,
@@ -81,6 +84,12 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const [expandedSubscriberId, setExpandedSubscriberId] = useState<string | null>(null);
   const [subscriberPaymentFilter, setSubscriberPaymentFilter] = useState<'all' | 'cash' | 'debt'>('all');
   const [subscriberBroadcastFilter, setSubscriberBroadcastFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  const computedAgentDebt = useMemo(() => {
+    return calculateAgentDebt(currentAgent.id, subscribers, invoices);
+  }, [currentAgent.id, subscribers, invoices]);
+
+  const displayAgentDebt = invoices.length > 0 ? computedAgentDebt : currentAgent.totalDebt;
 
   // Order form state
   const [selectedSubId, setSelectedSubId] = useState('');
@@ -346,10 +355,10 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
           <div className="text-xs font-bold text-slate-500 dark:text-slate-400">الرصيد المتبقي بذمتك (الديون)</div>
           <div className="text-2xl font-black text-red-600 dark:text-red-400 mt-2 font-mono">
-            {currentAgent.totalDebt.toLocaleString()} <span className="text-xs font-bold text-red-400">د.ع</span>
+            {displayAgentDebt.toLocaleString()} <span className="text-xs font-bold text-red-400">د.ع</span>
           </div>
           <div className="text-[11px] text-red-500 mt-1">
-            {currentAgent.totalDebt > 0 ? 'مستحق السداد للمركز' : 'الحساب خالص'}
+            {displayAgentDebt > 0 ? 'مستحق السداد للمركز' : 'الحساب خالص'}
           </div>
         </div>
 

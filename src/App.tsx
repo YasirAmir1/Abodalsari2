@@ -1307,24 +1307,91 @@ export default function App() {
   };
 
   // Settle Agent Debt
-  const handleSettleAgentDebt = (agentId: string, amount: number, note?: string) => {
-    const updatedAgents = state.agents.map((ag) => {
-      if (ag.id === agentId) {
-        const newDebt = Math.max(0, ag.totalDebt - amount);
-        return {
-          ...ag,
-          totalDebt: newDebt,
-          totalPaid: ag.totalPaid + amount,
-          hasDebt: newDebt > 0
-        };
-      }
-      return ag;
+  const handleSettleAgentDebt = (agentId: string, paymentAmount: number, note?: string) => {
+    const currentState = stateRef.current;
+    const targetAgent = currentState.agents.find((a) => a.id === agentId);
+    if (!targetAgent) return;
+
+    const amount = Math.trunc(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+
+    // 1. Find all invoices belonging to this agent with remaining debt (oldest first)
+    const agentInvoices = currentState.invoices
+      .map((invoice, index) => ({ invoice, index }))
+      .filter(({ invoice }) => doesInvoiceBelongToAgent(invoice, targetAgent))
+      .sort((a, b) => a.invoice.date.localeCompare(b.invoice.date) || a.index - b.index);
+
+    const updatedInvoices = currentState.invoices.slice();
+    let unappliedPayment = amount;
+
+    for (const { index } of agentInvoices) {
+      if (unappliedPayment <= 0) break;
+      const invoice = updatedInvoices[index];
+      const invoiceRemaining = getInvoiceRemainingAmount(invoice);
+      if (invoiceRemaining <= 0) continue;
+
+      const appliedPayment = Math.min(unappliedPayment, invoiceRemaining);
+      const remainingAmount = invoiceRemaining - appliedPayment;
+      updatedInvoices[index] = {
+        ...invoice,
+        paidAmount: (invoice.paidAmount || 0) + appliedPayment,
+        remainingAmount,
+        paymentStatus: remainingAmount === 0 ? 'paid' : 'partial'
+      };
+      unappliedPayment -= appliedPayment;
+    }
+
+    // 2. If there's still unapplied payment or no invoices, apply across agent's subscribers with outstanding debt
+    const updatedSubscribers = currentState.subscribers.map((sub): Subscriber => {
+      if (!doesSubscriberBelongToAgent(sub, targetAgent)) return sub;
+      const subDebt = getSubscriberOutstandingDebt(sub, updatedInvoices);
+      if (subDebt <= 0 || unappliedPayment <= 0) return sub;
+
+      const applied = Math.min(unappliedPayment, subDebt);
+      unappliedPayment -= applied;
+      const remainingDebt = subDebt - applied;
+      return {
+        ...sub,
+        paidAmount: (sub.paidAmount || 0) + applied,
+        debtAmount: remainingDebt,
+        amount: sub.status === 'inactive' ? 0 : remainingDebt,
+        paymentStatus: remainingDebt === 0 ? 'paid' : 'partial',
+        settleDate: new Date().toISOString().split('T')[0]
+      };
     });
 
-    setState({
-      ...state,
-      agents: updatedAgents
+    // 3. Recompute agent metrics
+    const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
+
+    const newState: AppState = {
+      ...currentState,
+      subscribers: updatedSubscribers,
+      invoices: updatedInvoices,
+      agents: updatedAgents,
+      lastUpdatedTimestamp: Date.now()
+    };
+
+    stateRef.current = newState;
+    storageService.saveState(newState);
+    setState(newState);
+
+    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
+      console.error('Could not immediately sync agent debt settlement:', error);
+      if (isMountedRef.current) {
+        setSyncToast('تم تسجيل الدفعة محلياً وتعذرت مزامنتها حالياً');
+        setTimeout(() => {
+          if (isMountedRef.current) setSyncToast(null);
+        }, 3500);
+      }
     });
+
+    appFeatures.broadcastAdminUpdate({
+      action: 'SETTLE_DEBT',
+      agentId,
+      amount,
+      timestamp: Date.now()
+    });
+    firebaseService.broadcastLocalChange(newState);
     soundService.playSuccess();
   };
 
@@ -1342,6 +1409,7 @@ export default function App() {
     const subscriberInvoiceAmount = currentState.invoices
       .filter((invoice) => invoice.subscriberId === subscriberId)
       .reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
+
     const updatedSubscribers = currentState.subscribers.map((s): Subscriber => {
       if (s.id !== subscriberId) return s;
       const paidAmount = (s.paidAmount || 0) + amount;
@@ -1351,7 +1419,7 @@ export default function App() {
         paidAmount,
         amount: isExpiredSubscription ? 0 : remainingDebt,
         debtAmount: remainingDebt,
-        paymentStatus: isExpiredSubscription ? '' : (remainingDebt === 0 ? 'paid' : 'partial'),
+        paymentStatus: remainingDebt === 0 ? 'paid' : (isExpiredSubscription ? '' : 'partial'),
         settleDate: isExpiredSubscription ? undefined : new Date().toISOString().split('T')[0]
       };
     });
@@ -1381,23 +1449,7 @@ export default function App() {
       unappliedPayment -= appliedPayment;
     }
 
-    const updatedAgents = currentState.agents.map((ag) => {
-      const agSubs = updatedSubscribers.filter((s) => s.agentId === ag.id);
-      const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const totalAgentDebt = agSubs.reduce(
-        (sum, s) => sum + getSubscriberOutstandingDebt(s, updatedInvoices),
-        0
-      );
-      return {
-        ...ag,
-        devicesCount: agSubs.length,
-        activeSubscriptions: activeSubs.length,
-        inactiveSubscriptions: agSubs.length - activeSubs.length,
-        totalDebt: totalAgentDebt,
-        totalPaid: ag.totalPaid + (ag.id === subscriber.agentId ? amount : 0),
-        hasDebt: totalAgentDebt > 0
-      };
-    });
+    const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
 
     const newState: AppState = {
       ...currentState,
@@ -1409,6 +1461,7 @@ export default function App() {
     stateRef.current = newState;
     storageService.saveState(newState);
     setState(newState);
+
     void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
       console.error('Could not immediately sync subscriber payment:', error);
       if (isMountedRef.current) {
@@ -1418,6 +1471,14 @@ export default function App() {
         }, 3500);
       }
     });
+
+    appFeatures.broadcastAdminUpdate({
+      action: 'SETTLE_DEBT',
+      subscriberId,
+      amount,
+      timestamp: Date.now()
+    });
+    firebaseService.broadcastLocalChange(newState);
     soundService.playSuccess();
   };
 
@@ -1718,6 +1779,7 @@ export default function App() {
             <AgentPortalView
               currentAgent={currentAgent}
               subscribers={state.subscribers}
+              invoices={state.invoices}
               products={state.products}
               pricing={state.pricing}
               pendingRequests={state.pendingRequests}

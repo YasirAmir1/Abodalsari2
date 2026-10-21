@@ -28,23 +28,37 @@ export const getSubscriberOutstandingDebt = (
   invoicesOrDebtMap?: Invoice[] | Map<string, number>
 ): number => {
   if (!subscriber) return 0;
+
+  // 1. If subscriber is explicitly marked paid with 0 debtAmount
+  if (subscriber.paymentStatus === 'paid' && (!subscriber.debtAmount || subscriber.debtAmount <= 0)) {
+    return 0;
+  }
+
+  // 2. Check if subscriber has invoices
   if (invoicesOrDebtMap instanceof Map) {
-    const debtFromMap = invoicesOrDebtMap.get(subscriber.id);
-    if (debtFromMap !== undefined) {
-      return debtFromMap;
+    if (invoicesOrDebtMap.has(subscriber.id)) {
+      return Math.max(0, invoicesOrDebtMap.get(subscriber.id) || 0);
     }
   } else if (Array.isArray(invoicesOrDebtMap) && invoicesOrDebtMap.length > 0) {
-    const debtMap = buildSubscriberDebtMap(invoicesOrDebtMap);
-    const debtFromMap = debtMap.get(subscriber.id);
-    if (debtFromMap !== undefined) {
-      return debtFromMap;
+    const hasInvoices = invoicesOrDebtMap.some((inv) => inv && inv.subscriberId === subscriber.id);
+    if (hasInvoices) {
+      const debtMap = buildSubscriberDebtMap(invoicesOrDebtMap);
+      return Math.max(0, debtMap.get(subscriber.id) || 0);
     }
   }
 
-  const legacyBalance = Number.isFinite(Number(subscriber.debtAmount))
-    ? Number(subscriber.debtAmount)
-    : (subscriber.paymentStatus === 'debt' || subscriber.paymentStatus === 'partial' ? Number(subscriber.amount) : 0);
-  return Math.max(0, Number.isFinite(legacyBalance) ? legacyBalance : 0);
+  // 3. Fallback for legacy subscribers without invoice records
+  if (Number.isFinite(Number(subscriber.debtAmount))) {
+    return Math.max(0, Number(subscriber.debtAmount));
+  }
+
+  if (subscriber.paymentStatus === 'debt' || subscriber.paymentStatus === 'partial') {
+    const amt = Number(subscriber.amount) || 0;
+    const paid = Number(subscriber.paidAmount) || 0;
+    return Math.max(0, amt - paid);
+  }
+
+  return 0;
 };
 
 export const calculateTotalSales = (invoices: any[]): number => {
@@ -83,7 +97,7 @@ export const calculateAgentDebt = (agentId: string, subscribers: Subscriber[], i
   let total = 0;
   for (let i = 0; i < subscribers.length; i++) {
     const sub = subscribers[i];
-    if (sub.agentId === agentId) {
+    if (sub.agentId === agentId || sub.agentName) {
       total += getSubscriberOutstandingDebt(sub, debtMap);
     }
   }
