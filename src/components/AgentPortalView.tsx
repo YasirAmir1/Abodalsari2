@@ -79,6 +79,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showDeviceSaleModal, setShowDeviceSaleModal] = useState(false);
   const [expandedSubscriberId, setExpandedSubscriberId] = useState<string | null>(null);
+  const [subscriberPaymentFilter, setSubscriberPaymentFilter] = useState<'all' | 'cash' | 'debt'>('all');
+  const [subscriberBroadcastFilter, setSubscriberBroadcastFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Order form state
   const [selectedSubId, setSelectedSubId] = useState('');
@@ -101,6 +103,17 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
     () => agentSubs.filter((subscriber) => subscriber.status === 'active').length,
     [agentSubs]
   );
+  const filteredAgentSubs = useMemo(() => agentSubs.filter((subscriber) => {
+    const isCash = subscriber.paymentStatus === 'paid';
+    const isDebt = subscriber.paymentStatus === 'debt' || subscriber.paymentStatus === 'partial';
+    const isBroadcastActive = subscriber.status === 'active' || subscriber.status === 'expiring_soon';
+
+    if (subscriberPaymentFilter === 'cash' && !isCash) return false;
+    if (subscriberPaymentFilter === 'debt' && !isDebt) return false;
+    if (subscriberBroadcastFilter === 'active' && !isBroadcastActive) return false;
+    if (subscriberBroadcastFilter === 'inactive' && isBroadcastActive) return false;
+    return true;
+  }), [agentSubs, subscriberBroadcastFilter, subscriberPaymentFilter]);
   const subSuggestions = useMemo(() => {
     const query = subSearchQuery.trim().toLowerCase();
     if (!query) return [];
@@ -120,7 +133,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
     visibleRows: visibleAgentSubs,
     topSpacerHeight: agentSubscribersTopSpacerHeight,
     bottomSpacerHeight: agentSubscribersBottomSpacerHeight
-  } = useVirtualizedRows(agentSubs, 64, 650, 8, expandedSubscriberId ? Number.MAX_SAFE_INTEGER : 80);
+  } = useVirtualizedRows(filteredAgentSubs, 64, 650, 8, expandedSubscriberId ? Number.MAX_SAFE_INTEGER : 80);
   const agentPendingRequests = useMemo(
     () => pendingRequests.filter((request) =>
       request.status === 'pending' &&
@@ -353,12 +366,40 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
 
       {/* Agent's Subscribers Table */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-800 space-y-4">
           <div>
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">مشتركو باقات الرابعة التابعون لمكتبك</h3>
             <p className="text-[11px] text-slate-400 mt-0.5">
               بيانات المشتركين المسجلين لهذا الوكيل، وتتحدث تلقائياً عند تعديلها من لوحة الإدارة
             </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
+            <label htmlFor="agent-subscriber-payment-filter" className="block">
+              <span className="block mb-1 text-xs font-bold text-slate-600 dark:text-slate-300">تصنيف حسب طريقة الدفع</span>
+              <select
+                id="agent-subscriber-payment-filter"
+                value={subscriberPaymentFilter}
+                onChange={(event) => setSubscriberPaymentFilter(event.target.value as 'all' | 'cash' | 'debt')}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-800 dark:text-slate-200"
+              >
+                <option value="all">كل طرق الدفع</option>
+                <option value="cash">نقد</option>
+                <option value="debt">دين</option>
+              </select>
+            </label>
+            <label htmlFor="agent-subscriber-broadcast-filter" className="block">
+              <span className="block mb-1 text-xs font-bold text-slate-600 dark:text-slate-300">تصنيف حسب حالة البث</span>
+              <select
+                id="agent-subscriber-broadcast-filter"
+                value={subscriberBroadcastFilter}
+                onChange={(event) => setSubscriberBroadcastFilter(event.target.value as 'all' | 'active' | 'inactive')}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-800 dark:text-slate-200"
+              >
+                <option value="all">كل حالات البث</option>
+                <option value="active">فعال</option>
+                <option value="inactive">غير فعال</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -383,10 +424,10 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {agentSubs.length === 0 ? (
+              {filteredAgentSubs.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-slate-400">
-                    لا يوجد مشتركون مسجلون لهذا الوكيل حالياً.
+                    {agentSubs.length === 0 ? 'لا يوجد مشتركون مسجلون لهذا الوكيل حالياً.' : 'لا يوجد مشتركون مطابقون للتصنيفات المحددة.'}
                   </td>
                 </tr>
               ) : (

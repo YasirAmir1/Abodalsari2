@@ -267,14 +267,34 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     return countsByAgent;
   }, [agents, subscribersForView]);
 
-  const agentRenewalPrice = selectedAgentSubscriber
-    ? getPriceByDuration(
-        agents.find((agent) => agent.id === selectedAgentSubscriber.agentId || agent.name === selectedAgentSubscriber.agentName)?.id
-          || selectedAgentSubscriber.agentId,
-        agentRenewalDuration,
-        pricing
-      )
-    : 0;
+  const agentRenewalPrice = useMemo(() => {
+    if (!selectedAgentSubscriber) return 0;
+
+    const subscriberAgentName = selectedAgentSubscriber.agentName?.trim().toLocaleLowerCase();
+    const assignedAgent = agents.find((agent) =>
+      agent.id === selectedAgentSubscriber.agentId && agent.id !== 'agent-main'
+    ) || agents.find((agent) =>
+      agent.id !== 'agent-main' &&
+      subscriberAgentName &&
+      agent.name.trim().toLocaleLowerCase() === subscriberAgentName
+    );
+    if (!assignedAgent) return 0;
+
+    const assignedAgentName = assignedAgent.name.trim().toLocaleLowerCase();
+    const agentPricing = pricing.find((row) => row.agentId === assignedAgent.id)
+      || pricing.find((row) => row.agentCode === assignedAgent.code || row.agentName?.trim().toLocaleLowerCase() === assignedAgentName);
+    if (!agentPricing) return 0;
+
+    const priceByDuration: Record<SubscriptionDuration, number> = {
+      '1 شهر': Number(agentPricing.oneMonthPrice),
+      'شهرين': Number(agentPricing.twoMonthsPrice),
+      '3 أشهر': Number(agentPricing.threeMonthsPrice),
+      '-': 0,
+      '': 0
+    };
+    const price = priceByDuration[agentRenewalDuration];
+    return Number.isFinite(price) && price > 0 ? price : 0;
+  }, [agentRenewalDuration, agents, pricing, selectedAgentSubscriber]);
 
   const openAgentRenewalModal = () => {
     const startDate = todayStr;
@@ -1071,10 +1091,15 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     type="text"
                     readOnly
                     dir="ltr"
-                    value={selectedAgentSubscriber ? agentRenewalPrice.toLocaleString('en-US') : ''}
-                    placeholder="يُحسب حسب الوكيل ونوع الاشتراك"
+                    value={selectedAgentSubscriber && agentRenewalPrice > 0 ? agentRenewalPrice.toLocaleString('en-US') : ''}
+                    placeholder={selectedAgentSubscriber ? 'لا يوجد سعر لهذه المدة في أسعار الوكيل' : 'يُحسب بعد اختيار المشترك'}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-left font-mono font-bold text-slate-700 dark:text-slate-300"
                   />
+                  {selectedAgentSubscriber && agentRenewalPrice <= 0 && (
+                    <p className="mt-1 text-xs font-semibold text-red-600 dark:text-red-400">
+                      لا يوجد سعر معتمد لهذه المدة لدى وكيل المشترك. حدّث سعر الوكيل من صفحة الأسعار.
+                    </p>
+                  )}
                 </div>
               </div>
 

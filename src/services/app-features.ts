@@ -112,7 +112,7 @@ export const appFeatures = {
     });
   },
 
-  createQuotaAwareListener(fetchFn: () => Promise<unknown>, intervalMs = 60000) {
+  createQuotaAwareListener(fetchFn: () => Promise<unknown>, intervalMs = 5000) {
     let timer: ReturnType<typeof setInterval> | null = null;
     let active = true;
 

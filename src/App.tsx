@@ -50,12 +50,23 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
     const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
     const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
     const agentInvoices = invoices.filter((inv) => doesInvoiceBelongToAgent(inv, agent));
-    const totalSales = agentInvoices.reduce((sum, inv) => sum + (Number.isFinite(inv.amount) ? inv.amount : 0), 0);
-    const totalDebt = agentSubscribers.reduce(
+    const invoiceSales = agentInvoices.reduce((sum, inv) => sum + (Number.isFinite(inv.amount) ? inv.amount : 0), 0);
+    const subscriberDebt = agentSubscribers.reduce(
       (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, agentInvoices),
       0
     );
-    const totalPaid = Math.max(0, totalSales - totalDebt);
+    // Some existing accounts have financial totals saved on the agent record
+    // before their invoice history was migrated. Preserve those totals until
+    // invoice records are available instead of resetting the dashboard to 0.
+    const totalSales = agentInvoices.length > 0
+      ? invoiceSales
+      : Math.max(0, Number(agent.totalSales) || 0);
+    const totalDebt = agentInvoices.length > 0 || subscriberDebt > 0
+      ? subscriberDebt
+      : Math.max(0, Number(agent.totalDebt) || 0);
+    const totalPaid = agentInvoices.length > 0 || subscriberDebt > 0
+      ? Math.max(0, totalSales - totalDebt)
+      : Math.max(0, Number(agent.totalPaid) || 0);
 
     return {
       ...agent,
@@ -431,9 +442,13 @@ export default function App() {
       // Firestore write was pending or unavailable, then apply local tombstones.
       const { state: reconciledState, merged } = mergePendingLocalAdds(remoteState, stateRef.current);
       const filteredState = storageService.filterOutDeleted(reconciledState);
+      const stateWithAgentMetrics = {
+        ...filteredState,
+        agents: computeUpdatedAgents(filteredState.agents, filteredState.subscribers, filteredState.invoices)
+      };
 
       // Save to localStorage immediately so a subsequent reload retains fresh remote state
-      storageService.saveState(filteredState);
+      storageService.saveState(stateWithAgentMetrics);
 
       // Mark as remote so Effect 1 does NOT write it back to Firestore
       if (saveTimeoutRef.current) {
@@ -441,10 +456,10 @@ export default function App() {
         saveTimeoutRef.current = null;
       }
       isRemoteUpdateRef.current = true;
-      stateRef.current = filteredState;
-      setState(filteredState);
+      stateRef.current = stateWithAgentMetrics;
+      setState(stateWithAgentMetrics);
       if (merged) {
-        void firebaseService.saveRemoteState(filteredState, true).catch((error) => {
+        void firebaseService.saveRemoteState(stateWithAgentMetrics, true).catch((error) => {
           console.error('Could not restore locally pending subscribers to Firestore:', error);
           if (isMountedRef.current) {
             setSyncToast('تعذرت استعادة بعض المشتركين المحفوظين محلياً إلى قاعدة البيانات.');
@@ -456,11 +471,17 @@ export default function App() {
     const cleanupStreams = appFeatures.initRealtimeStreams({
       onSubscribersUpdate: (subscribers) => {
         if (!isMountedRef.current) return;
-        setState((prev) => ({ ...prev, subscribers, lastUpdatedTimestamp: Date.now() }));
+        setState((prev) => {
+          const nextState = { ...prev, subscribers, lastUpdatedTimestamp: Date.now() };
+          return { ...nextState, agents: computeUpdatedAgents(nextState.agents, subscribers, nextState.invoices) };
+        });
       },
       onAgentsUpdate: (agents) => {
         if (!isMountedRef.current) return;
-        setState((prev) => ({ ...prev, agents, lastUpdatedTimestamp: Date.now() }));
+        setState((prev) => {
+          const nextState = { ...prev, agents, lastUpdatedTimestamp: Date.now() };
+          return { ...nextState, agents: computeUpdatedAgents(agents, nextState.subscribers, nextState.invoices) };
+        });
       },
       onRequestUpdate: (pendingRequests) => {
         if (!isMountedRef.current) return;
@@ -468,7 +489,10 @@ export default function App() {
       },
       onSalesUpdate: (invoices) => {
         if (!isMountedRef.current) return;
-        setState((prev) => ({ ...prev, invoices, lastUpdatedTimestamp: Date.now() }));
+        setState((prev) => {
+          const nextState = { ...prev, invoices, lastUpdatedTimestamp: Date.now() };
+          return { ...nextState, agents: computeUpdatedAgents(nextState.agents, nextState.subscribers, invoices) };
+        });
       },
       onStatusChange: (status) => {
         if (status === 'connected' && isMountedRef.current) setIsRemoteReady(true);

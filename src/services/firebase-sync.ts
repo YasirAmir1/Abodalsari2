@@ -15,7 +15,7 @@ export interface SyncEventDetail {
   timestamp: number;
 }
 
-export const SYNC_INTERVAL_MS = 60_000;
+export const SYNC_INTERVAL_MS = 5_000;
 
 export class FirebaseSyncManager {
   private static instance: FirebaseSyncManager;
