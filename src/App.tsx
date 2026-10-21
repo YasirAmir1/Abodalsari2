@@ -49,45 +49,66 @@ const USER_SESSION_KEY = 'alsari_auth_user_v1';
 function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { state: AppState; merged: boolean } {
   const remoteTimestamp = remoteState.lastUpdatedTimestamp || 0;
   const localTimestamp = localState.lastUpdatedTimestamp || 0;
-  if (localTimestamp < remoteTimestamp) return { state: remoteState, merged: false };
 
   const remoteSubscribers = remoteState.subscribers || [];
   const localSubscribers = localState.subscribers || [];
-  const remoteIds = new Set(remoteSubscribers.map((subscriber) => subscriber.id));
-  const remoteDeviceIds = new Set(remoteSubscribers.map((subscriber) => subscriber.deviceId).filter(Boolean));
-  const pendingSubscribers = localSubscribers.filter(
-    (subscriber) => !remoteIds.has(subscriber.id) && (!subscriber.deviceId || !remoteDeviceIds.has(subscriber.deviceId))
-  );
+
+  const remoteSubMap = new Map<string, Subscriber>();
+  const remoteDevMap = new Map<string, Subscriber>();
+  remoteSubscribers.forEach((sub) => {
+    remoteSubMap.set(sub.id, sub);
+    if (sub.deviceId) remoteDevMap.set(sub.deviceId, sub);
+  });
+
+  const mergedSubscribers: Subscriber[] = [...remoteSubscribers];
+
+  localSubscribers.forEach((localSub) => {
+    const remoteMatch = remoteSubMap.get(localSub.id) || (localSub.deviceId ? remoteDevMap.get(localSub.deviceId) : undefined);
+    if (!remoteMatch) {
+      mergedSubscribers.unshift(localSub);
+    } else {
+      const isLocalActive = localSub.status === 'active' || localSub.amount > 0 || localSub.paymentStatus === 'debt';
+      const isRemoteInactive = remoteMatch.status !== 'active';
+      if (isLocalActive && isRemoteInactive) {
+        const idx = mergedSubscribers.findIndex((s) => s.id === remoteMatch.id);
+        if (idx !== -1) {
+          mergedSubscribers[idx] = localSub;
+        }
+      }
+    }
+  });
 
   const remoteInvoices = remoteState.invoices || [];
-  const invoiceIds = new Set(remoteInvoices.map((invoice) => invoice.id));
-  const pendingInvoices = (localState.invoices || []).filter((invoice) => !invoiceIds.has(invoice.id));
-  const remoteRequestIds = new Set((remoteState.pendingRequests || []).map((request) => request.id));
-  const pendingRequests = (localState.pendingRequests || []).filter((request) => !remoteRequestIds.has(request.id));
-  const remoteAgentIds = new Set((remoteState.agents || []).map((agent) => agent.id));
-  const localAgentsById = new Map<string, Agent>();
-  (localState.agents || []).forEach((agent) => localAgentsById.set(agent.id, agent));
-  const remoteAgents = remoteState.agents || [];
-  const pendingAgents = (localState.agents || []).filter((agent) => !remoteAgentIds.has(agent.id));
-  const pendingAgentIds = new Set(pendingSubscribers.map((subscriber) => subscriber.agentId));
+  const localInvoices = localState.invoices || [];
+  const remoteInvoiceIds = new Set(remoteInvoices.map((inv) => inv.id));
+  const pendingInvoices = localInvoices.filter((inv) => !remoteInvoiceIds.has(inv.id));
+  const mergedInvoices = [...pendingInvoices, ...remoteInvoices];
 
-  if (pendingSubscribers.length === 0 && pendingInvoices.length === 0 && pendingRequests.length === 0 && pendingAgents.length === 0) {
+  const remoteRequests = remoteState.pendingRequests || [];
+  const localRequests = localState.pendingRequests || [];
+  const remoteRequestIds = new Set(remoteRequests.map((req) => req.id));
+  const pendingRequests = localRequests.filter((req) => !remoteRequestIds.has(req.id));
+  const mergedRequests = [...pendingRequests, ...remoteRequests];
+
+  const hasChanges = mergedSubscribers.length !== remoteSubscribers.length ||
+    pendingInvoices.length > 0 ||
+    pendingRequests.length > 0 ||
+    localSubscribers.some((lSub) => {
+      const rSub = remoteSubMap.get(lSub.id);
+      return rSub && lSub.status === 'active' && rSub.status !== 'active';
+    });
+
+  if (!hasChanges && localTimestamp < remoteTimestamp) {
     return { state: remoteState, merged: false };
   }
 
   return {
     state: {
       ...remoteState,
-      subscribers: [...pendingSubscribers, ...remoteSubscribers],
-      invoices: [...pendingInvoices, ...remoteInvoices],
-      pendingRequests: [...pendingRequests, ...(remoteState.pendingRequests || [])],
-      agents: [
-        ...pendingAgents,
-        ...remoteAgents.map((agent) =>
-          pendingAgentIds.has(agent.id) ? localAgentsById.get(agent.id) || agent : agent
-        )
-      ],
-      lastUpdatedTimestamp: Date.now()
+      subscribers: mergedSubscribers,
+      invoices: mergedInvoices,
+      pendingRequests: mergedRequests,
+      lastUpdatedTimestamp: Math.max(localTimestamp, remoteTimestamp, Date.now())
     },
     merged: true
   };

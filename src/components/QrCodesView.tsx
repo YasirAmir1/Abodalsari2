@@ -199,78 +199,53 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             لا توجد أكواد مسجلة بعد. استخدم زر "إضافة رقم فردي" أو "توليد دفعة سيريال QR" لإضافة أجهزة جديدة.
           </div>
         ) : (
-          <div
-            ref={codeTableRef}
-            onScroll={handleCodeTableScroll}
-            className="max-h-[70vh] overflow-auto"
-          >
-            <table className="w-full text-right text-xs border-collapse">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                  <th className="py-3 px-4 w-12 text-center">اختيار</th>
-                  <th className="py-3 px-3 w-16 text-center">QR Code</th>
-                  <th className="py-3 px-4">كود الجهاز / السيريال (16 رقم)</th>
-                  <th className="py-3 px-4 text-center">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {codeTopSpacerHeight > 0 && (
-                  <tr aria-hidden="true">
-                    <td colSpan={4} style={{ height: codeTopSpacerHeight, padding: 0, border: 0 }} />
-                  </tr>
-                )}
-                {visibleCodes.map((c) => (
-                  <tr key={c.id} className="h-16 hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedIdSet.has(c.id)}
-                        onChange={() => toggleSelectOne(c.id)}
-                        className="w-4 h-4 text-sky-600 rounded"
-                      />
-                    </td>
+          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[70vh] overflow-auto">
+            {codes.map((c) => (
+              <div
+                key={c.id}
+                className="relative bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all flex flex-col items-center text-center group"
+              >
+                {/* Top Right: Delete Basket Icon & Checkbox */}
+                <div className="absolute top-3 right-3 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedIdSet.has(c.id)}
+                    onChange={() => toggleSelectOne(c.id)}
+                    className="w-4 h-4 text-sky-600 rounded cursor-pointer"
+                    title="تحديد البطاعة"
+                  />
+                  <button
+                    onClick={() => onDeleteCode(c.id)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors border border-transparent hover:border-red-200 cursor-pointer"
+                    title="حذف البطاقة"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
 
-                    {/* QR Code thumbnail */}
-                    <td className="py-2 px-3 text-center">
-                      <div className="p-1 border border-slate-200 rounded-lg inline-block bg-white shadow-xs">
-                        <QRCodeSVG value={c.code} size={36} level="L" />
-                      </div>
-                    </td>
+                {/* Code Number & Copy */}
+                <div className="mt-6 mb-3 flex flex-col items-center w-full">
+                  <div className="font-mono font-black text-slate-900 text-xs sm:text-sm tracking-tight mb-1 select-all">
+                    {c.code}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleCopy(c.code, c.id)}
+                      className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                      title="نسخ الكود"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>{copiedId === c.id ? 'تم النسخ!' : 'نسخ'}</span>
+                    </button>
+                  </div>
+                </div>
 
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900 text-sm tracking-wider">
-                      <div className="flex items-center gap-2">
-                        <span>{c.code}</span>
-                        <button
-                          onClick={() => handleCopy(c.code, c.id)}
-                          className="p-1 text-slate-400 hover:text-sky-600"
-                          title="نسخ الكود"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                        {copiedId === c.id && (
-                          <span className="text-[10px] text-emerald-600 font-bold">تم النسخ!</span>
-                        )}
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => onDeleteCode(c.id)}
-                        className="p-1 text-slate-400 hover:text-red-600 transition-colors"
-                        title="حذف الكود"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {codeBottomSpacerHeight > 0 && (
-                  <tr aria-hidden="true">
-                    <td colSpan={4} style={{ height: codeBottomSpacerHeight, padding: 0, border: 0 }} />
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                {/* Barcode / QR Code SVG below the number */}
+                <div className="p-2 border border-slate-200 rounded-xl bg-white shadow-inner flex items-center justify-center">
+                  <QRCodeSVG value={c.code} size={100} level="M" />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
