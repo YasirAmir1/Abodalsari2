@@ -461,17 +461,19 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                         <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{sub.endDate || '—'}</td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex flex-wrap items-center justify-center gap-1.5">
-                            <button
-                              onClick={() => {
-                                setSelectedSubId(sub.id);
-                                setSubSearchQuery(sub.name);
-                                setShowOrderModal(true);
-                              }}
-                              className="shrink-0 whitespace-nowrap px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              <span>طلب تجديد</span>
-                            </button>
+                            {sub.status !== 'active' && (
+                              <button
+                                onClick={() => {
+                                  setSelectedSubId(sub.id);
+                                  setSubSearchQuery(sub.name);
+                                  setShowOrderModal(true);
+                                }}
+                                className="shrink-0 whitespace-nowrap px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                <span>طلب تجديد</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => onOpenWhatsApp(sub)}
                               className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 cursor-pointer"
