@@ -33,6 +33,7 @@ export interface AppState {
 
 const STORAGE_KEY = 'alsari_broadcasting_v1';
 const DELETED_SUBS_KEY = 'alsari_deleted_subscribers_v1';
+const DELETED_INVOICES_KEY = 'alsari_deleted_invoices_v1';
 const ALL_CLEARED_KEY = 'alsari_all_subscribers_cleared_v1';
 
 export const storageService = {
@@ -73,6 +74,17 @@ export const storageService = {
     } catch {}
   },
 
+  removeDeletedSubscriberId(idOrDeviceId: string) {
+    if (!idOrDeviceId) return;
+    try {
+      const set = this.getDeletedSubscriberIds();
+      if (set.has(idOrDeviceId)) {
+        set.delete(idOrDeviceId);
+        localStorage.setItem(DELETED_SUBS_KEY, JSON.stringify(Array.from(set)));
+      }
+    } catch {}
+  },
+
   markAllSubscribersAsDeleted(subscribers: Subscriber[]) {
     try {
       const set = this.getDeletedSubscriberIds();
@@ -84,6 +96,25 @@ export const storageService = {
     } catch {}
   },
 
+  getDeletedInvoiceIds(): Set<string> {
+    try {
+      const data = localStorage.getItem(DELETED_INVOICES_KEY);
+      if (data) {
+        return new Set(JSON.parse(data));
+      }
+    } catch {}
+    return new Set<string>();
+  },
+
+  addDeletedInvoiceId(id: string) {
+    if (!id) return;
+    try {
+      const set = this.getDeletedInvoiceIds();
+      set.add(id);
+      localStorage.setItem(DELETED_INVOICES_KEY, JSON.stringify(Array.from(set)));
+    } catch {}
+  },
+
   filterOutDeleted(state: AppState): AppState {
     // This flag only protects a device's local cache immediately after
     // "delete all". It must not hide new server records on other sessions.
@@ -92,18 +123,18 @@ export const storageService = {
     }
 
     const deletedSet = this.getDeletedSubscriberIds();
-    if (deletedSet.size === 0) return state;
+    const deletedInvoicesSet = this.getDeletedInvoiceIds();
 
     const filteredSubs = (state.subscribers || []).filter(
-      (s) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId)
+      (s) => !deletedSet.has(s.id) && (!s.deviceId || !deletedSet.has(s.deviceId))
     );
 
     const filteredInvoices = (state.invoices || []).filter(
-      (inv) => !deletedSet.has(inv.subscriberId) && !deletedSet.has(inv.deviceId)
+      (inv) => !deletedInvoicesSet.has(inv.id) && !deletedSet.has(inv.subscriberId) && (!inv.deviceId || !deletedSet.has(inv.deviceId))
     );
 
     const filteredRequests = (state.pendingRequests || []).filter(
-      (req) => !deletedSet.has(req.subscriberId) && !deletedSet.has(req.deviceId)
+      (req) => !deletedSet.has(req.subscriberId) && (!req.deviceId || !deletedSet.has(req.deviceId))
     );
 
     return {

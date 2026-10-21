@@ -181,64 +181,69 @@ export const BarcodesView: React.FC<BarcodesViewProps> = ({
         <span className="text-slate-400">تم تحديد: {selectedIds.length} كود</span>
       </div>
 
-      {/* Table / Empty State matching Screenshot 6 */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden min-h-[300px]">
+      {/* Cards Grid / Empty State */}
+      <div className="min-h-[300px]">
         {codes.length === 0 ? (
-          <div className="py-24 text-center text-slate-400 text-xs px-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs py-24 text-center text-slate-400 text-xs px-4">
             لا توجد أكواد مسجلة بعد. استخدم زر "إضافة رقم فردي" أو "توليد دفعة سيريال" لإضافة أكواد جديدة.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
-                  <th className="py-3 px-4 w-12 text-center">اختيار</th>
-                  <th className="py-3 px-4">كود الجهاز / السيريال (16 رقم)</th>
-                  <th className="py-3 px-4 text-center">إجراءات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {codes.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(c.id)}
-                        onChange={() => toggleSelectOne(c.id)}
-                        className="w-4 h-4 text-sky-600 rounded"
-                      />
-                    </td>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {codes.map((c) => (
+              <div
+                key={c.id}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 relative shadow-xs hover:shadow-md transition-all flex flex-col items-center text-center"
+              >
+                {/* Trash icon at top right corner */}
+                <button
+                  onClick={() => onDeleteCode(c.id)}
+                  className="absolute top-3 right-3 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
+                  title="حذف البطاقة"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
 
-                    <td className="py-3 px-4 font-mono font-bold text-slate-900 text-sm tracking-wider">
-                      <div className="flex items-center gap-2">
-                        <Barcode className="w-4 h-4 text-slate-400" />
-                        <span>{c.code}</span>
-                        <button
-                          onClick={() => handleCopy(c.code, c.id)}
-                          className="p-1 text-slate-400 hover:text-sky-600"
-                          title="نسخ الكود"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                        {copiedId === c.id && (
-                          <span className="text-[10px] text-emerald-600 font-bold">تم النسخ!</span>
-                        )}
-                      </div>
-                    </td>
+                {/* Checkbox / Selection at top left corner */}
+                <div className="absolute top-3 left-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(c.id)}
+                    onChange={() => toggleSelectOne(c.id)}
+                    className="w-4 h-4 text-sky-600 rounded cursor-pointer"
+                  />
+                </div>
 
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => onDeleteCode(c.id)}
-                        className="p-1 text-slate-400 hover:text-red-600 transition-colors"
-                        title="حذف الكود"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                {/* Number and below it Barcode representation */}
+                <div className="mt-8 mb-2 font-mono font-bold text-sm text-slate-900 dark:text-slate-100 tracking-wider">
+                  {c.code}
+                </div>
+
+                <div className="my-2 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 w-full flex flex-col items-center justify-center">
+                  <Barcode className="w-10 h-10 text-slate-700 dark:text-slate-200 mb-1" />
+                  <div className="flex gap-0.5 justify-center items-center h-5 w-full opacity-70">
+                    <div className="w-1 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-0.5 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-2 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-1 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-0.5 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-1.5 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-1 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-2.5 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-0.5 h-full bg-slate-800 dark:bg-slate-200" />
+                    <div className="w-1 h-full bg-slate-800 dark:bg-slate-200" />
+                  </div>
+                </div>
+
+                {/* Copy button */}
+                <button
+                  onClick={() => handleCopy(c.code, c.id)}
+                  className="mt-auto px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>{copiedId === c.id ? 'تم النسخ!' : 'نسخ الرقم'}</span>
+                </button>
+              </div>
+            ))}
           </div>
         )}
       </div>

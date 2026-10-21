@@ -11,11 +11,13 @@ import {
   onSnapshot,
   persistentLocalCache,
   persistentMultipleTabManager,
+  runTransaction,
   serverTimestamp,
   writeBatch
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { AppState } from './storageService';
+import type { Agent, Invoice, Subscriber } from '../types';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const databaseId = firebaseConfig.firestoreDatabaseId || '(default)';
@@ -471,6 +473,61 @@ export const firebaseService = {
       lastSavedPayload = JSON.stringify(sanitize(remoteState));
       updateSyncStatus('connected');
     });
+    saveQueue = saveTask.catch(() => {});
+    return saveTask;
+  },
+
+  async executeApprovalTransaction({
+    subscriber,
+    invoice,
+    agent,
+    requestId,
+    nextFullState
+  }: {
+    subscriber: Subscriber;
+    invoice: Invoice;
+    agent: Agent;
+    requestId: string;
+    nextFullState: AppState;
+  }): Promise<void> {
+    this.broadcastLocalChange(nextFullState);
+    const requestedState = sanitize(nextFullState);
+    const nextTimestamp = requestedState.lastUpdatedTimestamp || Date.now();
+    const nextState: AppState = { ...requestedState, lastUpdatedTimestamp: nextTimestamp };
+
+    const saveTask = saveQueue.then(async () => {
+      updateSyncStatus('syncing');
+      const subDocRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), encodeURIComponent(subscriber.id));
+      const reqDocRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), encodeURIComponent(requestId));
+      const invDocRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), encodeURIComponent(invoice.id));
+      const agentDocRef = doc(collection(db, 'tenants', TENANT_ID, 'agents'), encodeURIComponent(agent.id));
+      const metaDocRef = TENANT_METADATA_REF;
+
+      try {
+        await runTransaction(db, async (transaction) => {
+          transaction.set(subDocRef, { ...sanitize(subscriber), tenantId: TENANT_ID }, { merge: true });
+          transaction.delete(reqDocRef);
+          transaction.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
+          transaction.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
+          transaction.set(metaDocRef, { ...metadataFor(nextState, true), updatedAt: serverTimestamp() }, { merge: true });
+        });
+      } catch (txError) {
+        console.warn('Firestore runTransaction fallback to batch write:', txError);
+        const batch = writeBatch(db);
+        batch.set(subDocRef, { ...sanitize(subscriber), tenantId: TENANT_ID }, { merge: true });
+        batch.delete(reqDocRef);
+        batch.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
+        batch.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
+        batch.set(metaDocRef, { ...metadataFor(nextState, true), updatedAt: serverTimestamp() }, { merge: true });
+        await batch.commit();
+      }
+
+      remoteState = nextState;
+      tenantHasRemoteData = true;
+      lastSavedPayload = JSON.stringify(sanitize(remoteState));
+      updateSyncStatus('connected');
+    });
+
     saveQueue = saveTask.catch(() => {});
     return saveTask;
   },

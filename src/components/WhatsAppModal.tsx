@@ -5,11 +5,14 @@ import { storageService } from '../services/storageService';
 
 interface WhatsAppModalProps {
   subscriber: Subscriber;
+  initialTemplate?: 'renew' | 'reminder' | 'debt' | 'custom';
   onClose: () => void;
 }
 
-export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, onClose }) => {
-  const [templateType, setTemplateType] = useState<'renew' | 'reminder' | 'debt' | 'custom'>('renew');
+export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, initialTemplate, onClose }) => {
+  const isDebt = subscriber.paymentStatus === 'debt' || subscriber.paymentStatus === 'partial';
+  const defaultType = initialTemplate || (isDebt ? 'debt' : 'renew');
+  const [templateType, setTemplateType] = useState<'renew' | 'reminder' | 'debt' | 'custom'>(defaultType);
   const [copied, setCopied] = useState(false);
 
   const defaultTemplates = {
@@ -42,7 +45,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, onClos
     custom: `مرحباً بك أستاذ ${subscriber.name}، بخصوص جهاز البث الأرضي رقم (${subscriber.deviceId})...\n\nلأي استفسار: هاتف الإدارة: 07726218685`
   };
 
-  const [messageText, setMessageText] = useState(defaultTemplates.renew);
+  const [messageText, setMessageText] = useState(defaultTemplates[defaultType]);
 
   const handleSelectTemplate = (type: 'renew' | 'reminder' | 'debt' | 'custom') => {
     setTemplateType(type);
@@ -61,8 +64,8 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, onClos
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-start sm:items-center justify-center overflow-y-auto p-2 sm:p-4 z-50 animate-in fade-in" dir="rtl">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl max-w-lg w-full my-auto p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] overflow-y-auto overscroll-contain">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2 text-emerald-700">

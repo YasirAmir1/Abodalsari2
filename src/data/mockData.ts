@@ -209,11 +209,11 @@ export const INITIAL_SUBSCRIBERS: Subscriber[] = [
     status: 'active',
     paymentStatus: 'debt',
     amount: 25000,
-    startDate: '2026-10-11',
-    endDate: '2026-11-11',
+    startDate: '2026-09-22',
+    endDate: '2026-10-22',
     address: 'تكريت - حي الزهور',
-    notes: 'دين مستحق يسدد مع بداية الشهر القادم',
-    createdAt: '2026-10-11'
+    notes: 'دين مستحق متأخر بذمة المشترك',
+    createdAt: '2026-09-22'
   },
   {
     id: 'sub-07',
@@ -324,11 +324,11 @@ export const INITIAL_SUBSCRIBERS: Subscriber[] = [
     status: 'active',
     paymentStatus: 'debt',
     amount: 55000,
-    startDate: '2026-10-10',
-    endDate: '2027-01-10',
+    startDate: '2026-09-28',
+    endDate: '2026-12-28',
     address: 'بيجي - الصينية',
-    notes: 'باقة 3 أشهر الرابعة الرياضية',
-    createdAt: '2026-10-10'
+    notes: 'باقة 3 أشهر الرابعة الرياضية - دين متأخر',
+    createdAt: '2026-09-28'
   },
   {
     id: 'sub-14',
