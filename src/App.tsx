@@ -143,6 +143,7 @@ const USER_SESSION_KEY = 'alsari_auth_user_v1';
 function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { state: AppState; merged: boolean } {
   const remoteTimestamp = remoteState.lastUpdatedTimestamp || 0;
   const localTimestamp = localState.lastUpdatedTimestamp || 0;
+  const isLocalNewer = localTimestamp > remoteTimestamp;
 
   const remoteSubscribers = remoteState.subscribers || [];
   const localSubscribers = localState.subscribers || [];
@@ -154,29 +155,49 @@ function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { s
     if (sub.deviceId) remoteDevMap.set(sub.deviceId, sub);
   });
 
-  const mergedSubscribers: Subscriber[] = [...remoteSubscribers];
+  const mergedSubscribersMap = new Map<string, Subscriber>();
+  remoteSubscribers.forEach((sub) => {
+    mergedSubscribersMap.set(sub.id, sub);
+  });
 
   localSubscribers.forEach((localSub) => {
     const remoteMatch = remoteSubMap.get(localSub.id) || (localSub.deviceId ? remoteDevMap.get(localSub.deviceId) : undefined);
     if (!remoteMatch) {
-      mergedSubscribers.unshift(localSub);
+      mergedSubscribersMap.set(localSub.id, localSub);
     } else {
+      const localPaid = Number(localSub.paidAmount) || 0;
+      const remotePaid = Number(remoteMatch.paidAmount) || 0;
+      const hasUnsyncedLocalPayment = localPaid > remotePaid || (localSub.settleDate && !remoteMatch.settleDate);
       const isLocalActive = localSub.status === 'active' || localSub.amount > 0 || localSub.paymentStatus === 'debt';
       const isRemoteInactive = remoteMatch.status !== 'active';
-      if (isLocalActive && isRemoteInactive) {
-        const idx = mergedSubscribers.findIndex((s) => s.id === remoteMatch.id);
-        if (idx !== -1) {
-          mergedSubscribers[idx] = localSub;
-        }
+
+      if (isLocalNewer || hasUnsyncedLocalPayment || (isLocalActive && isRemoteInactive)) {
+        mergedSubscribersMap.set(remoteMatch.id, localSub);
       }
     }
   });
 
+  const mergedSubscribers = Array.from(mergedSubscribersMap.values());
+
   const remoteInvoices = remoteState.invoices || [];
   const localInvoices = localState.invoices || [];
-  const remoteInvoiceIds = new Set(remoteInvoices.map((inv) => inv.id));
-  const pendingInvoices = localInvoices.filter((inv) => !remoteInvoiceIds.has(inv.id));
-  const mergedInvoices = [...pendingInvoices, ...remoteInvoices];
+  const remoteInvoiceMap = new Map(remoteInvoices.map((inv) => [inv.id, inv]));
+  const mergedInvoiceMap = new Map(remoteInvoices.map((inv) => [inv.id, inv]));
+
+  localInvoices.forEach((localInv) => {
+    const remoteInv = remoteInvoiceMap.get(localInv.id);
+    if (!remoteInv) {
+      mergedInvoiceMap.set(localInv.id, localInv);
+    } else {
+      const localPaid = Number(localInv.paidAmount) || 0;
+      const remotePaid = Number(remoteInv.paidAmount) || 0;
+      if (isLocalNewer || localPaid > remotePaid) {
+        mergedInvoiceMap.set(localInv.id, localInv);
+      }
+    }
+  });
+
+  const mergedInvoices = Array.from(mergedInvoiceMap.values());
 
   const remoteRequests = remoteState.pendingRequests || [];
   const localRequests = localState.pendingRequests || [];
@@ -199,11 +220,14 @@ function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { s
   });
 
   const hasChanges = mergedSubscribers.length !== remoteSubscribers.length ||
-    pendingInvoices.length > 0 ||
+    mergedInvoices.length !== remoteInvoices.length ||
     pendingRequestsToSync.length > 0 ||
     localSubscribers.some((lSub) => {
       const rSub = remoteSubMap.get(lSub.id);
-      return rSub && lSub.status === 'active' && rSub.status !== 'active';
+      if (!rSub) return true;
+      return (Number(lSub.paidAmount) || 0) !== (Number(rSub.paidAmount) || 0) ||
+        (Number(lSub.debtAmount) || 0) !== (Number(rSub.debtAmount) || 0) ||
+        (lSub.status === 'active' && rSub.status !== 'active');
     });
 
   if (!hasChanges && localTimestamp < remoteTimestamp) {
@@ -399,9 +423,9 @@ export default function App() {
           amount: 0,
           paymentStatus: '' as const,
           debtAmount: outstandingDebt > 0 ? outstandingDebt : undefined,
-          originalAmount: undefined,
-          paidAmount: undefined,
-          settleDate: undefined
+          originalAmount: subscriber.originalAmount,
+          paidAmount: subscriber.paidAmount,
+          settleDate: subscriber.settleDate
         };
       });
 
