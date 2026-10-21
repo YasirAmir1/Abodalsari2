@@ -442,6 +442,7 @@ export default function App() {
   };
 
   const handleDeleteInvoice = (id: string) => {
+    storageService.addDeletedInvoiceId(id);
     const currentState = stateRef.current;
     const invoiceToDelete = currentState.invoices.find((invoice) => invoice.id === id);
     if (!invoiceToDelete) return;

@@ -333,9 +333,9 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   // Filter logic
   const filteredSubscribers = useMemo(() => subscribersForView.filter((sub) => {
     if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
-    if (!isAdmin && agentFilter !== 'all') {
+    if (agentFilter !== 'all') {
       if (agentFilter === 'agent-main') {
-        const isMain = sub.agentId === 'agent-main' || sub.agentName === 'المركز الرئيسي';
+        const isMain = sub.agentId === 'agent-main' || sub.agentName === 'المركز الرئيسي' || !sub.agentId || sub.agentName === 'الأدمن';
         if (!isMain) return false;
       } else {
         const matchAgentId = sub.agentId === agentFilter;
@@ -564,11 +564,11 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         </div>
       </div>
 
-      {!isAdmin && (
+      {/* Agent Classification Filter Bar below Status Filter Bar */}
       <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 ml-1">
           <span className="w-2 h-2 rounded-full bg-sky-600" />
-          تصنيف حسب الوكيل المسؤول:
+          تصنيف بأسماء الوكلاء والرئيسية:
         </span>
 
         <button
@@ -581,6 +581,17 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
         >
           <span>كافة الوكلاء والمركز</span>
           <span className="text-[10px] opacity-80 font-mono">({subscribersForView.length})</span>
+        </button>
+
+        <button
+          onClick={() => setAgentFilter('agent-main')}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+            agentFilter === 'agent-main'
+              ? 'bg-sky-800 text-white shadow-xs'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+          }`}
+        >
+          <span>المركز الرئيسي (الأدمن)</span>
         </button>
 
         {agents.map((ag) => {
@@ -609,7 +620,6 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           );
         })}
       </div>
-      )}
 
       {/* Sub Header: Counter & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
