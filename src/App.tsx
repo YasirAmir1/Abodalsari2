@@ -49,11 +49,12 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
     const agentSubscribers = subscribers.filter((sub) => doesSubscriberBelongToAgent(sub, agent));
     const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
     const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
-    const totalDebt = agentSubscribers
-      .filter((sub) => sub.paymentStatus === 'debt' || sub.paymentStatus === 'partial')
-      .reduce((sum, sub) => sum + (Number.isFinite(sub.amount) ? sub.amount : 0), 0);
     const agentInvoices = invoices.filter((inv) => doesInvoiceBelongToAgent(inv, agent));
     const totalSales = agentInvoices.reduce((sum, inv) => sum + (Number.isFinite(inv.amount) ? inv.amount : 0), 0);
+    const totalDebt = agentSubscribers.reduce(
+      (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, agentInvoices),
+      0
+    );
     const totalPaid = Math.max(0, totalSales - totalDebt);
 
     return {
@@ -159,13 +160,27 @@ function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { s
 
   const remoteRequests = remoteState.pendingRequests || [];
   const localRequests = localState.pendingRequests || [];
-  const remoteRequestIds = new Set(remoteRequests.map((req) => req.id));
-  const pendingRequests = localRequests.filter((req) => !remoteRequestIds.has(req.id));
-  const mergedRequests = [...pendingRequests, ...remoteRequests];
+  const remoteRequestMap = new Map(remoteRequests.map((request) => [request.id, request]));
+  const mergedRequestMap = new Map(remoteRequests.map((request) => [request.id, request]));
+  localRequests.forEach((localRequest) => {
+    const remoteRequest = remoteRequestMap.get(localRequest.id);
+    // A local decision wins while its write is syncing. A terminal remote
+    // decision also prevents a stale local pending copy from reappearing.
+    if (!remoteRequest || localRequest.status !== 'pending') {
+      mergedRequestMap.set(localRequest.id, localRequest);
+    }
+  });
+  const mergedRequests = Array.from(mergedRequestMap.values());
+  const pendingRequestsToSync = localRequests.filter((localRequest) => {
+    const remoteRequest = remoteRequestMap.get(localRequest.id);
+    return !remoteRequest || (
+      localRequest.status !== 'pending' && localRequest.status !== remoteRequest.status
+    );
+  });
 
   const hasChanges = mergedSubscribers.length !== remoteSubscribers.length ||
     pendingInvoices.length > 0 ||
-    pendingRequests.length > 0 ||
+    pendingRequestsToSync.length > 0 ||
     localSubscribers.some((lSub) => {
       const rSub = remoteSubMap.get(lSub.id);
       return rSub && lSub.status === 'active' && rSub.status !== 'active';
@@ -1240,7 +1255,9 @@ export default function App() {
     };
 
     const updatedInvoices = [newInvoice, ...currentState.invoices];
-    const updatedPendingRequests = currentState.pendingRequests.filter((r) => r.id !== requestId);
+    const updatedPendingRequests = currentState.pendingRequests.map((request) =>
+      request.id === requestId ? { ...request, status: 'approved' as const } : request
+    );
     const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
     const targetAgent = updatedAgents.find((ag) => ag.id === targetSubscriber.agentId) || updatedAgents[0];
 
@@ -1291,10 +1308,12 @@ export default function App() {
   const handleRejectPendingRequest = (requestId: string) => {
     const currentState = stateRef.current;
     const req = currentState.pendingRequests.find((r) => r.id === requestId);
-    if (!req) return;
+    if (!req || req.status !== 'pending') return;
     persistStateImmediately({
       ...currentState,
-      pendingRequests: currentState.pendingRequests.filter((r) => r.id !== requestId),
+      pendingRequests: currentState.pendingRequests.map((request) =>
+        request.id === requestId ? { ...request, status: 'rejected' as const } : request
+      ),
       // If it was a 'new-sub-' ID, also remove it from subscribers if it was added as 'inactive'
       subscribers: req?.subscriberId.startsWith('new-sub-') 
         ? currentState.subscribers.filter((s) => s.id !== req.subscriberId)
@@ -1315,7 +1334,9 @@ export default function App() {
 
     persistStateImmediately({
       ...currentState,
-      pendingRequests: currentState.pendingRequests.filter((item) => item.id !== requestId),
+      pendingRequests: currentState.pendingRequests.map((item) =>
+        item.id === requestId ? { ...item, status: 'cancelled' as const } : item
+      ),
       subscribers: request.subscriberId.startsWith('new-sub-')
         ? currentState.subscribers.filter((subscriber) => subscriber.id !== request.subscriberId)
         : currentState.subscribers
@@ -1615,7 +1636,7 @@ export default function App() {
       <Sidebar
         currentTab={currentTab}
         onSelectTab={handleSelectTab}
-        pendingCount={state.pendingRequests.length}
+        pendingCount={state.pendingRequests.filter((request) => request.status === 'pending').length}
         subscribersCount={state.subscribers.length}
         isAgentMode={isAgentMode}
         onToggleAgentMode={handleToggleAgentMode}
@@ -1711,7 +1732,9 @@ export default function App() {
 
           {currentTab === 'pending' && (
             <PendingRequestsView
-              pendingRequests={isAgentMode ? state.pendingRequests.filter((r) => r.agentId === currentAgent.id || r.agentName === currentAgent.name) : state.pendingRequests}
+              pendingRequests={isAgentMode
+                ? state.pendingRequests.filter((r) => r.status === 'pending' && (r.agentId === currentAgent.id || r.agentName === currentAgent.name))
+                : state.pendingRequests.filter((r) => r.status === 'pending')}
               agents={state.agents}
               subscribers={state.subscribers}
               onApproveRequest={handleApprovePendingRequest}

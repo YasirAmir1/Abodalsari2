@@ -506,11 +506,17 @@ export const firebaseService = {
       const invDocRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), encodeURIComponent(invoice.id));
       const agentDocRef = doc(collection(db, 'tenants', TENANT_ID, 'agents'), encodeURIComponent(agent.id));
       const metaDocRef = TENANT_METADATA_REF;
+      const resolvedRequest = nextState.pendingRequests.find((request) => request.id === requestId);
+      const resolvedRequestData = {
+        ...(resolvedRequest || { id: requestId }),
+        status: 'approved',
+        tenantId: TENANT_ID
+      };
 
       try {
         await runTransaction(db, async (transaction) => {
           transaction.set(subDocRef, { ...sanitize(subscriber), tenantId: TENANT_ID }, { merge: true });
-          transaction.delete(reqDocRef);
+          transaction.set(reqDocRef, sanitize(resolvedRequestData), { merge: true });
           transaction.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
           transaction.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
           transaction.set(metaDocRef, { ...metadataFor(nextState, true), updatedAt: serverTimestamp() }, { merge: true });
@@ -519,7 +525,7 @@ export const firebaseService = {
         console.warn('Firestore runTransaction fallback to batch write:', txError);
         const batch = writeBatch(db);
         batch.set(subDocRef, { ...sanitize(subscriber), tenantId: TENANT_ID }, { merge: true });
-        batch.delete(reqDocRef);
+        batch.set(reqDocRef, sanitize(resolvedRequestData), { merge: true });
         batch.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
         batch.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
         batch.set(metaDocRef, { ...metadataFor(nextState, true), updatedAt: serverTimestamp() }, { merge: true });

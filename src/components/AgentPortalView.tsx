@@ -367,7 +367,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
           onScroll={handleAgentSubscribersTableScroll}
           className="max-h-[70vh] overflow-auto"
         >
-          <table className="w-full text-right text-xs border-collapse">
+          <table className="w-full min-w-[1120px] text-right text-xs border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold">
                 <th className="py-3 px-4">اسم المشترك</th>
@@ -375,7 +375,9 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                 <th className="py-3 px-3">الهاتف</th>
                 <th className="py-3 px-3">نوع الباقة</th>
                 <th className="py-3 px-3">المبلغ</th>
+                <th className="py-3 px-3">طريقة الدفع</th>
                 <th className="py-3 px-3">حالة البث</th>
+                <th className="py-3 px-3">تاريخ البدء</th>
                 <th className="py-3 px-3">تاريخ الانتهاء</th>
                 <th className="py-3 px-4 text-center">الإجراءات</th>
               </tr>
@@ -383,7 +385,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {agentSubs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     لا يوجد مشتركون مسجلون لهذا الوكيل حالياً.
                   </td>
                 </tr>
@@ -391,7 +393,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                 <>
                 {agentSubscribersTopSpacerHeight > 0 && (
                   <tr aria-hidden="true">
-                    <td colSpan={8} style={{ height: agentSubscribersTopSpacerHeight, padding: 0, border: 0 }} />
+                    <td colSpan={10} style={{ height: agentSubscribersTopSpacerHeight, padding: 0, border: 0 }} />
                   </tr>
                 )}
                 {visibleAgentSubs.map((sub) => {
@@ -408,6 +410,11 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                       : sub.paymentStatus === 'debt'
                         ? 'دين'
                         : 'غير محدد';
+                  const paymentMethodLabel = sub.paymentStatus === 'paid'
+                    ? 'نقد'
+                    : sub.paymentStatus === 'debt' || sub.paymentStatus === 'partial'
+                      ? 'دين'
+                      : '—';
 
                   return (
                     <React.Fragment key={sub.id}>
@@ -428,6 +435,16 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                           {(sub.amount ?? 0).toLocaleString()} <span className="text-[10px] text-slate-400">د.ع</span>
                         </td>
                         <td className="py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${paymentMethodLabel === 'نقد'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                            : paymentMethodLabel === 'دين'
+                              ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                          }`}>
+                            {paymentMethodLabel}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                               sub.status === 'active'
@@ -440,17 +457,17 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                             {statusLabel}
                           </span>
                         </td>
+                        <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{sub.startDate || '—'}</td>
                         <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{sub.endDate || '—'}</td>
                         <td className="py-3 px-4 text-center">
                           <div className="flex flex-wrap items-center justify-center gap-1.5">
-
                             <button
                               onClick={() => {
                                 setSelectedSubId(sub.id);
                                 setSubSearchQuery(sub.name);
                                 setShowOrderModal(true);
                               }}
-                              className="px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                              className="shrink-0 whitespace-nowrap px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
                             >
                               <RefreshCw className="w-3 h-3" />
                               <span>طلب تجديد</span>
@@ -467,7 +484,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                       </tr>
                       {isExpanded && (
                         <tr className="bg-slate-50/80 dark:bg-slate-950/40">
-                          <td colSpan={8} className="p-3 md:p-4">
+                          <td colSpan={10} className="p-3 md:p-4">
                             <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                               <SubscriberDetail label="معرّف المشترك" value={sub.id} />
                               <SubscriberDetail label="اسم المشترك" value={sub.name || '—'} />
@@ -496,7 +513,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                 })}
                 {agentSubscribersBottomSpacerHeight > 0 && (
                   <tr aria-hidden="true">
-                    <td colSpan={8} style={{ height: agentSubscribersBottomSpacerHeight, padding: 0, border: 0 }} />
+                    <td colSpan={10} style={{ height: agentSubscribersBottomSpacerHeight, padding: 0, border: 0 }} />
                   </tr>
                 )}
                 </>

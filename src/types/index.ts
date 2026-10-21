@@ -82,7 +82,7 @@ export interface PendingRenewalRequest {
   amount: number;
   requestDate: string;
   notes?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
 }
 
 export interface Invoice {

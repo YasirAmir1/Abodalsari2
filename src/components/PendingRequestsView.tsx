@@ -69,9 +69,17 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
     type?: 'success' | 'error' | 'warning' | 'info';
   }>({ isOpen: false, title: '', message: '' });
 
+  const visiblePendingRequests = pendingRequests.filter((request) => request.status === 'pending');
+
+  useEffect(() => {
+    if (activatingRequest && !visiblePendingRequests.some((request) => request.id === activatingRequest.id)) {
+      setActivatingRequest(null);
+    }
+  }, [activatingRequest, visiblePendingRequests]);
+
   // Manage repeat sound alert when there are pending requests
   useEffect(() => {
-    if (pendingRequests.length > 0 && repeatAlert && !isMuted) {
+    if (visiblePendingRequests.length > 0 && repeatAlert && !isMuted) {
       soundService.startRepeatAlert(10);
     } else {
       soundService.stopRepeat();
@@ -79,7 +87,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
     return () => {
       soundService.stopRepeat();
     };
-  }, [pendingRequests.length, repeatAlert, isMuted]);
+  }, [visiblePendingRequests.length, repeatAlert, isMuted]);
 
   const handleToggleMute = () => {
     const muted = soundService.toggleMute();
@@ -148,7 +156,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
             {/* Pending count badge */}
             <span className="px-3.5 py-1.5 rounded-xl bg-amber-950/40 border border-amber-500/80 text-amber-300 text-xs font-bold flex items-center gap-2 shadow-xs">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span>الطلبات المعلقة: {pendingRequests.length}</span>
+              <span>الطلبات المعلقة: {visiblePendingRequests.length}</span>
             </span>
 
             {/* Test sound button */}
@@ -245,11 +253,11 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
         <div className="w-full text-right mb-4">
           <span className="text-xs font-extrabold text-amber-400 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-            قائمة طلبات التجديد الواردة من الوكلاء ({pendingRequests.length})
+            قائمة طلبات التجديد الواردة من الوكلاء ({visiblePendingRequests.length})
           </span>
         </div>
 
-        {pendingRequests.length === 0 ? (
+        {visiblePendingRequests.length === 0 ? (
           /* Empty State exactly matching the screenshot */
           <div className="py-12 flex flex-col items-center justify-center text-center max-w-md animate-in fade-in">
             <div className="w-14 h-14 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-lg mb-4 ring-4 ring-emerald-500/20 border-2 border-black/40">
@@ -264,7 +272,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
         ) : (
           /* Incoming Request Cards Grid */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 w-full">
-            {pendingRequests.map((req) => (
+            {visiblePendingRequests.map((req) => (
               <div
                 key={req.id}
                 className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
@@ -317,7 +325,10 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                     <span>{isDeviceSaleRequest(req) ? 'اعتماد بيع الجهاز' : 'اعتماد وتفعيل'}</span>
                   </button>
                   <button
-                    onClick={() => onRejectRequest(req.id)}
+                    onClick={() => {
+                      if (activatingRequest?.id === req.id) setActivatingRequest(null);
+                      onRejectRequest(req.id);
+                    }}
                     className="py-2 px-3 bg-slate-100 dark:bg-slate-700 hover:bg-red-50 dark:hover:bg-red-950/50 hover:text-red-600 dark:hover:text-red-400 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-600 transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
