@@ -50,20 +50,23 @@ function getInvoiceAmount(invoice: Invoice): number {
 }
 
 function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoices: Invoice[]): Agent[] {
+  const debtMap = buildSubscriberDebtMap(invoices);
   return agents.map((agent) => {
     const agentSubscribers = subscribers.filter((sub) => doesSubscriberBelongToAgent(sub, agent));
     const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
     const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
     const agentInvoices = invoices.filter((inv) => doesInvoiceBelongToAgent(inv, agent));
-    // Count each invoice's full sale amount regardless of cash/debt payment status.
-    const invoiceSales = agentInvoices.reduce((sum, invoice) => sum + getInvoiceAmount(invoice), 0);
-    const subscriberDebt = agentSubscribers.reduce(
-      (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, agentInvoices),
-      0
-    );
-    // Some existing accounts have financial totals saved on the agent record
-    // before their invoice history was migrated. Preserve those totals until
-    // invoice records are available instead of resetting the dashboard to 0.
+
+    let invoiceSales = 0;
+    for (let i = 0; i < agentInvoices.length; i++) {
+      invoiceSales += getInvoiceAmount(agentInvoices[i]);
+    }
+
+    let subscriberDebt = 0;
+    for (let i = 0; i < agentSubscribers.length; i++) {
+      subscriberDebt += getSubscriberOutstandingDebt(agentSubscribers[i], debtMap);
+    }
+
     const totalSales = agentInvoices.length > 0
       ? invoiceSales
       : Math.max(0, Number(agent.totalSales) || 0);
@@ -114,7 +117,7 @@ import { syncManager } from './services/firebase-sync';
 import { appFeatures } from './services/app-features';
 import { soundService } from './services/soundService';
 import { excelService } from './services/excelService';
-import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt } from './utils/calculationUtils';
+import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt, buildSubscriberDebtMap } from './utils/calculationUtils';
 
 import { Sidebar, NavTab } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -380,12 +383,13 @@ export default function App() {
       const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       let changed = false;
 
+      const debtMap = buildSubscriberDebtMap(currentState.invoices);
       const subscribers = currentState.subscribers.map((subscriber) => {
         if (subscriber.status !== 'active' || !subscriber.endDate || subscriber.endDate === '-') return subscriber;
         if (subscriber.endDate > today) return subscriber;
 
         changed = true;
-        const outstandingDebt = getSubscriberOutstandingDebt(subscriber, currentState.invoices);
+        const outstandingDebt = getSubscriberOutstandingDebt(subscriber, debtMap);
         return {
           ...subscriber,
           status: 'inactive' as const,
@@ -403,23 +407,7 @@ export default function App() {
 
       if (!changed) return;
 
-      const agents = currentState.agents.map((agent) => {
-        const agentSubscribers = subscribers.filter((subscriber) =>
-          subscriber.agentId === agent.id || subscriber.agentName === agent.name
-        );
-        const activeSubscribers = agentSubscribers.filter((subscriber) => subscriber.status === 'active');
-        const totalDebt = agentSubscribers.reduce(
-          (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, currentState.invoices),
-          0
-        );
-        return {
-          ...agent,
-          activeSubscriptions: activeSubscribers.length,
-          inactiveSubscriptions: agentSubscribers.length - activeSubscribers.length,
-          totalDebt,
-          hasDebt: totalDebt > 0
-        };
-      });
+      const agents = computeUpdatedAgents(currentState.agents, subscribers, currentState.invoices);
 
       persistStateImmediately({ ...currentState, subscribers, agents }, 'Could not sync expired subscriptions:');
     };
@@ -625,29 +613,7 @@ export default function App() {
       };
     });
 
-    const updatedAgents = currentState.agents.map((agent) => {
-      const agentSubscribers = updatedSubscribers.filter(
-        (subscriber) => subscriber.agentId === agent.id || subscriber.agentName === agent.name
-      );
-      const activeSubscribers = agentSubscribers.filter((subscriber) => subscriber.status === 'active');
-      const totalDebt = agentSubscribers.reduce(
-        (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, updatedInvoices),
-        0
-      );
-      const totalSales = Math.max(0, agent.totalSales - (invoiceToDelete.agentId === agent.id ? deletedInvoiceAmount : 0));
-      const totalPaid = Math.max(0, agent.totalPaid - (invoiceToDelete.agentId === agent.id ? deletedInvoicePaidAmount : 0));
-
-      return {
-        ...agent,
-        devicesCount: agentSubscribers.length,
-        activeSubscriptions: activeSubscribers.length,
-        inactiveSubscriptions: agentSubscribers.length - activeSubscribers.length,
-        totalSales,
-        totalDebt,
-        totalPaid,
-        hasDebt: totalDebt > 0
-      };
-    });
+    const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
 
     const newState: AppState = {
       ...currentState,

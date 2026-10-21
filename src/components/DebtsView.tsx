@@ -39,7 +39,7 @@ import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
 import { SecurityActionModal } from './SecurityActionModal';
 import { useVirtualizedRows } from './useVirtualizedRows';
-import { getSubscriberOutstandingDebt } from '../utils/calculationUtils';
+import { getSubscriberOutstandingDebt, buildSubscriberDebtMap } from '../utils/calculationUtils';
 
 interface DebtsViewProps {
   agents: Agent[];
@@ -79,16 +79,18 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     confirmButtonText: string;
     onExecute: () => void;
   } | null>(null);
+  const debtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
+
   const paymentSubscriber = subscriberToPay
     ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || null
     : null;
   const paymentSubscriberDebt = paymentSubscriber
-    ? getSubscriberOutstandingDebt(paymentSubscriber, invoices)
+    ? getSubscriberOutstandingDebt(paymentSubscriber, debtMap)
     : 0;
 
   const debtSubscribers = useMemo(
-    () => subscribers.filter((subscriber) => getSubscriberOutstandingDebt(subscriber, invoices) > 0),
-    [invoices, subscribers]
+    () => subscribers.filter((subscriber) => getSubscriberOutstandingDebt(subscriber, debtMap) > 0),
+    [debtMap, subscribers]
   );
   const totalSalesAmount = useMemo(() => invoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0), [invoices]);
   const totalPaidAmount = useMemo(() => invoices.reduce((sum, invoice) => {
@@ -99,8 +101,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     return sum + Math.max(0, paidAmount);
   }, 0), [invoices]);
   const grandTotalDebt = useMemo(
-    () => debtSubscribers.reduce((sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, invoices), 0),
-    [debtSubscribers, invoices]
+    () => debtSubscribers.reduce((sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, debtMap), 0),
+    [debtMap, debtSubscribers]
   );
   const formatMoney = (amount: number) => Math.max(0, Number.isFinite(amount) ? amount : 0).toLocaleString();
 
@@ -116,7 +118,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     const totals = agents.map(() => ({ debt: 0, sales: 0, paid: 0 }));
 
     subscribers.forEach((subscriber) => {
-      const subscriberDebt = getSubscriberOutstandingDebt(subscriber, invoices);
+      const subscriberDebt = getSubscriberOutstandingDebt(subscriber, debtMap);
       if (subscriberDebt <= 0) return;
       const matchingIndexes = new Set<number>();
       const idIndex = agentIndexesById.get(subscriber.agentId);

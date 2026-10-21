@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   TrendingUp,
   Hourglass,
@@ -11,7 +11,7 @@ import {
   PlusCircle,
   FileSpreadsheet
 } from 'lucide-react';
-import { calculateTotalSales, calculateTotalDebts, getSubscriberOutstandingDebt } from '../utils/calculationUtils';
+import { calculateTotalSales, calculateTotalDebts, getSubscriberOutstandingDebt, buildSubscriberDebtMap } from '../utils/calculationUtils';
 import { Agent, Invoice, Subscriber } from '../types';
 
 interface DashboardViewProps {
@@ -33,14 +33,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [activeChartPoint, setActiveChartPoint] = useState<number | null>(null);
 
+  const debtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
+
   // Calculations - System-wide total sales & debts across ALL agents and HQ
-  const totalSales = calculateTotalSales(invoices);
+  const totalSales = useMemo(() => calculateTotalSales(invoices), [invoices]);
 
   // Total system debt: Sum of debts for all agents including HQ ('agent-main') and all debt subscribers
-  const totalDebts = calculateTotalDebts(subscribers, invoices);
+  const totalDebts = useMemo(() => calculateTotalDebts(subscribers, invoices), [subscribers, invoices]);
 
   // Count of debt records across HQ and all agents in the system
-  const totalDebtRecordsCount = subscribers.filter((subscriber) => getSubscriberOutstandingDebt(subscriber, invoices) > 0).length;
+  const totalDebtRecordsCount = useMemo(
+    () => subscribers.filter((subscriber) => getSubscriberOutstandingDebt(subscriber, debtMap) > 0).length,
+    [subscribers, debtMap]
+  );
 
   const activeAgentsCount = agents.filter((a) => a.id !== 'agent-main').length;
   const totalOperations = invoices.length;
