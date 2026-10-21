@@ -13,6 +13,8 @@ export interface Subscriber {
   status: SubscriptionStatus;
   paymentStatus: PaymentStatus;
   amount: number;
+  /** Outstanding balance retained when subscription fields are cleared at expiry. */
+  debtAmount?: number;
   originalAmount?: number;
   paidAmount?: number;
   settleDate?: string;

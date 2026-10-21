@@ -15,9 +15,10 @@ import {
   Calendar,
   CheckCircle2,
   UserCheck,
-  DollarSign
+  DollarSign,
+  History
 } from 'lucide-react';
-import { Agent, PricingRow, Subscriber, SubscriptionDuration } from '../types';
+import { Agent, Invoice, PricingRow, Subscriber, SubscriptionDuration } from '../types';
 import { excelService } from '../services/excelService';
 import { getPriceByDuration } from '../utils/pricingUtils';
 import { RenewSubscriptionModal } from './RenewSubscriptionModal';
@@ -30,6 +31,7 @@ import { useVirtualizedRows } from './useVirtualizedRows';
 
 interface SubscribersViewProps {
   subscribers: Subscriber[];
+  invoices: Invoice[];
   agents: Agent[];
   pricing: PricingRow[];
   onAddSubscriber: (sub: Partial<Subscriber>, isSale: boolean, paid: boolean, saleKind?: 'subscription' | 'device') => void;
@@ -48,6 +50,7 @@ interface SubscribersViewProps {
 
 export const SubscribersView: React.FC<SubscribersViewProps> = ({
   subscribers,
+  invoices,
   agents,
   pricing,
   onAddSubscriber,
@@ -67,6 +70,15 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
+  const [historySubscriber, setHistorySubscriber] = useState<Subscriber | null>(null);
+  const subscriberInvoiceHistory = useMemo(
+    () => historySubscriber
+      ? invoices
+          .filter((invoice) => invoice.subscriberId === historySubscriber.id)
+          .sort((first, second) => second.date.localeCompare(first.date))
+      : [],
+    [historySubscriber, invoices]
+  );
 
   const subscribersForView = useMemo(() => {
     if (!isAdmin) return subscribers;
@@ -809,6 +821,16 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     {/* Actions: Edit, Deactivate (X), Delete */}
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-center gap-1.5">
+                        {isAdmin && (
+                          <button
+                            onClick={() => setHistorySubscriber(sub)}
+                            className="p-1.5 rounded-lg text-sky-700 hover:bg-sky-50 transition-colors border border-transparent hover:border-sky-200"
+                            title="السجل المالي للمشترك"
+                            aria-label={`السجل المالي للمشترك ${sub.name}`}
+                          >
+                            <History className="w-4 h-4" />
+                          </button>
+                        )}
                         {/* Edit */}
                         <button
                           onClick={() => setEditingSubscriber(sub)}
@@ -849,6 +871,52 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
           </table>
         </div>
       </div>
+
+      {historySubscriber && isAdmin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" dir="rtl">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscriber-financial-history-title"
+            className="w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="flex items-center justify-between gap-4 border-b border-slate-100 p-5 dark:border-slate-800">
+              <div>
+                <h3 id="subscriber-financial-history-title" className="font-black text-slate-900 dark:text-white">السجل المالي للمشترك</h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{historySubscriber.name} · الجهاز {historySubscriber.deviceId}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistorySubscriber(null)}
+                className="rounded-xl px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                aria-label="إغلاق سجل المشترك"
+              >
+                إغلاق
+              </button>
+            </div>
+            <div className="max-h-[65vh] overflow-auto p-5">
+              {subscriberInvoiceHistory.length === 0 ? (
+                <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">لا توجد معاملات مالية مسجلة لهذا المشترك.</p>
+              ) : (
+                <div className="space-y-3">
+                  {subscriberInvoiceHistory.map((invoice) => (
+                    <article key={invoice.id} className="grid grid-cols-1 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs dark:border-slate-700 dark:bg-slate-800/60 sm:grid-cols-2 lg:grid-cols-4">
+                      <div><span className="text-slate-500 dark:text-slate-400">رقم الفاتورة: </span><strong className="font-mono text-slate-900 dark:text-slate-100">{invoice.invoiceNumber}</strong></div>
+                      <div><span className="text-slate-500 dark:text-slate-400">المعاملة: </span><strong className="text-slate-900 dark:text-slate-100">{invoice.packageType}</strong></div>
+                      <div><span className="text-slate-500 dark:text-slate-400">التاريخ: </span><strong className="font-mono text-slate-900 dark:text-slate-100">{invoice.date}</strong></div>
+                      <div><span className="text-slate-500 dark:text-slate-400">طريقة الدفع: </span><strong className="text-slate-900 dark:text-slate-100">{invoice.paymentStatus === 'paid' ? 'نقد' : invoice.paymentStatus === 'partial' ? 'دفع جزئي' : 'دين'}</strong></div>
+                      <div><span className="text-slate-500 dark:text-slate-400">المبلغ: </span><strong className="font-mono text-slate-900 dark:text-slate-100">{invoice.amount.toLocaleString()} د.ع</strong></div>
+                      <div><span className="text-slate-500 dark:text-slate-400">المسدد: </span><strong className="font-mono text-emerald-700 dark:text-emerald-300">{(invoice.paidAmount || 0).toLocaleString()} د.ع</strong></div>
+                      <div><span className="text-slate-500 dark:text-slate-400">المتبقي: </span><strong className="font-mono text-red-700 dark:text-red-300">{(invoice.remainingAmount || 0).toLocaleString()} د.ع</strong></div>
+                      <div><span className="text-slate-500 dark:text-slate-400">الوكيل: </span><strong className="text-slate-900 dark:text-slate-100">{invoice.agentName}</strong></div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* Subscriber management actions at the bottom of the table */}
       <div dir="rtl" className="mt-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

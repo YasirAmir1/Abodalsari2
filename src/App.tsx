@@ -96,6 +96,7 @@ import { syncManager } from './services/firebase-sync';
 import { appFeatures } from './services/app-features';
 import { soundService } from './services/soundService';
 import { excelService } from './services/excelService';
+import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt } from './utils/calculationUtils';
 
 import { Sidebar, NavTab } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -343,7 +344,11 @@ export default function App() {
   const isRemoteUpdateRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const persistStateImmediately = (nextState: AppState, failureMessage: string) => {
+  const persistStateImmediately = (nextState: AppState, failureMessage: string, atomic = false) => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
     const committedState: AppState = {
       ...nextState,
       lastUpdatedTimestamp: Date.now()
@@ -353,7 +358,7 @@ export default function App() {
     storageService.saveState(committedState);
     setState(committedState);
 
-    void firebaseService.saveRemoteState(committedState, true).catch((error) => {
+    void firebaseService.saveRemoteState(committedState, true, atomic).catch((error) => {
       console.error(failureMessage, error);
       if (isMountedRef.current) {
         setSyncToast('تعذرت مزامنة التغييرات مع الأجهزة الأخرى. تحقق من الاتصال بالإنترنت.');
@@ -392,6 +397,72 @@ export default function App() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   }, [state, isRemoteReady]);
+
+  // Expire subscriptions against the local calendar date after the first
+  // server synchronization, and recheck periodically while the app is open.
+  // Invoice balances remain the ledger source, so clearing subscription fields
+  // does not erase unpaid amounts or payment history.
+  useEffect(() => {
+    if (!isRemoteReady) return;
+
+    const expireSubscriptions = () => {
+      const currentState = stateRef.current;
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      let changed = false;
+
+      const subscribers = currentState.subscribers.map((subscriber) => {
+        if (subscriber.status !== 'active' || !subscriber.endDate || subscriber.endDate === '-') return subscriber;
+        if (subscriber.endDate > today) return subscriber;
+
+        changed = true;
+        const outstandingDebt = getSubscriberOutstandingDebt(subscriber, currentState.invoices);
+        return {
+          ...subscriber,
+          status: 'inactive' as const,
+          subscriptionType: '',
+          startDate: '',
+          endDate: '',
+          amount: 0,
+          paymentStatus: '' as const,
+          debtAmount: outstandingDebt > 0 ? outstandingDebt : undefined,
+          originalAmount: undefined,
+          paidAmount: undefined,
+          settleDate: undefined
+        };
+      });
+
+      if (!changed) return;
+
+      const agents = currentState.agents.map((agent) => {
+        const agentSubscribers = subscribers.filter((subscriber) =>
+          subscriber.agentId === agent.id || subscriber.agentName === agent.name
+        );
+        const activeSubscribers = agentSubscribers.filter((subscriber) => subscriber.status === 'active');
+        const totalDebt = agentSubscribers.reduce(
+          (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, currentState.invoices),
+          0
+        );
+        return {
+          ...agent,
+          activeSubscriptions: activeSubscribers.length,
+          inactiveSubscriptions: agentSubscribers.length - activeSubscribers.length,
+          totalDebt,
+          hasDebt: totalDebt > 0
+        };
+      });
+
+      persistStateImmediately({ ...currentState, subscribers, agents }, 'Could not sync expired subscriptions:');
+    };
+
+    expireSubscriptions();
+    const timer = window.setInterval(expireSubscriptions, 60_000);
+    window.addEventListener('focus', expireSubscriptions);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', expireSubscriptions);
+    };
+  }, [isRemoteReady]);
 
   // --- Effect 2: Real-time Firestore listener (cross-device sync) & AppFeatures streams ---
   useEffect(() => {
@@ -546,37 +617,27 @@ export default function App() {
 
     const deletedInvoiceAmount = Math.max(0, Number.isFinite(invoiceToDelete.amount) ? invoiceToDelete.amount : 0);
     const deletedInvoicePaidAmount = Math.max(0, Number.isFinite(invoiceToDelete.paidAmount) ? invoiceToDelete.paidAmount : 0);
-    const deletedInvoiceDebt = Math.max(
-      0,
-      Number.isFinite(invoiceToDelete.remainingAmount)
-        ? invoiceToDelete.remainingAmount
-        : deletedInvoiceAmount - deletedInvoicePaidAmount
-    );
+    const deletedInvoiceDebt = getInvoiceRemainingAmount(invoiceToDelete);
     const updatedInvoices = currentState.invoices.filter((invoice) => invoice.id !== id);
 
     const updatedSubscribers = currentState.subscribers.map((subscriber): Subscriber => {
       if (subscriber.id !== invoiceToDelete.subscriberId) return subscriber;
 
-      const currentDebt = Math.max(0, Number.isFinite(subscriber.amount) ? subscriber.amount : 0);
-      const remainingDebt = Math.max(0, currentDebt - deletedInvoiceDebt);
-      const currentPaidAmount = Math.max(0, subscriber.paidAmount || 0);
-      const remainingPaidAmount = Math.max(0, currentPaidAmount - deletedInvoicePaidAmount);
-      const currentOriginalAmount = subscriber.originalAmount ?? currentDebt + currentPaidAmount;
-      const hasRemainingDebt = remainingDebt > 0;
+      const remainingDebt = Math.max(
+        0,
+        getSubscriberOutstandingDebt(subscriber, currentState.invoices) - deletedInvoiceDebt
+      );
 
       return {
         ...subscriber,
         status: 'inactive' as const,
         subscriptionType: '',
-        paymentStatus: hasRemainingDebt
-          ? (remainingPaidAmount > 0 ? 'partial' as const : 'debt' as const)
-          : '',
-        amount: remainingDebt,
-        originalAmount: hasRemainingDebt
-          ? Math.max(remainingDebt + remainingPaidAmount, currentOriginalAmount - deletedInvoiceAmount)
-          : undefined,
-        paidAmount: hasRemainingDebt ? remainingPaidAmount : undefined,
-        settleDate: hasRemainingDebt ? subscriber.settleDate : undefined,
+        paymentStatus: '',
+        amount: 0,
+        debtAmount: remainingDebt > 0 ? remainingDebt : undefined,
+        originalAmount: undefined,
+        paidAmount: undefined,
+        settleDate: undefined,
         startDate: '',
         endDate: ''
       };
@@ -587,12 +648,12 @@ export default function App() {
         (subscriber) => subscriber.agentId === agent.id || subscriber.agentName === agent.name
       );
       const activeSubscribers = agentSubscribers.filter((subscriber) => subscriber.status === 'active');
-      const totalDebt = agentSubscribers
-        .filter((subscriber) => subscriber.paymentStatus === 'debt' || subscriber.paymentStatus === 'partial')
-        .reduce((sum, subscriber) => sum + (subscriber.amount || 0), 0);
-      const totalSales = updatedInvoices
-        .filter((invoice) => invoice.agentId === agent.id)
-        .reduce((sum, invoice) => sum + (invoice.amount || 0), 0);
+      const totalDebt = agentSubscribers.reduce(
+        (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, updatedInvoices),
+        0
+      );
+      const totalSales = Math.max(0, agent.totalSales - (invoiceToDelete.agentId === agent.id ? deletedInvoiceAmount : 0));
+      const totalPaid = Math.max(0, agent.totalPaid - (invoiceToDelete.agentId === agent.id ? deletedInvoicePaidAmount : 0));
 
       return {
         ...agent,
@@ -601,7 +662,7 @@ export default function App() {
         inactiveSubscriptions: agentSubscribers.length - activeSubscribers.length,
         totalSales,
         totalDebt,
-        totalPaid: Math.max(0, totalSales - totalDebt),
+        totalPaid,
         hasDebt: totalDebt > 0
       };
     });
@@ -621,7 +682,7 @@ export default function App() {
     stateRef.current = newState;
     storageService.saveState(newState);
     setState(newState);
-    void firebaseService.saveRemoteState(newState, true).catch((error) => {
+    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
       console.error('Could not immediately sync invoice deletion:', error);
       if (isMountedRef.current) {
         setSyncToast('تم حذف الفاتورة محلياً وتعذرت مزامنة التعديلات حالياً');
@@ -668,12 +729,12 @@ export default function App() {
       deviceId: cleanDevId,
       agentId: assignedAgent?.id || subData.agentId || 'agent-main',
       agentName: assignedAgent?.name || subData.agentName || 'المركز الرئيسي',
-      subscriptionType: subData.subscriptionType || '1 شهر',
-      status: subData.status || 'active',
+      subscriptionType: saleKind === 'device' ? '-' : (subData.subscriptionType || '1 شهر'),
+      status: saleKind === 'device' ? 'inactive' : (subData.status || 'active'),
       paymentStatus: isPaid ? 'paid' : (subData.paymentStatus || 'debt'),
-      amount: subData.amount || 25000,
+      amount: subData.amount ?? 25000,
       startDate: subData.startDate || new Date().toISOString().split('T')[0],
-      endDate: subData.endDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      endDate: saleKind === 'device' ? '-' : (subData.endDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]),
       address: subData.address || '',
       notes: subData.notes || '',
       createdAt: new Date().toISOString().split('T')[0]
@@ -729,7 +790,7 @@ export default function App() {
       pendingRequests: pendingRequestId
         ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
         : currentState.pendingRequests
-    }, 'Could not immediately sync the new subscriber:');
+    }, 'Could not immediately sync the new subscriber:', true);
 
     soundService.playSuccess();
 
@@ -864,8 +925,10 @@ export default function App() {
     const updatedAgents = state.agents.map((ag) => {
       const agSubs = remainingSubscribers.filter((s) => s.agentId === ag.id);
       const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
-      const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+      const totalAgentDebt = agSubs.reduce(
+        (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, remainingInvoices),
+        0
+      );
       const totalAgentSales = remainingInvoices
         .filter((invoice) => invoice.agentId === ag.id)
         .reduce((sum, invoice) => sum + (invoice.amount || 0), 0);
@@ -961,6 +1024,7 @@ export default function App() {
       startDate: '-',
       endDate: '-',
       amount: 0,
+      debtAmount: 0,
       subscriptionType: '-',
       paymentStatus: '-'
     };
@@ -994,7 +1058,16 @@ export default function App() {
     const wasActive = currentSubscriber?.status === 'active';
     const rawDev = (updatedSubscriber.deviceId || '').trim();
     const cleanDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
-    const finalSubscriber = { ...updatedSubscriber, deviceId: cleanDev };
+    const finalSubscriber: Subscriber = {
+      ...updatedSubscriber,
+      deviceId: cleanDev,
+      amount,
+      debtAmount: isDebt ? amount : 0,
+      originalAmount: amount,
+      paidAmount: isDebt ? 0 : amount,
+      paymentStatus: isDebt ? 'debt' : 'paid',
+      settleDate: isDebt ? undefined : updatedSubscriber.startDate
+    };
 
     const newInvoice: Invoice = {
       id: `inv-${Date.now()}`,
@@ -1052,7 +1125,7 @@ export default function App() {
     stateRef.current = newState;
     storageService.saveState(newState);
     setState(newState);
-    void firebaseService.saveRemoteState(newState, true).catch((error) => {
+    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
       console.error('Could not immediately sync subscriber renewal:', error);
       if (isMountedRef.current) {
         setSyncToast('تم تسجيل التجديد محلياً وتعذرت مزامنته حالياً');
@@ -1077,7 +1150,6 @@ export default function App() {
   const handleApprovePendingRequest = (
     requestId: string,
     overrides?: {
-      status?: 'active' | 'inactive';
       amount?: number;
       startDate?: string;
       duration?: SubscriptionDuration;
@@ -1094,7 +1166,7 @@ export default function App() {
     const supportedDurations: SubscriptionDuration[] = ['1 شهر', 'شهرين', '3 أشهر'];
     const dur = supportedDurations.includes(requestedDuration) ? requestedDuration : '1 شهر';
     const amt = overrides?.amount !== undefined ? overrides.amount : req.amount;
-    const stat = overrides?.status || 'active';
+    const stat = isNewDeviceSale ? 'inactive' : 'active';
     const payStat = overrides?.paymentStatus || 'paid';
     const expDate = new Date(sDate);
     const months = dur === 'شهرين' ? 2 : dur === '3 أشهر' ? 3 : 1;
@@ -1106,22 +1178,28 @@ export default function App() {
 
     if (isNewDeviceSale) {
       const rawDev = (req.deviceId || '').trim();
-      const cleanDev = rawDev ? (rawDev.startsWith('00') ? rawDev : '00' + rawDev) : '00' + Math.floor(100000 + Math.random() * 900000);
+      const cleanDev = rawDev
+        ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`)
+        : `00${Math.floor(100000 + Math.random() * 900000)}`;
+      const assignedAgent = currentState.agents.find(
+        (agent) => agent.id === req.agentId || agent.name === req.agentName
+      );
       targetSubscriber = {
         id: req.subscriberId.startsWith('new-sub-') ? req.subscriberId : 'sub-' + Date.now(),
         name: req.subscriberName,
         phone: req.subscriberPhone,
         deviceId: cleanDev,
-        agentId: req.agentId,
-        agentName: req.agentName,
-        subscriptionType: dur,
+        agentId: assignedAgent?.id || req.agentId || 'agent-main',
+        agentName: assignedAgent?.name || req.agentName || 'المركز الرئيسي',
+        subscriptionType: '-',
         status: stat,
         paymentStatus: payStat,
         amount: amt,
         originalAmount: amt,
         paidAmount: payStat === 'paid' ? amt : 0,
-        startDate: sDate,
-        endDate,
+        debtAmount: payStat === 'debt' ? amt : 0,
+        startDate: '-',
+        endDate: '-',
         notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل'
       };
       updatedSubscribers = [targetSubscriber, ...currentState.subscribers];
@@ -1152,7 +1230,7 @@ export default function App() {
       deviceId: targetSubscriber.deviceId,
       agentId: targetSubscriber.agentId,
       agentName: targetSubscriber.agentName,
-      packageType: 'تجديد باقة ' + dur,
+      packageType: isNewDeviceSale ? 'بيع جهاز جديد فقط' : 'تجديد باقة ' + dur,
       amount: amt,
       paidAmount: payStat === 'paid' ? amt : 0,
       remainingAmount: payStat === 'debt' ? amt : 0,
@@ -1301,19 +1379,26 @@ export default function App() {
     const currentState = stateRef.current;
     const subscriber = currentState.subscribers.find((s) => s.id === subscriberId);
     const amount = Math.trunc(paymentAmount);
-    if (!subscriber || !Number.isFinite(amount) || amount <= 0 || amount > subscriber.amount) return;
+    const currentDebt = subscriber ? getSubscriberOutstandingDebt(subscriber, currentState.invoices) : 0;
+    if (!subscriber || !Number.isFinite(amount) || amount <= 0 || amount > currentDebt) return;
 
-    const remainingDebt = Math.max(0, subscriber.amount - amount);
+    const remainingDebt = Math.max(0, currentDebt - amount);
+    const isExpiredSubscription = subscriber.status === 'inactive' &&
+      !subscriber.subscriptionType && !subscriber.startDate && !subscriber.endDate;
+    const subscriberInvoiceAmount = currentState.invoices
+      .filter((invoice) => invoice.subscriberId === subscriberId)
+      .reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
     const updatedSubscribers = currentState.subscribers.map((s): Subscriber => {
       if (s.id !== subscriberId) return s;
       const paidAmount = (s.paidAmount || 0) + amount;
       return {
         ...s,
-        originalAmount: s.originalAmount ?? (s.amount + (s.paidAmount || 0)),
+        originalAmount: s.originalAmount ?? (subscriberInvoiceAmount || ((s.debtAmount ?? s.amount) + (s.paidAmount || 0))),
         paidAmount,
-        amount: remainingDebt,
-        paymentStatus: remainingDebt === 0 ? 'paid' : 'partial',
-        settleDate: new Date().toISOString().split('T')[0]
+        amount: isExpiredSubscription ? 0 : remainingDebt,
+        debtAmount: remainingDebt,
+        paymentStatus: isExpiredSubscription ? '' : (remainingDebt === 0 ? 'paid' : 'partial'),
+        settleDate: isExpiredSubscription ? undefined : new Date().toISOString().split('T')[0]
       };
     });
 
@@ -1328,10 +1413,7 @@ export default function App() {
     for (const { index } of invoicePaymentOrder) {
       if (unappliedPayment <= 0) break;
       const invoice = updatedInvoices[index];
-      const invoiceRemaining = Math.max(
-        0,
-        invoice.remainingAmount ?? (invoice.amount - (invoice.paidAmount || 0))
-      );
+      const invoiceRemaining = getInvoiceRemainingAmount(invoice);
       if (invoiceRemaining <= 0) continue;
 
       const appliedPayment = Math.min(unappliedPayment, invoiceRemaining);
@@ -1348,15 +1430,17 @@ export default function App() {
     const updatedAgents = currentState.agents.map((ag) => {
       const agSubs = updatedSubscribers.filter((s) => s.agentId === ag.id);
       const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const debtSubs = agSubs.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial');
-      const totalAgentDebt = debtSubs.reduce((sum, s) => sum + (s.amount || 0), 0);
+      const totalAgentDebt = agSubs.reduce(
+        (sum, s) => sum + getSubscriberOutstandingDebt(s, updatedInvoices),
+        0
+      );
       return {
         ...ag,
         devicesCount: agSubs.length,
         activeSubscriptions: activeSubs.length,
         inactiveSubscriptions: agSubs.length - activeSubs.length,
         totalDebt: totalAgentDebt,
-        totalSales: ag.totalSales,
+        totalPaid: ag.totalPaid + (ag.id === subscriber.agentId ? amount : 0),
         hasDebt: totalAgentDebt > 0
       };
     });
@@ -1371,7 +1455,7 @@ export default function App() {
     stateRef.current = newState;
     storageService.saveState(newState);
     setState(newState);
-    void firebaseService.saveRemoteState(newState, true).catch((error) => {
+    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
       console.error('Could not immediately sync subscriber payment:', error);
       if (isMountedRef.current) {
         setSyncToast('تم تسجيل الدفعة محلياً وتعذرت مزامنتها حالياً');
@@ -1583,6 +1667,7 @@ export default function App() {
           {currentTab === 'subscribers' && (
             <SubscribersView
               subscribers={isAgentMode ? state.subscribers.filter((s) => s.agentId === currentAgent.id || s.agentName === currentAgent.name) : state.subscribers}
+              invoices={state.invoices}
               agents={state.agents}
               pricing={state.pricing}
               onAddSubscriber={handleAddSubscriber}

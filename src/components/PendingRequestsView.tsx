@@ -29,7 +29,6 @@ interface PendingRequestsViewProps {
   onApproveRequest: (
     requestId: string,
     overrides?: {
-      status?: 'active' | 'inactive';
       amount?: number;
       startDate?: string;
       duration?: SubscriptionDuration;
@@ -58,7 +57,6 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [activatingRequest, setActivatingRequest] = useState<PendingRenewalRequest | null>(null);
-  const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
   const [editAmount, setEditAmount] = useState<number>(22000);
   const [editStartDate, setEditStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [editDuration, setEditDuration] = useState<SubscriptionDuration>('1 شهر');
@@ -113,7 +111,6 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
   const handleOpenActivate = (req: PendingRenewalRequest) => {
     const isDeviceSale = isDeviceSaleRequest(req);
     setActivatingRequest(req);
-    setEditStatus(isDeviceSale ? 'inactive' : 'active');
     setEditAmount(req.amount || 22000);
     setEditStartDate(new Date().toISOString().split('T')[0]);
     const supportedDurations: SubscriptionDuration[] = ['1 شهر', 'شهرين', '3 أشهر'];
@@ -125,7 +122,6 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
     e.preventDefault();
     if (!activatingRequest) return;
     onApproveRequest(activatingRequest.id, {
-      status: editStatus,
       amount: editAmount,
       startDate: editStartDate,
       duration: editDuration,
@@ -350,20 +346,9 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
             <form onSubmit={handleConfirmActivation} className="mt-4 space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">حالة المشترك</label>
-                {activatingDeviceSale ? (
-                  <div className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
-                    غير فعال — بيع جهاز بدون اشتراك
-                  </div>
-                ) : (
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-semibold"
-                  >
-                    <option value="active">فعال</option>
-                    <option value="inactive">غير فعال</option>
-                  </select>
-                )}
+                <div className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                  {activatingDeviceSale ? 'غير فعال — بيع جهاز بدون اشتراك' : 'فعال — تجديد معتمد'}
+                </div>
               </div>
 
               <div>

@@ -39,6 +39,7 @@ import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
 import { SecurityActionModal } from './SecurityActionModal';
 import { useVirtualizedRows } from './useVirtualizedRows';
+import { getSubscriberOutstandingDebt } from '../utils/calculationUtils';
 
 interface DebtsViewProps {
   agents: Agent[];
@@ -81,10 +82,13 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const paymentSubscriber = subscriberToPay
     ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || null
     : null;
+  const paymentSubscriberDebt = paymentSubscriber
+    ? getSubscriberOutstandingDebt(paymentSubscriber, invoices)
+    : 0;
 
   const debtSubscribers = useMemo(
-    () => subscribers.filter((s) => s.paymentStatus === 'debt' || s.paymentStatus === 'partial'),
-    [subscribers]
+    () => subscribers.filter((subscriber) => getSubscriberOutstandingDebt(subscriber, invoices) > 0),
+    [invoices, subscribers]
   );
   const totalSalesAmount = useMemo(() => invoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0), [invoices]);
   const totalPaidAmount = useMemo(() => invoices.reduce((sum, invoice) => {
@@ -95,8 +99,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     return sum + Math.max(0, paidAmount);
   }, 0), [invoices]);
   const grandTotalDebt = useMemo(
-    () => debtSubscribers.reduce((sum, subscriber) => sum + (Number(subscriber.amount) || 0), 0),
-    [debtSubscribers]
+    () => debtSubscribers.reduce((sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, invoices), 0),
+    [debtSubscribers, invoices]
   );
   const formatMoney = (amount: number) => Math.max(0, Number.isFinite(amount) ? amount : 0).toLocaleString();
 
@@ -112,13 +116,14 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     const totals = agents.map(() => ({ debt: 0, sales: 0, paid: 0 }));
 
     subscribers.forEach((subscriber) => {
-      if (subscriber.paymentStatus !== 'debt' && subscriber.paymentStatus !== 'partial') return;
+      const subscriberDebt = getSubscriberOutstandingDebt(subscriber, invoices);
+      if (subscriberDebt <= 0) return;
       const matchingIndexes = new Set<number>();
       const idIndex = agentIndexesById.get(subscriber.agentId);
       if (idIndex !== undefined) matchingIndexes.add(idIndex);
       (agentIndexesByName.get(subscriber.agentName) || []).forEach((index) => matchingIndexes.add(index));
       matchingIndexes.forEach((index) => {
-        totals[index].debt += Number(subscriber.amount) || 0;
+        totals[index].debt += subscriberDebt;
       });
     });
 
@@ -201,16 +206,22 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
       }));
       excelService.exportDebts(exportData, 'ديون_الوكلاء_المستحقة.xlsx');
     } else {
-      const exportData = debtSubscribers.map(sub => ({
-        name: sub.name,
-        agentName: sub.agentName,
-        code: sub.deviceId,
-        totalAmount: sub.originalAmount ?? (sub.amount + (sub.paidAmount || 0)),
-        paidAmount: sub.paidAmount || 0,
-        remainingAmount: sub.amount,
-        dueDate: sub.endDate,
-        notes: sub.subscriptionType
-      }));
+      const exportData = debtSubscribers.map((sub) => {
+        const subscriberInvoices = invoices.filter((invoice) => invoice.subscriberId === sub.id);
+        const invoiceAmount = subscriberInvoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
+        const invoicePaid = subscriberInvoices.reduce((sum, invoice) => sum + (Number(invoice.paidAmount) || 0), 0);
+        const remainingAmount = getSubscriberOutstandingDebt(sub, invoices);
+        return {
+          name: sub.name,
+          agentName: sub.agentName,
+          code: sub.deviceId,
+          totalAmount: invoiceAmount || sub.originalAmount || ((sub.debtAmount || sub.amount) + (sub.paidAmount || 0)),
+          paidAmount: invoicePaid || sub.paidAmount || 0,
+          remainingAmount,
+          dueDate: sub.endDate,
+          notes: sub.subscriptionType
+        };
+      });
       excelService.exportDebts(exportData, 'ديون_المشتركين_المباشرة.xlsx');
     }
   };
@@ -218,7 +229,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const submitSubscriberPayment = () => {
     if (!paymentSubscriber) return;
     const amount = Number(paymentAmount);
-    if (!Number.isInteger(amount) || amount <= 0 || amount > paymentSubscriber.amount) return;
+    if (!Number.isInteger(amount) || amount <= 0 || amount > paymentSubscriberDebt) return;
     onSettleSubscriberDebt(paymentSubscriber.id, amount);
     setSubscriberToPay(null);
     setPaymentAmount('');
@@ -579,7 +590,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         </span>
                       </td>
                       <td className="py-3.5 px-3 font-mono font-black text-red-600 dark:text-red-400">
-                        {sub.amount.toLocaleString()} د.ع
+                        {getSubscriberOutstandingDebt(sub, invoices).toLocaleString()} د.ع
                       </td>
                       <td className="py-3.5 px-3 font-mono text-slate-500 dark:text-slate-400">{sub.endDate}</td>
                       <td className="py-3.5 px-4 text-center flex items-center justify-center gap-2">
@@ -653,7 +664,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
             <div className="mb-4 rounded-2xl bg-red-50 p-4 text-sm dark:bg-red-950/30">
               <span className="text-slate-600 dark:text-slate-300">الدين المتبقي: </span>
               <strong className="font-mono text-red-700 dark:text-red-300">
-                {paymentSubscriber.amount.toLocaleString()} د.ع
+                {paymentSubscriberDebt.toLocaleString()} د.ع
               </strong>
             </div>
 
@@ -664,7 +675,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
               id="subscriber-payment-amount"
               type="number"
               min="1"
-              max={paymentSubscriber.amount}
+              max={paymentSubscriberDebt}
               step="1"
               inputMode="numeric"
               autoFocus
@@ -675,7 +686,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
             />
             <button
               type="button"
-              onClick={() => setPaymentAmount(String(paymentSubscriber.amount))}
+              onClick={() => setPaymentAmount(String(paymentSubscriberDebt))}
               className="mt-2 text-xs font-bold text-sky-700 hover:underline dark:text-sky-400"
             >
               تسديد كامل الدين
@@ -692,7 +703,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
               <button
                 type="button"
                 onClick={submitSubscriberPayment}
-                disabled={!Number.isInteger(Number(paymentAmount)) || Number(paymentAmount) <= 0 || Number(paymentAmount) > paymentSubscriber.amount}
+                disabled={!Number.isInteger(Number(paymentAmount)) || Number(paymentAmount) <= 0 || Number(paymentAmount) > paymentSubscriberDebt}
                 className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 حفظ الدفعة

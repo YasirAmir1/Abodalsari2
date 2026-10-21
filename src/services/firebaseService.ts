@@ -250,12 +250,15 @@ type WriteOperation =
   | { type: 'set'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }
   | { type: 'delete'; ref: ReturnType<typeof doc> };
 
-async function commitOperations(operations: WriteOperation[], metadata: Record<string, unknown>) {
+async function commitOperations(operations: WriteOperation[], metadata: Record<string, unknown>, atomic = false) {
   const allOperations: WriteOperation[] = [
     ...operations,
     { type: 'set', ref: TENANT_METADATA_REF, data: { ...metadata, updatedAt: serverTimestamp() } }
   ];
-  const batchLimit = 450;
+  if (atomic && allOperations.length > 500) {
+    throw new Error('Atomic Firestore update exceeds the 500-write batch limit.');
+  }
+  const batchLimit = atomic ? 500 : 450;
   for (let offset = 0; offset < allOperations.length; offset += batchLimit) {
     const batch = writeBatch(db);
     allOperations.slice(offset, offset + batchLimit).forEach((operation) => {
@@ -447,7 +450,7 @@ export const firebaseService = {
     });
   },
 
-  async saveRemoteState(state: AppState, _immediate = false): Promise<void> {
+  async saveRemoteState(state: AppState, _immediate = false, atomic = false): Promise<void> {
     this.broadcastLocalChange(state);
     const requestedState = sanitize(state);
     const requestedPayload = JSON.stringify(requestedState);
@@ -467,7 +470,7 @@ export const firebaseService = {
       const nextState: AppState = { ...requestedState, lastUpdatedTimestamp: nextTimestamp };
       const operations = diffOperations(baseState, nextState);
       updateSyncStatus('syncing');
-      await commitOperations(operations, metadataFor(nextState, true));
+      await commitOperations(operations, metadataFor(nextState, true), atomic);
 
       remoteState = applyDesiredChanges(baseState, nextState);
       tenantHasRemoteData = true;
