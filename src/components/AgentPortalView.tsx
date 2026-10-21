@@ -332,7 +332,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
           <div className="text-2xl font-black text-slate-900 dark:text-slate-100 mt-2 font-mono">
             {currentAgent.totalSales.toLocaleString()} <span className="text-xs font-bold text-slate-400">د.ع</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">مبيعات تراكمية موثقة</div>
+          <div className="text-[11px] text-slate-400 mt-1">إجمالي المبيعات نقداً وديناً</div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">

@@ -1116,8 +1116,8 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     }}
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500"
                   >
-                    <option value="1 شهر">شهر واحد</option>
-                    <option value="شهرين">شهران</option>
+                    <option value="1 شهر">شهر</option>
+                    <option value="شهرين">شهرين</option>
                     <option value="3 أشهر">3 أشهر</option>
                   </select>
                 </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   DollarSign,
   Save,
@@ -40,6 +40,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [editingAgentCredentials, setEditingAgentCredentials] = useState<string | null>(null);
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [credentialDrafts, setCredentialDrafts] = useState<Record<string, { username: string; password: string }>>({});
+
+  useEffect(() => {
+    if (rows.length === 0 && pricing.length > 0) setRows(pricing);
+  }, [pricing, rows.length]);
 
   const togglePasswordVisibility = (agentId: string) => {
     setVisiblePasswords(prev => ({ ...prev, [agentId]: !prev[agentId] }));
@@ -91,6 +96,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
 
   const handleApplyCenterPricesSingle = (index: number) => {
     const center = rows.find((r) => r.isReference) || rows[0];
+    if (!center) return;
     const updated = [...rows];
     updated[index] = {
       ...updated[index],
@@ -195,7 +201,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
           <div className="text-2xl font-black text-slate-900 mt-3 font-mono">
             {rows.length} <span className="text-xs font-bold text-slate-500">جهة</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-1">المركز الرئيسي + {rows.length - 1} وكيل</div>
+          <div className="text-[11px] text-slate-400 mt-1">المركز الرئيسي + {Math.max(0, rows.length - 1)} وكيل</div>
         </div>
 
         {/* Card 2: الأسعار المعتمدة */}
@@ -231,7 +237,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black text-sky-900 mt-3 font-mono">
-            {centerRow.newDevicePrice.toLocaleString()} <span className="text-xs font-bold text-slate-500">د.ع</span>
+            {(centerRow?.newDevicePrice ?? 0).toLocaleString()} <span className="text-xs font-bold text-slate-500">د.ع</span>
           </div>
           <div className="text-[11px] text-slate-400 mt-1">سعر البيع المباشر للمشترك</div>
         </div>
@@ -263,11 +269,17 @@ export const PricingView: React.FC<PricingViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rows.map((row, index) => {
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-500">لا توجد بيانات أسعار جاهزة للعرض حالياً.</td>
+                </tr>
+              ) : rows.map((row, index) => {
                 const agent = agents.find((a) => a.id === row.agentId);
                 const isEditing = editingAgentCredentials === row.agentId;
-                const [tempUsername, setTempUsername] = useState(agent?.username || '');
-                const [tempPassword, setTempPassword] = useState(agent?.password || '');
+                const credentialDraft = credentialDrafts[row.agentId] || {
+                  username: agent?.username || '',
+                  password: agent?.password || ''
+                };
 
                 return (
                   <React.Fragment key={row.agentId}>
@@ -362,8 +374,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
                             <span className="font-bold text-slate-600">اسم المستخدم:</span>
                             {isEditing ? (
                               <input
-                                value={tempUsername}
-                                onChange={(e) => setTempUsername(e.target.value)}
+                                value={credentialDraft.username}
+                                onChange={(e) => setCredentialDrafts((prev) => ({
+                                  ...prev,
+                                  [row.agentId]: { ...credentialDraft, username: e.target.value }
+                                }))}
                                 className="px-2 py-1 rounded border border-slate-300"
                               />
                             ) : (
@@ -376,8 +391,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
                               {isEditing ? (
                                 <input
                                   type={visiblePasswords[row.agentId] ? 'text' : 'password'}
-                                  value={tempPassword}
-                                  onChange={(e) => setTempPassword(e.target.value)}
+                                  value={credentialDraft.password}
+                                  onChange={(e) => setCredentialDrafts((prev) => ({
+                                    ...prev,
+                                    [row.agentId]: { ...credentialDraft, password: e.target.value }
+                                  }))}
                                   className="px-2 py-1 rounded border border-slate-300"
                                 />
                               ) : (
@@ -393,7 +411,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
                           <button
                             onClick={() => {
                               if (isEditing) {
-                                onUpdateAgent(row.agentId, { username: tempUsername, password: tempPassword });
+                                onUpdateAgent(row.agentId, { username: credentialDraft.username, password: credentialDraft.password });
                                 setEditingAgentCredentials(null);
                               } else {
                                 setEditingAgentCredentials(row.agentId);
@@ -440,7 +458,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
           actionName="حفظ وتثبيت الأسعار لكافة الوكلاء والمركز الرئيسي"
           targetDescription="أنت على وشك تثبيت جدول الأسعار الجديد رسمياً واعتماده لكافة الوكلاء والمركز الرئيسي. سيتم إلزام كافة عمليات البيع وتجديد الاشتراكات القادمة عبر الشبكة بالأسعار المحدثة من تاريخ التنفيذ."
           details={[
-            { label: 'إجمالي جهات البيع المشمولة', value: `${rows.length} جهة (المركز الرئيسي + ${rows.length - 1} وكيل)` },
+            { label: 'إجمالي جهات البيع المشمولة', value: `${rows.length} جهة (المركز الرئيسي + ${Math.max(0, rows.length - 1)} وكيل)` },
             { label: 'سعر الاشتراك الشهري (المرجع)', value: `${rows.find(r => r.isReference)?.oneMonthPrice?.toLocaleString() || 25000} د.ع`, isHighlight: true },
             { label: 'سعر الجهاز الجديد (المرجع)', value: `${rows.find(r => r.isReference)?.newDevicePrice?.toLocaleString() || 50000} د.ع` },
             { label: 'تاريخ وساعة التثبيت الإداري', value: new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }

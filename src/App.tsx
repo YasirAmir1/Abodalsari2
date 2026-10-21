@@ -44,13 +44,19 @@ function doesInvoiceBelongToAgent(inv: Invoice, agent: Agent): boolean {
   return false;
 }
 
+function getInvoiceAmount(invoice: Invoice): number {
+  const amount = Number(invoice?.amount);
+  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+}
+
 function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoices: Invoice[]): Agent[] {
   return agents.map((agent) => {
     const agentSubscribers = subscribers.filter((sub) => doesSubscriberBelongToAgent(sub, agent));
     const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
     const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
     const agentInvoices = invoices.filter((inv) => doesInvoiceBelongToAgent(inv, agent));
-    const invoiceSales = agentInvoices.reduce((sum, inv) => sum + (Number.isFinite(inv.amount) ? inv.amount : 0), 0);
+    // Count each invoice's full sale amount regardless of cash/debt payment status.
+    const invoiceSales = agentInvoices.reduce((sum, invoice) => sum + getInvoiceAmount(invoice), 0);
     const subscriberDebt = agentSubscribers.reduce(
       (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, agentInvoices),
       0
@@ -591,7 +597,7 @@ export default function App() {
     const invoiceToDelete = currentState.invoices.find((invoice) => invoice.id === id);
     if (!invoiceToDelete) return;
 
-    const deletedInvoiceAmount = Math.max(0, Number.isFinite(invoiceToDelete.amount) ? invoiceToDelete.amount : 0);
+    const deletedInvoiceAmount = getInvoiceAmount(invoiceToDelete);
     const deletedInvoicePaidAmount = Math.max(0, Number.isFinite(invoiceToDelete.paidAmount) ? invoiceToDelete.paidAmount : 0);
     const deletedInvoiceDebt = getInvoiceRemainingAmount(invoiceToDelete);
     const updatedInvoices = currentState.invoices.filter((invoice) => invoice.id !== id);
@@ -907,7 +913,7 @@ export default function App() {
       );
       const totalAgentSales = remainingInvoices
         .filter((invoice) => invoice.agentId === ag.id)
-        .reduce((sum, invoice) => sum + (invoice.amount || 0), 0);
+        .reduce((sum, invoice) => sum + getInvoiceAmount(invoice), 0);
 
       return {
         ...ag,
