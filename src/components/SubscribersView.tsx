@@ -169,11 +169,17 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
 
   // Auto calculate price based on selected agent and package
-  const selectedAgent = agents.find((a) => a.id === newSubAgentId) || agents[0];
-  const selectedAgentPricing = pricing.find((row) => row.agentId === selectedAgent?.id)
-    || pricing.find((row) => row.isReference)
-    || pricing[0];
-  const newDevicePrice = selectedAgentPricing?.newDevicePrice ?? 0;
+  const selectedAgent = agents.find((agent) => agent.id === newSubAgentId)
+    || (newSubAgentId === 'agent-main' ? agents.find((agent) => agent.id === 'agent-main') : undefined)
+    || agents[0];
+  const selectedAgentPricing = selectedAgent?.id === 'agent-main' || newSubAgentId === 'agent-main'
+    ? pricing.find((row) => row.agentId === 'agent-main') || pricing.find((row) => row.isReference)
+    : pricing.find((row) => row.agentId === newSubAgentId)
+      || (selectedAgent ? pricing.find((row) => row.agentCode === selectedAgent.code) : undefined)
+      || (selectedAgent
+        ? pricing.find((row) => row.agentName.trim().toLocaleLowerCase() === selectedAgent.name.trim().toLocaleLowerCase())
+        : undefined);
+  const newDevicePrice = Number(selectedAgentPricing?.newDevicePrice) || 0;
   const calculatedPrice = getPriceByDuration(selectedAgent?.id || newSubAgentId, newSubType, pricing);
 
   const openNewSaleModal = () => {
@@ -181,7 +187,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     setNewSubName('');
     setNewSubPhone('');
     setNewSubDeviceId('');
-    setNewSubAgentId(agents[0]?.id || 'agent-main');
+    setNewSubAgentId(agents.find((agent) => agent.id === 'agent-main')?.id || agents[0]?.id || 'agent-main');
     setNewSubType('1 شهر');
     setNewSubPaymentStatus('debt');
     setNewSaleDate(todayStr);
@@ -1323,7 +1329,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">الوكيل المسؤول</label>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">الوكيل المسؤول / المركز الرئيسي</label>
                   <select
                     value={newSubAgentId}
                     onChange={(e) => setNewSubAgentId(e.target.value)}
@@ -1332,7 +1338,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                   >
                     {agents.map((ag) => (
                       <option key={ag.id} value={ag.id}>
-                        {ag.name}
+                        {ag.id === 'agent-main' ? 'المركز الرئيسي' : ag.name}
                       </option>
                     ))}
                   </select>
@@ -1416,7 +1422,7 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
                     <span>{newSaleType === 'device' ? 'المبلغ المعتمد للجهاز:' : 'المبلغ المعتمد للاشتراك:'}</span>
                   </div>
                   <div className="text-[11px] text-sky-700 dark:text-sky-400 mt-0.5">
-                    الوكيل: <span className="font-bold text-sky-900 dark:text-sky-200">{selectedAgent?.name}</span>
+                    الجهة المحددة: <span className="font-bold text-sky-900 dark:text-sky-200">{selectedAgent?.id === 'agent-main' ? 'المركز الرئيسي' : selectedAgent?.name}</span>
                     {newSaleType === 'renewal' && <> • الباقة: <span className="font-bold text-sky-900 dark:text-sky-200">{newSubType}</span></>}
                   </div>
                 </div>
