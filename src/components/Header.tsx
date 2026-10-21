@@ -3,7 +3,6 @@ import {
   Calendar,
   Sun,
   Moon,
-  RefreshCw,
   LogOut,
   Menu
 } from 'lucide-react';
@@ -11,7 +10,6 @@ import {
 interface HeaderProps {
   pageTitle: string;
   currentTab?: string;
-  onRefresh: () => void;
   isAgentMode: boolean;
   agentsList: { id: string; name: string }[];
   selectedAgentId: string;
@@ -20,13 +18,11 @@ interface HeaderProps {
   isDark?: boolean;
   onToggleDark?: () => void;
   onToggleSidebar?: () => void;
-  isRefreshing?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   pageTitle,
   currentTab,
-  onRefresh,
   isAgentMode,
   agentsList,
   selectedAgentId,
@@ -34,8 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   isDark = false,
   onToggleDark,
-  onToggleSidebar,
-  isRefreshing = false
+  onToggleSidebar
 }) => {
   return (
     <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 select-none transition-colors">
@@ -90,19 +85,6 @@ export const Header: React.FC<HeaderProps> = ({
           ) : (
             <Moon className="w-4 h-4 text-slate-600 animate-in zoom-in spin-in-180 duration-500" />
           )}
-        </button>
-
-        {/* Refresh Data Button */}
-        <button
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className={`h-9 px-3 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-xs cursor-pointer ${
-            isRefreshing ? 'opacity-70 cursor-not-allowed' : 'active:scale-95'
-          }`}
-          title="تحديث البيانات ومزامنتها"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-sky-600 dark:text-sky-400' : 'text-slate-600 dark:text-slate-300'}`} />
-          <span className="hidden sm:inline">{isRefreshing ? 'جاري التحديث...' : 'تحديث البيانات'}</span>
         </button>
 
         {/* Logout Button */}

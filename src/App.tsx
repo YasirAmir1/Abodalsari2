@@ -250,7 +250,6 @@ export default function App() {
   // Filter pass-through
   const [subscribersAgentFilter, setSubscribersAgentFilter] = useState<string | undefined>(undefined);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
@@ -261,68 +260,6 @@ export default function App() {
       isMountedRef.current = false;
     };
   }, []);
-
-  const handleGlobalRefresh = async () => {
-    if (isRefreshing) return;
-    setIsRefreshing(true);
-    try {
-      const isOnline = typeof navigator === 'undefined' || navigator.onLine;
-      let remote: AppState | null = null;
-      
-      if (isOnline) {
-        // Step 1: Immediately push local pending changes/modifications to central Firestore database
-        try {
-          await firebaseService.saveRemoteState(stateRef.current, true);
-        } catch (pushErr) {
-          console.warn('Pushing local changes prior to refresh:', pushErr);
-        }
-
-        // Step 2: Fetch and pull the latest fresh global state from server
-        remote = await firebaseService.fetchFreshRemoteState();
-      }
-
-      if (!isMountedRef.current) return;
-
-      if (remote && typeof remote === 'object' && remote.subscribers) {
-        const { state: reconciled, merged } = mergePendingLocalAdds(remote, stateRef.current);
-        const filtered = storageService.filterOutDeleted(reconciled);
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-          saveTimeoutRef.current = null;
-        }
-        isRemoteUpdateRef.current = true;
-        stateRef.current = filtered;
-        setState(filtered);
-        storageService.saveState(filtered);
-        setIsRemoteReady(true);
-        setSyncToast('تم رفع التعديلات المحلية وجلب أحدث البيانات من السحابة بنجاح 🔄');
-        soundService.playSuccess();
-        if (merged) {
-          void firebaseService.saveRemoteState(filtered, true).catch((error) => {
-            console.error('Sync reconciliation error:', error);
-          });
-        }
-      } else {
-        if (isOnline) {
-          setSyncToast('تم رفع التعديلات المحلية. تعذر جلب بيانات جديدة من الخادم حالياً.');
-        } else {
-          setSyncToast('أنت غير متصل بالإنترنت. تم حفظ البيانات محلياً.');
-        }
-      }
-    } catch (e: any) {
-      console.error('Refresh sync error:', e);
-      setSyncToast('حدث خطأ أثناء مزامنة البيانات.');
-    } finally {
-      if (isMountedRef.current) {
-        setIsRefreshing(false);
-        setTimeout(() => {
-          if (isMountedRef.current) {
-            setSyncToast(null);
-          }
-        }, 3500);
-      }
-    }
-  };
 
   // Dark mode state matching reference image
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -1653,8 +1590,6 @@ export default function App() {
         <Header
           pageTitle={pageTitles[currentTab]}
           currentTab={currentTab}
-          onRefresh={handleGlobalRefresh}
-          isRefreshing={isRefreshing}
           isAgentMode={isAgentMode}
           agentsList={state.agents.filter((a) => a.id !== 'agent-main')}
           selectedAgentId={selectedAgentId}
@@ -1664,13 +1599,6 @@ export default function App() {
           onToggleDark={handleToggleDarkMode}
           onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
         />
-
-        {/* Live Data Sync Progress Bar */}
-        {isRefreshing && (
-          <div className="w-full bg-sky-100 dark:bg-slate-800 h-1 overflow-hidden relative z-30">
-            <div className="bg-gradient-to-r from-sky-500 via-teal-400 to-sky-600 h-full w-full animate-pulse transition-all duration-300" />
-          </div>
-        )}
 
         {/* Dynamic Views */}
         <main className="p-4 md:p-6 max-w-7xl w-full mx-auto flex-1">
