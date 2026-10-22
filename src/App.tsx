@@ -965,24 +965,36 @@ export default function App() {
         hasDebt: false
       }));
 
+      const resetCodes = (state.codes || []).map((c) => ({
+        ...c,
+        status: 'available' as const,
+        assignedToSubscriber: undefined
+      }));
+
       const newState: AppState = {
         ...state,
         subscribers: [],
         invoices: [],
         pendingRequests: [],
         agents: resetAgents,
+        codes: resetCodes,
         lastUpdatedTimestamp: Date.now()
       };
+
+      try {
+        localStorage.removeItem('alsari_deleted_subscribers_v1');
+        localStorage.removeItem('alsari_deleted_invoices_v1');
+        localStorage.removeItem('alsari_all_subscribers_cleared_v1');
+      } catch {}
 
       storageService.saveState(newState);
       setState(newState);
 
-      // State-effect debounce-writes to Firestore automatically
-
+      await firebaseService.saveRemoteState(newState, true, true);
 
       soundService.playSuccess();
-      setSyncToast('تم حذف جميع المشتركين وتصفير السجلات بنجاح 🗑️');
-      setTimeout(() => setSyncToast(null), 3500);
+      setSyncToast('تم تصفير التطبيق والموقع وحذف كافة البيانات والسجلات بنجاح 🗑️✨');
+      setTimeout(() => setSyncToast(null), 4000);
     } catch (err: any) {
       console.error('Delete all subscribers error:', err);
       throw new Error(err?.message || 'حدث خطأ أثناء عملية الحذف الشامل في قاعدة البيانات.');
