@@ -748,8 +748,10 @@ export default function App() {
       if (sub.deviceId) {
         storageService.addDeletedSubscriberId(sub.deviceId);
       }
+      void firebaseService.deleteSubscriber(sub.id);
     } else {
       storageService.addDeletedSubscriberId(id);
+      void firebaseService.deleteSubscriber(id);
     }
 
     const subDeviceId = sub?.deviceId;
@@ -760,7 +762,13 @@ export default function App() {
 
     // Completely remove invoices of deleted subscriber
     const remainingInvoices = state.invoices.filter(
-      (inv) => inv.subscriberId !== id && (subDeviceId ? inv.deviceId !== subDeviceId : true)
+      (inv) => {
+        const isMatch = inv.subscriberId === id || (subDeviceId && inv.deviceId === subDeviceId);
+        if (isMatch && inv.id) {
+          void firebaseService.deleteInvoice(inv.id);
+        }
+        return !isMatch;
+      }
     );
 
     // Completely remove pending requests of deleted subscriber
@@ -794,7 +802,8 @@ export default function App() {
     updateAppState({
       subscribers: remainingSubscribers,
       invoices: remainingInvoices,
-      pendingRequests: remainingPendingRequests
+      pendingRequests: remainingPendingRequests,
+      agents: updatedAgents
     }, 'Could not immediately sync subscriber deletion:');
     
     soundService.playSuccess();

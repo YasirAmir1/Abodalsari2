@@ -642,6 +642,15 @@ export const firebaseService = {
       console.error('Failed to delete remote invoice:', e);
     }
   },
+
+  async deleteSubscriber(id: string): Promise<void> {
+    try {
+      const subRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), encodeURIComponent(id));
+      await deleteDoc(subRef);
+    } catch (e) {
+      console.error('Failed to delete remote subscriber:', e);
+    }
+  },
   subscribeToRemoteState(
     callback: (state: AppState, source?: 'remote_firestore' | 'local_broadcast') => void,
     onServerReady?: () => void,
