@@ -106,6 +106,22 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   );
   const formatMoney = (amount: number) => Math.max(0, Number.isFinite(amount) ? amount : 0).toLocaleString();
 
+  const agentIndexesById = useMemo(
+    () => new Map(agents.map((agent, index) => [agent.id, index])),
+    [agents]
+  );
+  const agentIndexesByName = useMemo(() => {
+    const indexes = new Map<string, number[]>();
+    agents.forEach((agent, index) => {
+      [agent.name, agent.code].forEach((name) => {
+        const normalizedName = normalizeStr(name);
+        if (!normalizedName) return;
+        indexes.set(normalizedName, [...(indexes.get(normalizedName) || []), index]);
+      });
+    });
+    return indexes;
+  }, [agents]);
+
   const computedAgents = useMemo(() => {
     const totals = agents.map((agent) => ({
       debt: calculateAgentSubscriberDebt(agent.id, agent.name, subscribers, debtMap),
@@ -114,9 +130,10 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     }));
 
     invoices.forEach((invoice) => {
-      const matchingIndexes = invoice.agentId
-        ? [agentIndexesById.get(invoice.agentId)].filter((index): index is number => index !== undefined)
-        : agentIndexesByName.get(invoice.agentName) || [];
+      const indexById = invoice.agentId ? agentIndexesById.get(invoice.agentId) : undefined;
+      const matchingIndexes = indexById !== undefined
+        ? [indexById]
+        : agentIndexesByName.get(normalizeStr(invoice.agentName)) || [];
       const amount = Number(invoice.amount) || 0;
       const paidAmount = Number.isFinite(Number(invoice.paidAmount))
         ? Number(invoice.paidAmount)
@@ -134,7 +151,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
       totalDebt: totals[index].debt,
       hasDebt: totals[index].debt > 0
     }));
-  }, [agents, invoices, subscribers]);
+  }, [agents, agentIndexesById, agentIndexesByName, invoices, subscribers]);
 
   // Filter Agents Table
   const filteredAgents = useMemo(() => computedAgents.filter((ag) => {
