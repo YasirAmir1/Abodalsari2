@@ -94,7 +94,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const debtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
 
   const paymentSubscriber = subscriberToPay
-    ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || null
+    ? subscribers.find((subscriber) => subscriber.id === subscriberToPay.id) || subscriberToPay
     : null;
   const paymentSubscriberDebt = paymentSubscriber
     ? getSubscriberOutstandingDebt(paymentSubscriber, debtMap)
@@ -617,6 +617,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                           <span>تذكير</span>
                         </button>
                         <button
+                          type="button"
                           onClick={() => {
                             setSubscriberToPay(sub);
                             setPaymentAmount('');
