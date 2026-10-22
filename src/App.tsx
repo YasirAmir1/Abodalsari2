@@ -586,7 +586,8 @@ export default function App() {
       endDate: saleKind === 'device' ? '-' : (subData.endDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]),
       address: subData.address || '',
       notes: subData.notes || '',
-      createdAt: new Date().toISOString().split('T')[0]
+      createdAt: new Date().toISOString().split('T')[0],
+      isActive: saleKind === 'subscription'
     };
 
     let updatedInvoices = currentState.invoices;
@@ -664,7 +665,12 @@ export default function App() {
         finalStatus = 'active';
       }
     }
-    const fixedSub = { ...updated, deviceId: cleanDevId, status: finalStatus };
+    const fixedSub = { 
+      ...updated, 
+      deviceId: cleanDevId, 
+      status: finalStatus,
+      isActive: finalStatus === 'active' || updated.isActive
+    };
     const updatedSubscribers = currentState.subscribers.map((s) => (s.id === updated.id ? fixedSub : s));
     
     updateAppState(
@@ -885,7 +891,8 @@ export default function App() {
       amount: 0,
       debtAmount: 0,
       subscriptionType: '-',
-      paymentStatus: '-'
+      paymentStatus: '-',
+      isActive: false
     };
     const updatedSubscribers = currentState.subscribers.map((s) =>
       s.id === subscriberId ? deactivatedSub : s
@@ -922,6 +929,8 @@ export default function App() {
     const finalSubscriber: Subscriber = {
       ...updatedSubscriber,
       deviceId: cleanDev,
+      status: 'active',
+      isActive: true,
       amount,
       debtAmount: isDebt ? amount : 0,
       originalAmount: amount,
@@ -1059,7 +1068,8 @@ export default function App() {
         endDate,
         paymentStatus: payStat === 'paid' && sub.paymentStatus !== 'debt' ? 'paid' : 'debt',
         paidAmount: payStat === 'paid' ? (sub.paidAmount || 0) + amt : (sub.paidAmount || 0),
-        debtAmount: payStat === 'debt' ? (sub.debtAmount || 0) + amt : (sub.debtAmount || 0)
+        debtAmount: payStat === 'debt' ? (sub.debtAmount || 0) + amt : (sub.debtAmount || 0),
+        isActive: true
       };
       updatedSubscribers = currentState.subscribers.map((s) => (s.id === targetSubscriber.id ? targetSubscriber : s));
     }
@@ -1503,7 +1513,6 @@ export default function App() {
               }}
             />
           )}
-
 
           {currentTab === 'active_subscribers' && (
             <ActiveSubscribersView
