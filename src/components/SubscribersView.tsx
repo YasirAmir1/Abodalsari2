@@ -710,10 +710,6 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                 <th className="py-3 px-4">المشترك / الهاتف</th>
                 <th className="py-3 px-3">رقم الجهاز</th>
                 <th className="py-3 px-3">الوكيل المسؤول</th>
-                <th className="py-3 px-3">نوع الاشتراك ℹ️</th>
-                <th className="py-3 px-3">الحالة والدفع</th>
-                <th className="py-3 px-3">المبلغ ℹ️</th>
-                <th className="py-3 px-3">تاريخ البدء/الانتهاء</th>
                 <th className="py-3 px-4 text-center">إجراءات</th>
               </tr>
             </thead>
@@ -782,67 +778,6 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                       <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200">
                         {sub.agentName}
                       </span>
-                    </td>
-
-                    {/* Subscription Type */}
-                    <td className="py-3 px-3">
-                      {sub.amount > 0 ? (
-                        <span className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 font-bold flex items-center gap-1 w-fit">
-                          <span>{sub.subscriptionType}</span>
-                          <span>📅</span>
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-
-                    {/* Status & Payment */}
-                    <td className="py-3 px-3">
-                      {isActive ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] w-fit">
-                            فعال
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold w-fit ${
-                              sub.paymentStatus === 'debt'
-                                ? 'bg-red-100 text-red-700'
-                                : sub.paymentStatus === 'partial'
-                                  ? 'bg-amber-100 text-amber-800'
-                                : 'bg-emerald-50 text-emerald-700'
-                            }`}
-                          >
-                            {sub.paymentStatus === 'debt' ? 'دين' : sub.paymentStatus === 'partial' ? 'دفع جزئي' : 'مسدد'}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-500 font-medium text-[11px]">
-                          غير فعال
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Amount */}
-                    <td className="py-3 px-3">
-                      {sub.amount > 0 ? (
-                        <span className="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 font-bold text-xs border border-red-200">
-                          {sub.amount.toLocaleString()} د.ع
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
-                    </td>
-
-                    {/* Dates */}
-                    <td className="py-3 px-3 text-[11px] text-slate-600">
-                      {isActive ? (
-                        <div>
-                          <div>بدء: {sub.startDate}</div>
-                          <div className="text-slate-500 font-semibold">انتهاء: {sub.endDate}</div>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">-</span>
-                      )}
                     </td>
 
                     {/* Actions: Edit, Deactivate (X), Delete */}

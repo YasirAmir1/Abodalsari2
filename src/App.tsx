@@ -148,6 +148,7 @@ const QrCodesView = lazy(() => import('./components/QrCodesView').then(({ QrCode
 const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
 const SalesInvoicesView = lazy(() => import('./components/SalesInvoicesView').then(({ SalesInvoicesView }) => ({ default: SalesInvoicesView })));
 const DebtsView = lazy(() => import('./components/DebtsView').then(({ DebtsView }) => ({ default: DebtsView })));
+const ActiveSubscribersView = lazy(() => import('./components/ActiveSubscribersView').then(({ ActiveSubscribersView }) => ({ default: ActiveSubscribersView })));
 const AgentPortalView = lazy(() => import('./components/AgentPortalView').then(({ AgentPortalView }) => ({ default: AgentPortalView })));
 const WhatsAppModal = lazy(() => import('./components/WhatsAppModal').then(({ WhatsAppModal }) => ({ default: WhatsAppModal })));
 const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(({ ReceiptModal }) => ({ default: ReceiptModal })));
@@ -1448,7 +1449,8 @@ export default function App() {
     barcodes: 'إدارة أكواد وأجهزة QR',
     products: 'إدارة المنتجات والمعدات والمخزن',
     pricing: 'جدول أسعار الوكلاء والمركز',
-    agent_portal: `بوابة الوكيل (${currentAgent.name})`
+    agent_portal: `بوابة الوكيل (${currentAgent.name})`,
+    active_subscribers: 'المشتركون الفعالون'
   };
 
   return (
@@ -1499,6 +1501,15 @@ export default function App() {
                 const { excelService } = await import('./services/excelService');
                 excelService.exportInvoices(stateRef.current.invoices);
               }}
+            />
+          )}
+
+
+          {currentTab === 'active_subscribers' && (
+            <ActiveSubscribersView
+              subscribers={state.subscribers}
+              invoices={state.invoices}
+              agents={state.agents}
             />
           )}
 

@@ -17,6 +17,7 @@ export type NavTab =
   | 'dashboard'
   | 'sales'
   | 'subscribers'
+  | 'active_subscribers'
   | 'debts'
   | 'pending'
   | 'agents'
@@ -55,6 +56,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const menuItems = [
     { id: 'dashboard' as NavTab, label: 'الداشبورد', icon: LayoutDashboard },
     { id: 'sales' as NavTab, label: 'المبيعات', icon: ShoppingCart },
+    { id: 'active_subscribers' as NavTab, label: 'المشتركون الفعالون', icon: Users2 },
     { id: 'subscribers' as NavTab, label: 'المشتركون', icon: Users, badge: String(subscribersCount) },
     { id: 'debts' as NavTab, label: 'الديون', icon: Clock },
     { id: 'pending' as NavTab, label: 'الطلبات المعلقة', icon: BellRing, badge: pendingCount > 0 ? String(pendingCount) : undefined, badgeColor: 'bg-amber-500' },

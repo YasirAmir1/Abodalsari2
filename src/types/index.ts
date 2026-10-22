@@ -23,6 +23,7 @@ export interface Subscriber {
   notes?: string;
   address?: string;
   createdAt: string;
+  isActive?: boolean;
 }
 
 
