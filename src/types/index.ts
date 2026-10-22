@@ -1,4 +1,4 @@
-﻿export type SubscriptionStatus = 'active' | 'inactive' | 'expiring_soon';
+export type SubscriptionStatus = 'active' | 'inactive' | 'expiring_soon';
 export type PaymentStatus = 'paid' | 'debt' | 'partial' | '-' | '';
 export type SubscriptionDuration = '1 شهر' | 'شهرين' | '3 أشهر' | '-' | '';
 
@@ -83,6 +83,7 @@ export interface PendingRenewalRequest {
   requestDate: string;
   notes?: string;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  requestType?: 'new_device' | 'renewal';
 }
 
 export interface Invoice {

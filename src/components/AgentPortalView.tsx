@@ -192,7 +192,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
       duration: orderDuration,
       amount: price,
       requestDate: new Date().toISOString().split('T')[0],
-      notes: orderNotes
+      notes: orderNotes,
+      requestType: 'renewal'
     });
 
     setShowOrderModal(false);
@@ -226,7 +227,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
       duration: '-',
       amount: devicePrice,
       requestDate: new Date().toISOString().split('T')[0],
-      notes: `طلب بيع وتسجيل جهاز جديد: ${newSubNotes}`
+      notes: `طلب بيع وتسجيل جهاز جديد: ${newSubNotes}`,
+      requestType: 'new_device'
     });
 
     setShowDeviceSaleModal(false);

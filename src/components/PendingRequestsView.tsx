@@ -40,7 +40,7 @@ interface PendingRequestsViewProps {
 }
 
 const isDeviceSaleRequest = (request: PendingRenewalRequest) =>
-  request.subscriberId.startsWith('new-sub-') || request.duration === '-';
+  request.requestType === 'new_device' || (!request.requestType && (request.subscriberId.startsWith('new-sub-') || request.duration === '-'));
 
 export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
   pendingRequests,
