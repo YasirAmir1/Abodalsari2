@@ -4,6 +4,18 @@ function normalizeStr(str?: string): string {
   return str.trim().toLowerCase().replace(/\s+/g, ' ').replace(/أ/g, 'ا').replace(/إ/g, 'ا').replace(/آ/g, 'ا').replace(/ة/g, 'ه');
 }
 
+function parsePaymentAmount(value: string): number | null {
+  const normalized = value
+    .replace(/[٠-٩۰-۹]/g, (digit) => {
+      const codePoint = digit.charCodeAt(0);
+      return String(codePoint - (codePoint >= 0x06f0 ? 0x06f0 : 0x0660));
+    })
+    .replace(/[,\u066c\s]/g, '');
+  if (!/^\d+$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  return Number.isSafeInteger(amount) ? amount : null;
+}
+
 function doesSubscriberBelongToAgentFilter(sub: Subscriber, filterId: string, agents: Agent[]): boolean {
   if (filterId === 'all') return true;
   const targetAgent = agents.find((a) => a.id === filterId || normalizeStr(a.name) === normalizeStr(filterId));
@@ -87,6 +99,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const paymentSubscriberDebt = paymentSubscriber
     ? getSubscriberOutstandingDebt(paymentSubscriber, debtMap)
     : 0;
+  const parsedPaymentAmount = parsePaymentAmount(paymentAmount);
 
   const debtSubscribers = useMemo(
     () => subscribers.filter((subscriber) => getSubscriberOutstandingDebt(subscriber, debtMap) > 0),
@@ -231,9 +244,8 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
 
   const submitSubscriberPayment = () => {
     if (!paymentSubscriber) return;
-    const amount = Number(paymentAmount);
-    if (!Number.isInteger(amount) || amount <= 0 || amount > paymentSubscriberDebt) return;
-    onSettleSubscriberDebt(paymentSubscriber.id, amount);
+    if (parsedPaymentAmount === null || parsedPaymentAmount <= 0 || parsedPaymentAmount > paymentSubscriberDebt) return;
+    onSettleSubscriberDebt(paymentSubscriber.id, parsedPaymentAmount);
     setSubscriberToPay(null);
     setPaymentAmount('');
   };
@@ -676,10 +688,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
             </label>
             <input
               id="subscriber-payment-amount"
-              type="number"
-              min="1"
-              max={paymentSubscriberDebt}
-              step="1"
+              type="text"
               inputMode="numeric"
               autoFocus
               value={paymentAmount}
@@ -706,7 +715,7 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
               <button
                 type="button"
                 onClick={submitSubscriberPayment}
-                disabled={!Number.isInteger(Number(paymentAmount)) || Number(paymentAmount) <= 0 || Number(paymentAmount) > paymentSubscriberDebt}
+                disabled={parsedPaymentAmount === null || parsedPaymentAmount <= 0 || parsedPaymentAmount > paymentSubscriberDebt}
                 className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 حفظ الدفعة
