@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { Agent, Invoice, PendingRenewalRequest, PricingRow, Product, Subscriber, SubscriptionDuration } from '../types';
 import { getPriceByDuration } from '../utils/pricingUtils';
-import { calculateAgentDebt } from '../utils/calculationUtils';
+import { buildSubscriberDebtMap, calculateAgentSubscriberDebt } from '../utils/calculationUtils';
 import { useAppDialogs } from './AppDialogProvider';
 import { useVirtualizedRows } from './useVirtualizedRows';
 
@@ -85,11 +85,11 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const [subscriberPaymentFilter, setSubscriberPaymentFilter] = useState<'all' | 'cash' | 'debt'>('all');
   const [subscriberBroadcastFilter, setSubscriberBroadcastFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
-  const computedAgentDebt = useMemo(() => {
-    return calculateAgentDebt(currentAgent.id, subscribers, invoices);
-  }, [currentAgent.id, subscribers, invoices]);
-
-  const displayAgentDebt = invoices.length > 0 ? computedAgentDebt : currentAgent.totalDebt;
+  const subscriberDebtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
+  const displayAgentDebt = useMemo(
+    () => calculateAgentSubscriberDebt(currentAgent.id, currentAgent.name, subscribers, subscriberDebtMap),
+    [currentAgent.id, currentAgent.name, subscribers, subscriberDebtMap]
+  );
 
   // Order form state
   const [selectedSubId, setSelectedSubId] = useState('');

@@ -102,3 +102,19 @@ export const calculateAgentDebt = (agentId: string, subscribers: Subscriber[], i
   }
   return total;
 };
+
+export const calculateAgentSubscriberDebt = (
+  agentId: string,
+  agentName: string,
+  subscribers: Subscriber[],
+  debtMap: Map<string, number>
+): number => {
+  let total = 0;
+  for (let i = 0; i < subscribers.length; i++) {
+    const subscriber = subscribers[i];
+    if (subscriber.agentId === agentId || subscriber.agentName === agentName) {
+      total += getSubscriberOutstandingDebt(subscriber, debtMap);
+    }
+  }
+  return total;
+};

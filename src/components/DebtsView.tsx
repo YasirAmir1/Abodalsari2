@@ -39,7 +39,7 @@ import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
 import { SecurityActionModal } from './SecurityActionModal';
 import { useVirtualizedRows } from './useVirtualizedRows';
-import { getSubscriberOutstandingDebt, buildSubscriberDebtMap } from '../utils/calculationUtils';
+import { getSubscriberOutstandingDebt, buildSubscriberDebtMap, calculateAgentSubscriberDebt } from '../utils/calculationUtils';
 
 interface DebtsViewProps {
   agents: Agent[];
@@ -107,27 +107,11 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
   const formatMoney = (amount: number) => Math.max(0, Number.isFinite(amount) ? amount : 0).toLocaleString();
 
   const computedAgents = useMemo(() => {
-    const agentIndexesById = new Map<string, number>();
-    const agentIndexesByName = new Map<string, number[]>();
-    agents.forEach((agent, index) => {
-      agentIndexesById.set(agent.id, index);
-      const matchingIndexes = agentIndexesByName.get(agent.name) || [];
-      matchingIndexes.push(index);
-      agentIndexesByName.set(agent.name, matchingIndexes);
-    });
-    const totals = agents.map(() => ({ debt: 0, sales: 0, paid: 0 }));
-
-    subscribers.forEach((subscriber) => {
-      const subscriberDebt = getSubscriberOutstandingDebt(subscriber, debtMap);
-      if (subscriberDebt <= 0) return;
-      const matchingIndexes = new Set<number>();
-      const idIndex = agentIndexesById.get(subscriber.agentId);
-      if (idIndex !== undefined) matchingIndexes.add(idIndex);
-      (agentIndexesByName.get(subscriber.agentName) || []).forEach((index) => matchingIndexes.add(index));
-      matchingIndexes.forEach((index) => {
-        totals[index].debt += subscriberDebt;
-      });
-    });
+    const totals = agents.map((agent) => ({
+      debt: calculateAgentSubscriberDebt(agent.id, agent.name, subscribers, debtMap),
+      sales: 0,
+      paid: 0
+    }));
 
     invoices.forEach((invoice) => {
       const matchingIndexes = invoice.agentId
