@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Search,
@@ -983,9 +984,9 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
         </div>
       </div>
 
-      {showAgentRenewalModal && (
+      {showAgentRenewalModal && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[1000] animate-in fade-in"
           dir="rtl"
           onClick={() => setShowAgentRenewalModal(false)}
         >
@@ -1186,7 +1187,8 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: New Sale / Subscriber */}
