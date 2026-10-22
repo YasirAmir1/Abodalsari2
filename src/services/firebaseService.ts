@@ -757,9 +757,14 @@ export const firebaseService = {
           updateSyncStatus('connected');
           notify(stateFromRemoteTables(remoteTables, metadata));
         }, (error) => {
+          const errMessage = error instanceof Error ? error.message : String(error);
           const isRestricted = typeof navigator !== 'undefined' && !navigator.onLine
-            || (error instanceof Error && (error.message.includes('permission') || error.message.includes('unavailable')));
-          updateSyncStatus(isRestricted ? 'offline' : 'error');
+            || errMessage.includes('permission') || errMessage.includes('unavailable') || errMessage.includes('Missing or insufficient permissions');
+          if (isRestricted) {
+            updateSyncStatus('offline');
+            return;
+          }
+          updateSyncStatus('error');
           let handledError: unknown = error;
           try {
             handleFirestoreError(error, OperationType.GET, `tenants/${TENANT_ID}/${collectionName}`);
@@ -788,9 +793,15 @@ export const firebaseService = {
         updateSyncStatus('connected');
         notify(stateFromRemoteTables(remoteTables, metadata));
       }, (error) => {
+        const errMessage = error instanceof Error ? error.message : String(error);
         const isRestricted = typeof navigator !== 'undefined' && !navigator.onLine
-          || (error instanceof Error && (error.message.includes('permission') || error.message.includes('unavailable')));
-        updateSyncStatus(isRestricted ? 'offline' : 'error');
+          || errMessage.includes('permission') || errMessage.includes('unavailable') || errMessage.includes('Missing or insufficient permissions');
+        if (isRestricted) {
+          metadataLoaded = true;
+          maybeFinishInitialLoad();
+          return;
+        }
+        updateSyncStatus('error');
         let handledError: unknown = error;
         try {
           handleFirestoreError(error, OperationType.GET, `tenants/${TENANT_ID}/metadata/state`);
@@ -811,9 +822,15 @@ export const firebaseService = {
           legacyUnsubscribe = null;
           maybeFinishInitialLoad();
         }, (error) => {
+          const errMessage = error instanceof Error ? error.message : String(error);
           const isRestricted = typeof navigator !== 'undefined' && !navigator.onLine
-            || (error instanceof Error && (error.message.includes('permission') || error.message.includes('unavailable')));
-          updateSyncStatus(isRestricted ? 'offline' : 'error');
+            || errMessage.includes('permission') || errMessage.includes('unavailable') || errMessage.includes('Missing or insufficient permissions');
+          if (isRestricted) {
+            legacyLoaded = true;
+            maybeFinishInitialLoad();
+            return;
+          }
+          updateSyncStatus('error');
           let handledError: unknown = error;
           try {
             handleFirestoreError(error, OperationType.GET, 'app_state/global_state');
