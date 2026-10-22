@@ -1,4 +1,5 @@
 import { getApps, initializeApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import {
   arrayUnion,
   collection,
@@ -35,6 +36,55 @@ export const db = (() => {
     return getFirestore(app, databaseId);
   }
 })();
+
+export const auth = getAuth(app);
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+      emailVerified: auth.currentUser?.emailVerified ?? null,
+      isAnonymous: auth.currentUser?.isAnonymous ?? null,
+      tenantId: auth.currentUser?.tenantId || null,
+      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 const tenantConfig = firebaseConfig as typeof firebaseConfig & { tenantId?: string };
 const configuredTenantId = tenantConfig.tenantId?.trim();
@@ -276,10 +326,10 @@ function stateFromRemoteTables(
   const base = metadataToState(metadata, emptyState());
   return {
     ...base,
-    subscribers: tables.subscribers as AppState['subscribers'],
-    agents: tables.agents as AppState['agents'],
-    invoices: tables.invoices as AppState['invoices'],
-    pendingRequests: tables.pendingRequests as AppState['pendingRequests']
+    subscribers: tables.subscribers as unknown as AppState['subscribers'],
+    agents: tables.agents as unknown as AppState['agents'],
+    invoices: tables.invoices as unknown as AppState['invoices'],
+    pendingRequests: tables.pendingRequests as unknown as AppState['pendingRequests']
   };
 }
 
@@ -303,7 +353,11 @@ async function commitOperations(operations: WriteOperation[], metadata: Record<s
       else if (operation.merge) batch.set(operation.ref, operation.data, { merge: true });
       else batch.set(operation.ref, operation.data);
     });
-    await batch.commit();
+    try {
+      await batch.commit();
+    } catch (batchErr) {
+      handleFirestoreError(batchErr, OperationType.WRITE, `tenants/${TENANT_ID}`);
+    }
   }
 }
 
@@ -703,8 +757,16 @@ export const firebaseService = {
           updateSyncStatus('connected');
           notify(stateFromRemoteTables(remoteTables, metadata));
         }, (error) => {
-          updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
-          onSyncError?.(error);
+          const isRestricted = typeof navigator !== 'undefined' && !navigator.onLine
+            || (error instanceof Error && (error.message.includes('permission') || error.message.includes('unavailable')));
+          updateSyncStatus(isRestricted ? 'offline' : 'error');
+          let handledError: unknown = error;
+          try {
+            handleFirestoreError(error, OperationType.GET, `tenants/${TENANT_ID}/${collectionName}`);
+          } catch (formatted) {
+            handledError = formatted;
+          }
+          onSyncError?.(handledError);
           unsubscribeAll();
         });
         unsubscriptions.push(unsubscribe);
@@ -726,8 +788,16 @@ export const firebaseService = {
         updateSyncStatus('connected');
         notify(stateFromRemoteTables(remoteTables, metadata));
       }, (error) => {
-        updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
-        onSyncError?.(error);
+        const isRestricted = typeof navigator !== 'undefined' && !navigator.onLine
+          || (error instanceof Error && (error.message.includes('permission') || error.message.includes('unavailable')));
+        updateSyncStatus(isRestricted ? 'offline' : 'error');
+        let handledError: unknown = error;
+        try {
+          handleFirestoreError(error, OperationType.GET, `tenants/${TENANT_ID}/metadata/state`);
+        } catch (formatted) {
+          handledError = formatted;
+        }
+        onSyncError?.(handledError);
         unsubscribeAll();
       }));
 
@@ -741,8 +811,16 @@ export const firebaseService = {
           legacyUnsubscribe = null;
           maybeFinishInitialLoad();
         }, (error) => {
-          updateSyncStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error');
-          onSyncError?.(error);
+          const isRestricted = typeof navigator !== 'undefined' && !navigator.onLine
+            || (error instanceof Error && (error.message.includes('permission') || error.message.includes('unavailable')));
+          updateSyncStatus(isRestricted ? 'offline' : 'error');
+          let handledError: unknown = error;
+          try {
+            handleFirestoreError(error, OperationType.GET, 'app_state/global_state');
+          } catch (formatted) {
+            handledError = formatted;
+          }
+          onSyncError?.(handledError);
           unsubscribeAll();
         });
         legacyUnsubscribe = stopLegacyListener;
@@ -753,11 +831,38 @@ export const firebaseService = {
         callback(state, 'local_broadcast');
       }));
     } catch (error) {
-      updateSyncStatus('error');
-      onSyncError?.(error);
+      const isRestricted = typeof navigator !== 'undefined' && !navigator.onLine
+        || (error instanceof Error && (error.message.includes('permission') || error.message.includes('unavailable')));
+      updateSyncStatus(isRestricted ? 'offline' : 'error');
+      let handledError: unknown = error;
+      try {
+        handleFirestoreError(error, OperationType.GET, `tenants/${TENANT_ID}`);
+      } catch (formatted) {
+        handledError = formatted;
+      }
+      onSyncError?.(handledError);
       unsubscribeAll();
     }
 
     return unsubscribeAll;
   }
 };
+
+export async function signInWithGoogle(): Promise<{ success: boolean; email?: string | null; error?: string }> {
+  try {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    return { success: true, email: result.user.email };
+  } catch (error) {
+    console.warn('Google sign-in canceled or failed:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function signOutFirebase(): Promise<void> {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.warn('Sign out failed:', error);
+  }
+}

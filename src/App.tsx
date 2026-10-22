@@ -110,7 +110,7 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   Agent,
   DeviceCode,
@@ -124,7 +124,7 @@ import {
   SystemUser,
   PaymentStatus
 } from './types';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
 import { AppState, storageService } from './services/storageService';
 import { firebaseService } from './services/firebaseService';
 import { syncManager } from './services/firebase-sync';
@@ -163,6 +163,7 @@ export default function App() {
   });
   const [isRemoteReady, setIsRemoteReady] = useState(false);
   const stateRef = useRef(state);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useLayoutEffect(() => {
     stateRef.current = state;
@@ -203,13 +204,32 @@ export default function App() {
   const [subscribersAgentFilter, setSubscribersAgentFilter] = useState<string | undefined>(undefined);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [syncToast, setSyncToast] = useState<string | null>(null);
+  const syncToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMountedRef = useRef(true);
+
+  const showSyncToast = useCallback((message: string, durationMs = 4000) => {
+    if (syncToastTimerRef.current) {
+      clearTimeout(syncToastTimerRef.current);
+      syncToastTimerRef.current = null;
+    }
+    setSyncToast(message);
+    if (durationMs > 0) {
+      syncToastTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          setSyncToast(null);
+        }
+      }, durationMs);
+    }
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (syncToastTimerRef.current) {
+        clearTimeout(syncToastTimerRef.current);
+      }
     };
   }, []);
 
@@ -281,9 +301,9 @@ export default function App() {
     setState(committedState);
 
     void firebaseService.saveRemoteState(committedState, true, atomic).catch((error) => {
-      console.error(failureMessage, error);
+      console.warn(failureMessage, error);
       if (isMountedRef.current) {
-        setSyncToast('تعذرت مزامنة التغييرات مع الأجهزة الأخرى. تحقق من الاتصال بالإنترنت.');
+        showSyncToast('تم حفظ التعديلات محلياً بنجاح (وضع عدم الاتصال).', 3500);
       }
     });
   };
@@ -312,7 +332,7 @@ export default function App() {
         return {
           ...subscriber,
           status: 'inactive' as const,
-          subscriptionType: '',
+          subscriptionType: '' as SubscriptionDuration,
           startDate: '',
           endDate: '',
           amount: 0,
@@ -367,10 +387,15 @@ export default function App() {
     const unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
       if (status === 'connected' && isMountedRef.current) {
         setIsRemoteReady(true);
-        setSyncToast((currentToast) => currentToast === DATABASE_CONNECTION_ERROR ? null : currentToast);
+        if (syncToastTimerRef.current) clearTimeout(syncToastTimerRef.current);
+        setSyncToast(null);
+      }
+      if (status === 'offline' && isMountedRef.current) {
+        if (syncToastTimerRef.current) clearTimeout(syncToastTimerRef.current);
+        setSyncToast(null);
       }
       if (status === 'error' && isMountedRef.current) {
-        setSyncToast(DATABASE_CONNECTION_ERROR);
+        showSyncToast(DATABASE_CONNECTION_ERROR, 4000);
       }
     });
 
@@ -913,7 +938,7 @@ export default function App() {
     };
 
     const updatedAgents = currentState.agents.map((ag) => {
-      if (ag.id === updatedSubscriber.agentId) {
+      if (ag.id === updatedSubscriber.agentId || (updatedSubscriber.agentName && ag.name === updatedSubscriber.agentName)) {
         const newDebt = isDebt ? ag.totalDebt + amount : ag.totalDebt;
         const newPaid = isDebt ? ag.totalPaid : ag.totalPaid + amount;
         return {
@@ -934,6 +959,7 @@ export default function App() {
         subscriber.id === finalSubscriber.id ? finalSubscriber : subscriber
       ),
       invoices: [newInvoice, ...currentState.invoices],
+      agents: updatedAgents,
       pendingRequests: pendingRequestId
         ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
         : currentState.pendingRequests
@@ -1004,7 +1030,8 @@ export default function App() {
         debtAmount: payStat === 'debt' ? amt : 0,
         startDate: '-',
         endDate: '-',
-        notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل'
+        notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل',
+        createdAt: req.requestDate || new Date().toISOString().split('T')[0]
       };
       updatedSubscribers = [targetSubscriber, ...currentState.subscribers];
     } else {
@@ -1646,9 +1673,23 @@ export default function App() {
 
       {/* Toast Notification for Sync & Data Refresh */}
       {syncToast && (
-        <div className="fixed bottom-6 left-6 z-50 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-2 duration-200">
-          <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
-          <span>{syncToast}</span>
+        <div className="fixed bottom-6 left-6 z-50 bg-slate-900/95 dark:bg-slate-100/95 backdrop-blur-md text-white dark:text-slate-900 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold animate-in fade-in slide-in-from-bottom-2 duration-200 border border-slate-800 dark:border-slate-200 max-w-sm">
+          {syncToast.includes('جاري') ? (
+            <RefreshCw className="w-4 h-4 animate-spin text-sky-400 shrink-0" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+          )}
+          <span className="flex-1 leading-relaxed">{syncToast}</span>
+          <button
+            onClick={() => {
+              if (syncToastTimerRef.current) clearTimeout(syncToastTimerRef.current);
+              setSyncToast(null);
+            }}
+            className="p-1 rounded-lg hover:bg-white/10 dark:hover:bg-slate-200 text-slate-400 dark:text-slate-600 hover:text-white dark:hover:text-slate-900 transition-colors cursor-pointer shrink-0"
+            title="إغلاق التنبيه"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

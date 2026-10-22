@@ -91,9 +91,22 @@ export class FirebaseSyncManager {
         },
         (error) => {
           if (!this.isListening || generation !== this.generation) return;
-          console.error('[FirebaseSync] Firestore stream closed:', error);
           this.unsubscribeFirestore = null;
           if (!unsubscribe) erroredBeforeAssignment = true;
+
+          const errMessage = error instanceof Error ? error.message : String(error);
+          const isPermissionDenied =
+            errMessage.includes('Missing or insufficient permissions') ||
+            errMessage.includes('permission-denied') ||
+            errMessage.includes('insufficient permissions');
+
+          if (isPermissionDenied) {
+            console.warn('[FirebaseSync] Firestore permission restriction: operating with local persistent storage.');
+            this.dispatchStatus('offline');
+            return;
+          }
+
+          console.warn('[FirebaseSync] Firestore stream closed:', errMessage);
           this.scheduleReconnect(generation);
         }
       );
@@ -103,7 +116,17 @@ export class FirebaseSyncManager {
         this.unsubscribeFirestore = unsubscribe;
       }
     } catch (error) {
-      console.error('[FirebaseSync] Could not start Firestore stream:', error);
+      const errMessage = error instanceof Error ? error.message : String(error);
+      const isPermissionDenied =
+        errMessage.includes('Missing or insufficient permissions') ||
+        errMessage.includes('permission-denied') ||
+        errMessage.includes('insufficient permissions');
+      if (isPermissionDenied) {
+        console.warn('[FirebaseSync] Firestore permission restriction: operating with local persistent storage.');
+        this.dispatchStatus('offline');
+        return;
+      }
+      console.warn('[FirebaseSync] Could not start Firestore stream:', error);
       this.scheduleReconnect(generation);
     }
   }

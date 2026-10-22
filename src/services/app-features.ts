@@ -5,7 +5,8 @@
  * Admin-Agent sync, offline resilience, delta resolution, and quota-aware listener cleanup.
  */
 
-import type { AppState, Subscriber, Agent, PendingRenewalRequest, Invoice } from '../types';
+import type { Subscriber, Agent, PendingRenewalRequest, Invoice } from '../types';
+import type { AppState } from './storageService';
 
 export interface AppFeatureCallbacks {
   onSubscribersUpdate?: (subscribers: Subscriber[]) => void;

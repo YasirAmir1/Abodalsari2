@@ -1,14 +1,75 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token.email == 'alsaribroadcasting@gmail.com' && isEmailVerified()) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Global application state
     match /app_state/{stateId} {
       allow read, write: if true;
     }
+
+    // System state
     match /system_state/{stateId} {
       allow read, write: if true;
     }
-    match /{document=**} {
+
+    // Tenants collection and subcollections
+    match /tenants/{tenantId} {
       allow read, write: if true;
+
+      match /subscribers/{subscriberId} {
+        allow read, write: if true;
+      }
+
+      match /agents/{agentId} {
+        allow read, write: if true;
+      }
+
+      match /requests/{requestId} {
+        allow read, write: if true;
+      }
+
+      match /sales/{saleId} {
+        allow read, write: if true;
+      }
+
+      match /metadata/{metadataId} {
+        allow read, write: if true;
+      }
+
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
+    }
+
+    // Default deny for unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

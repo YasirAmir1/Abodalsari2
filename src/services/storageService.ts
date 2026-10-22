@@ -30,6 +30,7 @@ export interface AppState {
   deletedSubscriberIds?: string[];
   deletedInvoiceIds?: string[];
   lastUpdatedTimestamp?: number;
+  lastBackupDate?: string;
 }
 
 const STORAGE_KEY = 'alsari_broadcasting_v1';

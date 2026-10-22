@@ -45,16 +45,20 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
 
   const [endDate, setEndDate] = useState(() => calculateEndDate(todayStr, '1 شهر'));
 
-  // Calculate price based on selected agent and duration
-  const agentPricing = pricing.find((p) => p.agentId === agentId) || pricing[0];
+  // Calculate price based on selected agent and duration with fallback
+  const agentPricing = pricing.find((p) => p.agentId === agentId)
+    || pricing.find((p) => p.agentName?.trim().toLowerCase() === subscriber.agentName?.trim().toLowerCase())
+    || pricing.find((p) => p.isReference)
+    || pricing[0];
+
   const defaultPrice =
     duration === '1 شهر'
-      ? agentPricing?.oneMonthPrice || 25000
+      ? agentPricing?.oneMonthPrice || 22000
       : duration === 'شهرين'
-      ? agentPricing?.twoMonthsPrice || 50000
+      ? agentPricing?.twoMonthsPrice || 44000
       : duration === '3 أشهر'
-      ? agentPricing?.threeMonthsPrice || 75000
-      : agentPricing?.threeMonthsPrice || 75000;
+      ? agentPricing?.threeMonthsPrice || 60000
+      : 22000;
 
   const [price, setPrice] = useState<number>(defaultPrice);
 
@@ -80,7 +84,10 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedAgent = agents.find((a) => a.id === agentId) || agents[0];
+    const selectedAgent = agents.find((a) => a.id === agentId)
+      || agents.find((a) => a.name === subscriber.agentName)
+      || agents[0]
+      || { id: subscriber.agentId || 'agent-main', name: subscriber.agentName || 'المركز الرئيسي' };
     const isDebt = paymentMethod === 'دين (تسجيل دين)';
 
     const rawDev = (subscriber.deviceId || '').trim();
