@@ -28,6 +28,7 @@ export interface AppState {
   users: SystemUser[];
   pendingRequests: PendingRenewalRequest[];
   deletedSubscriberIds?: string[];
+  deletedInvoiceIds?: string[];
   lastUpdatedTimestamp?: number;
 }
 
@@ -123,7 +124,10 @@ export const storageService = {
     }
 
     const deletedSet = this.getDeletedSubscriberIds();
-    const deletedInvoicesSet = this.getDeletedInvoiceIds();
+    const deletedInvoicesSet = new Set([
+      ...this.getDeletedInvoiceIds(),
+      ...(state.deletedInvoiceIds || [])
+    ]);
 
     const filteredSubs = (state.subscribers || []).filter(
       (s) => !deletedSet.has(s.id) && (!s.deviceId || !deletedSet.has(s.deviceId))
@@ -141,6 +145,7 @@ export const storageService = {
       ...state,
       subscribers: filteredSubs,
       invoices: filteredInvoices,
+      deletedInvoiceIds: Array.from(deletedInvoicesSet),
       pendingRequests: filteredRequests
     };
   },

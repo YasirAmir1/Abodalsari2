@@ -1,5 +1,6 @@
 import { getApps, initializeApp } from 'firebase/app';
 import {
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -175,6 +176,7 @@ function metadataFor(state: AppState, migrationComplete = false) {
     codes: state.codes || [],
     users: state.users || [],
     deletedSubscriberIds: state.deletedSubscriberIds || [],
+    deletedInvoiceIds: state.deletedInvoiceIds || [],
     lastUpdatedTimestamp: state.lastUpdatedTimestamp || Date.now()
   });
 }
@@ -189,10 +191,38 @@ function metadataToState(metadata: Record<string, unknown>, base: AppState): App
     deletedSubscriberIds: Array.isArray(metadata.deletedSubscriberIds)
       ? metadata.deletedSubscriberIds as string[]
       : base.deletedSubscriberIds,
+    deletedInvoiceIds: Array.isArray(metadata.deletedInvoiceIds)
+      ? metadata.deletedInvoiceIds as string[]
+      : base.deletedInvoiceIds,
     lastUpdatedTimestamp: typeof metadata.lastUpdatedTimestamp === 'number'
       ? metadata.lastUpdatedTimestamp
       : base.lastUpdatedTimestamp
   };
+}
+
+function metadataChanges(previous: AppState, next: AppState): Record<string, unknown> {
+  const previousMetadata = metadataFor(previous, true);
+  const nextMetadata = metadataFor(next, true);
+  const changes: Record<string, unknown> = {
+    tenantId: TENANT_ID,
+    schemaVersion: 2,
+    migrationComplete: true,
+    lastUpdatedTimestamp: nextMetadata.lastUpdatedTimestamp
+  };
+
+  (['products', 'pricing', 'codes', 'users'] as const).forEach((key) => {
+    if (JSON.stringify(sanitize(previousMetadata[key])) !== JSON.stringify(sanitize(nextMetadata[key]))) {
+      changes[key] = nextMetadata[key];
+    }
+  });
+
+  (['deletedSubscriberIds', 'deletedInvoiceIds'] as const).forEach((key) => {
+    const previousIds = new Set(previous[key] || []);
+    const addedIds = (next[key] || []).filter((id) => !previousIds.has(id));
+    if (addedIds.length > 0) changes[key] = arrayUnion(...addedIds);
+  });
+
+  return changes;
 }
 
 function applyDesiredChanges(baseState: AppState, desiredState: AppState): AppState {
@@ -227,7 +257,14 @@ function applyDesiredChanges(baseState: AppState, desiredState: AppState): AppSt
     users: JSON.stringify(sanitize(baseState.users)) === JSON.stringify(sanitize(desiredState.users))
       ? baseState.users
       : desiredState.users,
-    deletedSubscriberIds: desiredState.deletedSubscriberIds,
+    deletedSubscriberIds: Array.from(new Set([
+      ...(baseState.deletedSubscriberIds || []),
+      ...(desiredState.deletedSubscriberIds || [])
+    ])),
+    deletedInvoiceIds: Array.from(new Set([
+      ...(baseState.deletedInvoiceIds || []),
+      ...(desiredState.deletedInvoiceIds || [])
+    ])),
     lastUpdatedTimestamp: desiredState.lastUpdatedTimestamp || Date.now()
   };
 }
@@ -247,13 +284,13 @@ function stateFromRemoteTables(
 }
 
 type WriteOperation =
-  | { type: 'set'; ref: ReturnType<typeof doc>; data: Record<string, unknown> }
+  | { type: 'set'; ref: ReturnType<typeof doc>; data: Record<string, unknown>; merge?: boolean }
   | { type: 'delete'; ref: ReturnType<typeof doc> };
 
 async function commitOperations(operations: WriteOperation[], metadata: Record<string, unknown>, atomic = false) {
   const allOperations: WriteOperation[] = [
     ...operations,
-    { type: 'set', ref: TENANT_METADATA_REF, data: { ...metadata, updatedAt: serverTimestamp() } }
+    { type: 'set', ref: TENANT_METADATA_REF, data: { ...metadata, updatedAt: serverTimestamp() }, merge: true }
   ];
   if (atomic && allOperations.length > 500) {
     throw new Error('Atomic Firestore update exceeds the 500-write batch limit.');
@@ -263,6 +300,7 @@ async function commitOperations(operations: WriteOperation[], metadata: Record<s
     const batch = writeBatch(db);
     allOperations.slice(offset, offset + batchLimit).forEach((operation) => {
       if (operation.type === 'delete') batch.delete(operation.ref);
+      else if (operation.merge) batch.set(operation.ref, operation.data, { merge: true });
       else batch.set(operation.ref, operation.data);
     });
     await batch.commit();
@@ -470,7 +508,7 @@ export const firebaseService = {
       const nextState: AppState = { ...requestedState, lastUpdatedTimestamp: nextTimestamp };
       const operations = diffOperations(baseState, nextState);
       updateSyncStatus('syncing');
-      await commitOperations(operations, metadataFor(nextState, true), atomic);
+      await commitOperations(operations, metadataChanges(baseState, nextState), atomic);
 
       remoteState = applyDesiredChanges(baseState, nextState);
       tenantHasRemoteData = true;
@@ -519,7 +557,7 @@ export const firebaseService = {
           transaction.set(reqDocRef, sanitize(resolvedRequestData), { merge: true });
           transaction.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
           transaction.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
-          transaction.set(metaDocRef, { ...metadataFor(nextState, true), updatedAt: serverTimestamp() }, { merge: true });
+          transaction.set(metaDocRef, { ...metadataChanges(remoteState || emptyState(), nextState), updatedAt: serverTimestamp() }, { merge: true });
         });
       } catch (txError) {
         console.warn('Firestore runTransaction fallback to batch write:', txError);
@@ -528,7 +566,7 @@ export const firebaseService = {
         batch.set(reqDocRef, sanitize(resolvedRequestData), { merge: true });
         batch.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
         batch.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
-        batch.set(metaDocRef, { ...metadataFor(nextState, true), updatedAt: serverTimestamp() }, { merge: true });
+        batch.set(metaDocRef, { ...metadataChanges(remoteState || emptyState(), nextState), updatedAt: serverTimestamp() }, { merge: true });
         await batch.commit();
       }
 

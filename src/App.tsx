@@ -138,6 +138,7 @@ import { LoginView } from './components/LoginView';
 import { useAppDialogs } from './components/AppDialogProvider';
 
 const USER_SESSION_KEY = 'alsari_auth_user_v1';
+const DATABASE_CONNECTION_ERROR = 'تعذر الاتصال بقاعدة البيانات المباشرة. ستستأنف المزامنة عند عودة الاتصال.';
 const DashboardView = lazy(() => import('./components/DashboardView').then(({ DashboardView }) => ({ default: DashboardView })));
 const SubscribersView = lazy(() => import('./components/SubscribersView').then(({ SubscribersView }) => ({ default: SubscribersView })));
 const PendingRequestsView = lazy(() => import('./components/PendingRequestsView').then(({ PendingRequestsView }) => ({ default: PendingRequestsView })));
@@ -152,112 +153,6 @@ const WhatsAppModal = lazy(() => import('./components/WhatsAppModal').then(({ Wh
 const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(({ ReceiptModal }) => ({ default: ReceiptModal })));
 const DeviceQrModal = lazy(() => import('./components/DeviceQrModal').then(({ DeviceQrModal }) => ({ default: DeviceQrModal })));
 const InvoiceSuccessModal = lazy(() => import('./components/InvoiceSuccessModal').then(({ InvoiceSuccessModal }) => ({ default: InvoiceSuccessModal })));
-
-function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { state: AppState; merged: boolean } {
-  const remoteTimestamp = remoteState.lastUpdatedTimestamp || 0;
-  const localTimestamp = localState.lastUpdatedTimestamp || 0;
-  const isLocalNewer = localTimestamp > remoteTimestamp;
-
-  const remoteSubscribers = remoteState.subscribers || [];
-  const localSubscribers = localState.subscribers || [];
-
-  const remoteSubMap = new Map<string, Subscriber>();
-  const remoteDevMap = new Map<string, Subscriber>();
-  remoteSubscribers.forEach((sub) => {
-    remoteSubMap.set(sub.id, sub);
-    if (sub.deviceId) remoteDevMap.set(sub.deviceId, sub);
-  });
-
-  const mergedSubscribersMap = new Map<string, Subscriber>();
-  remoteSubscribers.forEach((sub) => {
-    mergedSubscribersMap.set(sub.id, sub);
-  });
-
-  localSubscribers.forEach((localSub) => {
-    const remoteMatch = remoteSubMap.get(localSub.id) || (localSub.deviceId ? remoteDevMap.get(localSub.deviceId) : undefined);
-    if (!remoteMatch) {
-      mergedSubscribersMap.set(localSub.id, localSub);
-    } else {
-      const localPaid = Number(localSub.paidAmount) || 0;
-      const remotePaid = Number(remoteMatch.paidAmount) || 0;
-      const hasUnsyncedLocalPayment = localPaid > remotePaid || (localSub.settleDate && !remoteMatch.settleDate);
-      const isLocalActive = localSub.status === 'active' || localSub.amount > 0 || localSub.paymentStatus === 'debt';
-      const isRemoteInactive = remoteMatch.status !== 'active';
-
-      if (isLocalNewer || hasUnsyncedLocalPayment || (isLocalActive && isRemoteInactive)) {
-        mergedSubscribersMap.set(remoteMatch.id, localSub);
-      }
-    }
-  });
-
-  const mergedSubscribers = Array.from(mergedSubscribersMap.values());
-
-  const remoteInvoices = remoteState.invoices || [];
-  const localInvoices = localState.invoices || [];
-  const remoteInvoiceMap = new Map(remoteInvoices.map((inv) => [inv.id, inv]));
-  const mergedInvoiceMap = new Map(remoteInvoices.map((inv) => [inv.id, inv]));
-
-  localInvoices.forEach((localInv) => {
-    const remoteInv = remoteInvoiceMap.get(localInv.id);
-    if (!remoteInv) {
-      mergedInvoiceMap.set(localInv.id, localInv);
-    } else {
-      const localPaid = Number(localInv.paidAmount) || 0;
-      const remotePaid = Number(remoteInv.paidAmount) || 0;
-      if (isLocalNewer || localPaid > remotePaid) {
-        mergedInvoiceMap.set(localInv.id, localInv);
-      }
-    }
-  });
-
-  const mergedInvoices = Array.from(mergedInvoiceMap.values());
-
-  const remoteRequests = remoteState.pendingRequests || [];
-  const localRequests = localState.pendingRequests || [];
-  const remoteRequestMap = new Map(remoteRequests.map((request) => [request.id, request]));
-  const mergedRequestMap = new Map(remoteRequests.map((request) => [request.id, request]));
-  localRequests.forEach((localRequest) => {
-    const remoteRequest = remoteRequestMap.get(localRequest.id);
-    // A local decision wins while its write is syncing. A terminal remote
-    // decision also prevents a stale local pending copy from reappearing.
-    if (!remoteRequest || localRequest.status !== 'pending') {
-      mergedRequestMap.set(localRequest.id, localRequest);
-    }
-  });
-  const mergedRequests = Array.from(mergedRequestMap.values());
-  const pendingRequestsToSync = localRequests.filter((localRequest) => {
-    const remoteRequest = remoteRequestMap.get(localRequest.id);
-    return !remoteRequest || (
-      localRequest.status !== 'pending' && localRequest.status !== remoteRequest.status
-    );
-  });
-
-  const hasChanges = mergedSubscribers.length !== remoteSubscribers.length ||
-    mergedInvoices.length !== remoteInvoices.length ||
-    pendingRequestsToSync.length > 0 ||
-    localSubscribers.some((lSub) => {
-      const rSub = remoteSubMap.get(lSub.id);
-      if (!rSub) return true;
-      return (Number(lSub.paidAmount) || 0) !== (Number(rSub.paidAmount) || 0) ||
-        (Number(lSub.debtAmount) || 0) !== (Number(rSub.debtAmount) || 0) ||
-        (lSub.status === 'active' && rSub.status !== 'active');
-    });
-
-  if (!hasChanges && localTimestamp < remoteTimestamp) {
-    return { state: remoteState, merged: false };
-  }
-
-  return {
-    state: {
-      ...remoteState,
-      subscribers: mergedSubscribers,
-      invoices: mergedInvoices,
-      pendingRequests: mergedRequests,
-      lastUpdatedTimestamp: Math.max(localTimestamp, remoteTimestamp, Date.now())
-    },
-    merged: true
-  };
-}
 
 export default function App() {
   const { showAlert } = useAppDialogs();
@@ -346,13 +241,6 @@ export default function App() {
       return next;
     });
   };
-
-  // --- Refs for sync coordination ---
-  // Flag set to true when we are applying a REMOTE update so the save-effect
-  // does not echo it back to Firestore (would create a write loop).
-  const isRemoteUpdateRef = useRef(false);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
 
   // Centralized state update function
   const updateAppState = (
@@ -463,10 +351,7 @@ export default function App() {
     const unsubscribe = syncManager.startListening((remoteState) => {
       if (!remoteState) return;
 
-      // Recover subscriber additions that were saved locally while an earlier
-      // Firestore write was pending or unavailable, then apply local tombstones.
-      const { state: reconciledState, merged } = mergePendingLocalAdds(remoteState, stateRef.current);
-      const filteredState = storageService.filterOutDeleted(reconciledState);
+      const filteredState = storageService.filterOutDeleted(remoteState);
       const stateWithAgentMetrics = {
         ...filteredState,
         agents: computeUpdatedAgents(filteredState.agents, filteredState.subscribers, filteredState.invoices)
@@ -475,68 +360,22 @@ export default function App() {
       // Save to localStorage immediately so a subsequent reload retains fresh remote state
       storageService.saveState(stateWithAgentMetrics);
 
-      // Mark as remote so Effect 1 does NOT write it back to Firestore
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-      isRemoteUpdateRef.current = true;
       stateRef.current = stateWithAgentMetrics;
       setState(stateWithAgentMetrics);
-      if (merged) {
-        void firebaseService.saveRemoteState(stateWithAgentMetrics, true).catch((error) => {
-          console.error('Could not restore locally pending subscribers to Firestore:', error);
-          if (isMountedRef.current) {
-            setSyncToast('تعذرت استعادة بعض المشتركين المحفوظين محلياً إلى قاعدة البيانات.');
-          }
-        });
-      }
-    });
-
-    const cleanupStreams = appFeatures.initRealtimeStreams({
-      onSubscribersUpdate: (subscribers) => {
-        if (!isMountedRef.current) return;
-        setState((prev) => {
-          const nextState = { ...prev, subscribers, lastUpdatedTimestamp: Date.now() };
-          return { ...nextState, agents: computeUpdatedAgents(nextState.agents, subscribers, nextState.invoices) };
-        });
-      },
-      onAgentsUpdate: (agents) => {
-        if (!isMountedRef.current) return;
-        setState((prev) => {
-          const nextState = { ...prev, agents, lastUpdatedTimestamp: Date.now() };
-          return { ...nextState, agents: computeUpdatedAgents(agents, nextState.subscribers, nextState.invoices) };
-        });
-      },
-      onRequestUpdate: (pendingRequests) => {
-        if (!isMountedRef.current) return;
-        setState((prev) => ({ ...prev, pendingRequests, lastUpdatedTimestamp: Date.now() }));
-      },
-      onSalesUpdate: (invoices) => {
-        if (!isMountedRef.current) return;
-        setState((prev) => {
-          const nextAgents = computeUpdatedAgents(prev.agents, prev.subscribers, invoices);
-          const nextState = { ...prev, invoices, agents: nextAgents, lastUpdatedTimestamp: Date.now() };
-          stateRef.current = nextState;
-          storageService.saveState(nextState);
-          return nextState;
-        });
-      },
-      onStatusChange: (status) => {
-        if (status === 'connected' && isMountedRef.current) setIsRemoteReady(true);
-      }
     });
 
     const unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
-      if (status === 'connected' && isMountedRef.current) setIsRemoteReady(true);
+      if (status === 'connected' && isMountedRef.current) {
+        setIsRemoteReady(true);
+        setSyncToast((currentToast) => currentToast === DATABASE_CONNECTION_ERROR ? null : currentToast);
+      }
       if (status === 'error' && isMountedRef.current) {
-        setSyncToast('تعذر الاتصال بقاعدة البيانات المباشرة. ستستأنف المزامنة عند عودة الاتصال.');
+        setSyncToast(DATABASE_CONNECTION_ERROR);
       }
     });
 
     return () => {
       unsubscribe();
-      cleanupStreams();
       unsubscribeStatus();
     };
   }, [currentUser?.id]);
@@ -567,11 +406,6 @@ export default function App() {
       const freshRemote = remoteState || await firebaseService.fetchFreshRemoteState();
       if (freshRemote) {
         const filtered = storageService.filterOutDeleted(freshRemote);
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-          saveTimeoutRef.current = null;
-        }
-        isRemoteUpdateRef.current = true;
         stateRef.current = filtered;
         storageService.saveState(filtered);
         setState(filtered);
@@ -599,8 +433,6 @@ export default function App() {
       const freshRemote = await firebaseService.fetchFreshRemoteState();
       if (freshRemote) {
         const filtered = storageService.filterOutDeleted(freshRemote);
-        // Mark as remote so Effect 1 does NOT write it back to Firestore
-        isRemoteUpdateRef.current = true;
         stateRef.current = filtered;
         storageService.saveState(filtered);
         setState(filtered);
@@ -677,6 +509,7 @@ export default function App() {
       invoices: updatedInvoices,
       subscribers: updatedSubscribers,
       agents: updatedAgents,
+      deletedInvoiceIds: Array.from(new Set([...(currentState.deletedInvoiceIds || []), id])),
       lastUpdatedTimestamp: Date.now()
     };
 
@@ -1301,10 +1134,9 @@ export default function App() {
       status: 'pending'
     };
 
-    setState((prev) => ({
-      ...prev,
-      pendingRequests: [newRequest, ...prev.pendingRequests.filter(r => r.id !== newRequest.id)]
-    }));
+    updateAppState({
+      pendingRequests: [newRequest, ...stateRef.current.pendingRequests.filter((request) => request.id !== newRequest.id)]
+    });
 
     soundService.playPendingAlert();
 
@@ -1502,35 +1334,24 @@ export default function App() {
       ...prodData,
       id: `prod-${Date.now()}`
     };
-    setState({
-      ...state,
-      products: [newProd, ...state.products]
-    });
+    updateAppState({ products: [newProd, ...stateRef.current.products] });
   };
 
   const handleUpdateProduct = (updated: Product) => {
-    setState({
-      ...state,
-      products: state.products.map((p) => (p.id === updated.id ? updated : p))
+    updateAppState({
+      products: stateRef.current.products.map((product) => (product.id === updated.id ? updated : product))
     });
   };
 
   const handleDeleteProduct = (id: string) => {
-    setState({
-      ...state,
-      products: state.products.filter((p) => p.id !== id)
-    });
+    updateAppState({ products: stateRef.current.products.filter((product) => product.id !== id) });
   };
 
   const handleAdjustStock = (id: string, delta: number) => {
-    setState({
-      ...state,
-      products: state.products.map((p) => {
-        if (p.id === id) {
-          return { ...p, stock: Math.max(0, p.stock + delta) };
-        }
-        return p;
-      })
+    updateAppState({
+      products: stateRef.current.products.map((product) =>
+        product.id === id ? { ...product, stock: Math.max(0, product.stock + delta) } : product
+      )
     });
   };
 
@@ -1542,10 +1363,7 @@ export default function App() {
       status: 'available',
       generatedDate: new Date().toISOString().split('T')[0]
     };
-    setState({
-      ...state,
-      codes: [newCode, ...state.codes]
-    });
+    updateAppState({ codes: [newCode, ...stateRef.current.codes] });
   };
 
   const handleBatchGenerateCodes = (count: number) => {
@@ -1560,32 +1378,20 @@ export default function App() {
         generatedDate: today
       });
     }
-    setState({
-      ...state,
-      codes: [...newCodes, ...state.codes]
-    });
+    updateAppState({ codes: [...newCodes, ...stateRef.current.codes] });
   };
 
   const handleDeleteCode = (id: string) => {
-    setState({
-      ...state,
-      codes: state.codes.filter((c) => c.id !== id)
-    });
+    updateAppState({ codes: stateRef.current.codes.filter((code) => code.id !== id) });
   };
 
   const handleClearAllCodes = () => {
-    setState({
-      ...state,
-      codes: []
-    });
+    updateAppState({ codes: [] });
   };
 
   // Pricing Handlers
   const handleSavePricing = (rows: PricingRow[]) => {
-    setState({
-      ...state,
-      pricing: rows
-    });
+    updateAppState({ pricing: rows });
     soundService.playSuccess();
   };
 
