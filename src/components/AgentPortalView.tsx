@@ -16,6 +16,7 @@ function doesSubscriberBelongToAgent(sub: { agentId?: string; agentName?: string
 }
 
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Tv,
   Users,
@@ -576,8 +577,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
       </div>
 
       {/* Modal: Submit Electronic Renewal Order */}
-      {showOrderModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
+      {showOrderModal && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[1000] animate-in fade-in" dir="rtl">
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2 text-sky-800 dark:text-sky-300">
@@ -684,12 +685,13 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal: Submit New Device Sale Order */}
-      {showDeviceSaleModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
+      {showDeviceSaleModal && createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[1000] animate-in fade-in" dir="rtl">
           <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
@@ -766,7 +768,8 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
