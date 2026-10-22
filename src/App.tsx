@@ -401,37 +401,6 @@ export default function App() {
     });
   };
 
-  // --- Effect 1: Persist locally + push to Firestore on every local change ---
-  useEffect(() => {
-    // Always save to localStorage for offline resilience
-    storageService.saveState(state);
-
-    // If this state change originated from a REMOTE snapshot, skip the write
-    // back to Firestore (it is already there).
-
-    if (isRemoteUpdateRef.current) {
-      isRemoteUpdateRef.current = false;
-      return;
-    }
-
-    if (firebaseService.isQuotaExceeded()) return;
-
-    // Debounce: wait 1.5 s of inactivity before writing so rapid local edits
-    // collapse into a single Firestore write.
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      void firebaseService.saveRemoteState(state).catch((error) => {
-        console.error('Could not sync local state to Firestore:', error);
-        if (isMountedRef.current) {
-          setSyncToast('تعذرت مزامنة التغييرات مع الأجهزة الأخرى. تحقق من الاتصال بالإنترنت.');
-        }
-      });
-    }, 1500);
-
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [state, isRemoteReady]);
 
   // Expire subscriptions against the local calendar date after the first
   // server synchronization, and recheck periodically while the app is open.
