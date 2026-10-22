@@ -110,7 +110,7 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Agent,
   DeviceCode,
@@ -130,29 +130,28 @@ import { firebaseService } from './services/firebaseService';
 import { syncManager } from './services/firebase-sync';
 import { appFeatures } from './services/app-features';
 import { soundService } from './services/soundService';
-import { excelService } from './services/excelService';
 import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt, buildSubscriberDebtMap } from './utils/calculationUtils';
 
 import { Sidebar, NavTab } from './components/Sidebar';
 import { Header } from './components/Header';
 import { LoginView } from './components/LoginView';
-import { DashboardView } from './components/DashboardView';
-import { SubscribersView } from './components/SubscribersView';
-import { PendingRequestsView } from './components/PendingRequestsView';
-import { AgentsView } from './components/AgentsView';
-import { ProductsView } from './components/ProductsView';
-import { QrCodesView } from './components/QrCodesView';
-import { PricingView } from './components/PricingView';
-import { SalesInvoicesView } from './components/SalesInvoicesView';
-import { DebtsView } from './components/DebtsView';
-import { AgentPortalView } from './components/AgentPortalView';
-import { WhatsAppModal } from './components/WhatsAppModal';
-import { ReceiptModal } from './components/ReceiptModal';
-import { DeviceQrModal } from './components/DeviceQrModal';
-import { InvoiceSuccessModal } from './components/InvoiceSuccessModal';
 import { useAppDialogs } from './components/AppDialogProvider';
 
 const USER_SESSION_KEY = 'alsari_auth_user_v1';
+const DashboardView = lazy(() => import('./components/DashboardView').then(({ DashboardView }) => ({ default: DashboardView })));
+const SubscribersView = lazy(() => import('./components/SubscribersView').then(({ SubscribersView }) => ({ default: SubscribersView })));
+const PendingRequestsView = lazy(() => import('./components/PendingRequestsView').then(({ PendingRequestsView }) => ({ default: PendingRequestsView })));
+const AgentsView = lazy(() => import('./components/AgentsView').then(({ AgentsView }) => ({ default: AgentsView })));
+const ProductsView = lazy(() => import('./components/ProductsView').then(({ ProductsView }) => ({ default: ProductsView })));
+const QrCodesView = lazy(() => import('./components/QrCodesView').then(({ QrCodesView }) => ({ default: QrCodesView })));
+const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
+const SalesInvoicesView = lazy(() => import('./components/SalesInvoicesView').then(({ SalesInvoicesView }) => ({ default: SalesInvoicesView })));
+const DebtsView = lazy(() => import('./components/DebtsView').then(({ DebtsView }) => ({ default: DebtsView })));
+const AgentPortalView = lazy(() => import('./components/AgentPortalView').then(({ AgentPortalView }) => ({ default: AgentPortalView })));
+const WhatsAppModal = lazy(() => import('./components/WhatsAppModal').then(({ WhatsAppModal }) => ({ default: WhatsAppModal })));
+const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(({ ReceiptModal }) => ({ default: ReceiptModal })));
+const DeviceQrModal = lazy(() => import('./components/DeviceQrModal').then(({ DeviceQrModal }) => ({ default: DeviceQrModal })));
+const InvoiceSuccessModal = lazy(() => import('./components/InvoiceSuccessModal').then(({ InvoiceSuccessModal }) => ({ default: InvoiceSuccessModal })));
 
 function mergePendingLocalAdds(remoteState: AppState, localState: AppState): { state: AppState; merged: boolean } {
   const remoteTimestamp = remoteState.lastUpdatedTimestamp || 0;
@@ -463,12 +462,10 @@ export default function App() {
 
     const unsubscribe = syncManager.startListening((remoteState) => {
       if (!remoteState) return;
-      console.log('Received remote state:', remoteState);
 
       // Recover subscriber additions that were saved locally while an earlier
       // Firestore write was pending or unavailable, then apply local tombstones.
       const { state: reconciledState, merged } = mergePendingLocalAdds(remoteState, stateRef.current);
-      console.log('Reconciled state merged:', merged);
       const filteredState = storageService.filterOutDeleted(reconciledState);
       const stateWithAgentMetrics = {
         ...filteredState,
@@ -1647,6 +1644,7 @@ export default function App() {
 
         {/* Dynamic Views */}
         <main className="p-4 md:p-6 max-w-7xl w-full mx-auto flex-1">
+          <Suspense fallback={<div className="flex min-h-64 items-center justify-center text-sm font-semibold text-slate-500" role="status">جاري تحميل الصفحة...</div>}>
           {currentTab === 'dashboard' && (
             <DashboardView
               agents={state.agents}
@@ -1654,7 +1652,10 @@ export default function App() {
               invoices={state.invoices}
               onNavigate={setCurrentTab}
               onOpenNewSale={() => setCurrentTab('subscribers')}
-              onExportExcel={() => excelService.exportInvoices(state.invoices)}
+              onExportExcel={async () => {
+                const { excelService } = await import('./services/excelService');
+                excelService.exportInvoices(stateRef.current.invoices);
+              }}
             />
           )}
 
@@ -1790,10 +1791,12 @@ export default function App() {
               onSelectDeviceQr={handleOpenDeviceQr}
             />
           )}
+          </Suspense>
         </main>
       </div>
 
       {/* WhatsApp Modal */}
+      <Suspense fallback={null}>
       {activeWhatsAppSub && (
         <WhatsAppModal
           subscriber={activeWhatsAppSub}
@@ -1833,6 +1836,7 @@ export default function App() {
           }}
         />
       )}
+      </Suspense>
 
       {/* Toast Notification for Sync & Data Refresh */}
       {syncToast && (
