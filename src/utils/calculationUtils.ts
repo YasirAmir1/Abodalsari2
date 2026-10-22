@@ -15,9 +15,8 @@ export const buildSubscriberDebtMap = (invoices: Invoice[] = []): Map<string, nu
     const inv = invoices[i];
     if (inv && inv.subscriberId) {
       const remaining = getInvoiceRemainingAmount(inv);
-      if (remaining > 0) {
-        map.set(inv.subscriberId, (map.get(inv.subscriberId) || 0) + remaining);
-      }
+      const current = map.get(inv.subscriberId) || 0;
+      map.set(inv.subscriberId, current + remaining);
     }
   }
   return map;

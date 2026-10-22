@@ -48,7 +48,7 @@ interface SubscribersViewProps {
   isAdmin?: boolean;
 }
 
-export const SubscribersView: React.FC<SubscribersViewProps> = ({
+const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
   subscribers,
   invoices,
   agents,
@@ -1678,3 +1678,5 @@ export const SubscribersView: React.FC<SubscribersViewProps> = ({
     </div>
   );
 };
+
+export const SubscribersView = React.memo(SubscribersViewComponent);

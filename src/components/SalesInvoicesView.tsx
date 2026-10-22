@@ -26,7 +26,7 @@ interface SalesInvoicesViewProps {
   onSelectDeviceQr?: (deviceId: string, subscriberName?: string, agentName?: string) => void;
 }
 
-export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
+const SalesInvoicesViewComponent: React.FC<SalesInvoicesViewProps> = ({
   invoices,
   agents,
   onOpenReceipt,
@@ -298,3 +298,5 @@ export const SalesInvoicesView: React.FC<SalesInvoicesViewProps> = ({
     </div>
   );
 };
+
+export const SalesInvoicesView = React.memo(SalesInvoicesViewComponent);

@@ -63,19 +63,33 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
     }
 
     let subscriberDebt = 0;
+    const countedSubIds = new Set<string>();
     for (let i = 0; i < agentSubscribers.length; i++) {
-      subscriberDebt += getSubscriberOutstandingDebt(agentSubscribers[i], debtMap);
+      const sub = agentSubscribers[i];
+      subscriberDebt += getSubscriberOutstandingDebt(sub, debtMap);
+      if (sub.id) countedSubIds.add(sub.id);
     }
+
+    let additionalInvoiceDebt = 0;
+    for (let i = 0; i < agentInvoices.length; i++) {
+      const inv = agentInvoices[i];
+      if (!inv.subscriberId || !countedSubIds.has(inv.subscriberId)) {
+        additionalInvoiceDebt += getInvoiceRemainingAmount(inv);
+      }
+    }
+
+    const calculatedDebt = Math.max(0, subscriberDebt + additionalInvoiceDebt);
 
     const totalSales = agentInvoices.length > 0
       ? invoiceSales
       : Math.max(0, Number(agent.totalSales) || 0);
-    const totalDebt = agentInvoices.length > 0 || subscriberDebt > 0
-      ? subscriberDebt
+
+    const totalDebt = (agentSubscribers.length > 0 || agentInvoices.length > 0)
+      ? calculatedDebt
       : Math.max(0, Number(agent.totalDebt) || 0);
-    const totalPaid = agentInvoices.length > 0 || subscriberDebt > 0
-      ? Math.max(0, totalSales - totalDebt)
-      : Math.max(0, Number(agent.totalPaid) || 0);
+
+    const totalPaid = Math.max(0, totalSales - totalDebt);
+    const hasDebt = totalDebt > 0;
 
     return {
       ...agent,
@@ -85,7 +99,7 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
       totalSales,
       totalDebt,
       totalPaid,
-      hasDebt: totalDebt > 0
+      hasDebt
     };
   });
 }
@@ -353,8 +367,8 @@ export default function App() {
       lastUpdatedTimestamp: Date.now()
     };
 
-    // If subscribers or invoices changed, recompute agent metrics
-    if (updates.subscribers || updates.invoices) {
+    // If subscribers or invoices changed, recompute agent metrics immediately
+    if (updates.subscribers || updates.invoices || updates.agents) {
       nextState.agents = computeUpdatedAgents(
         updates.agents || currentState.agents,
         updates.subscribers || currentState.subscribers,
@@ -362,7 +376,7 @@ export default function App() {
       );
     }
 
-    persistStateImmediately(nextState, failureMessage);
+    persistStateImmediately(nextState, failureMessage, true);
   };
 
   const persistStateImmediately = (nextState: AppState, failureMessage: string, atomic = false) => {
@@ -535,8 +549,11 @@ export default function App() {
       onSalesUpdate: (invoices) => {
         if (!isMountedRef.current) return;
         setState((prev) => {
-          const nextState = { ...prev, invoices, lastUpdatedTimestamp: Date.now() };
-          return { ...nextState, agents: computeUpdatedAgents(nextState.agents, nextState.subscribers, invoices) };
+          const nextAgents = computeUpdatedAgents(prev.agents, prev.subscribers, invoices);
+          const nextState = { ...prev, invoices, agents: nextAgents, lastUpdatedTimestamp: Date.now() };
+          stateRef.current = nextState;
+          storageService.saveState(nextState);
+          return nextState;
         });
       },
       onStatusChange: (status) => {
@@ -686,6 +703,7 @@ export default function App() {
       };
     });
 
+    void firebaseService.deleteInvoice(id);
     const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
 
     const newState: AppState = {
@@ -696,22 +714,7 @@ export default function App() {
       lastUpdatedTimestamp: Date.now()
     };
 
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
-    stateRef.current = newState;
-    storageService.saveState(newState);
-    setState(newState);
-    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
-      console.error('Could not immediately sync invoice deletion:', error);
-      if (isMountedRef.current) {
-        setSyncToast('تم حذف الفاتورة محلياً وتعذرت مزامنة التعديلات حالياً');
-        setTimeout(() => {
-          if (isMountedRef.current) setSyncToast(null);
-        }, 3500);
-      }
-    });
+    persistStateImmediately(newState, 'Could not immediately sync invoice deletion:', true);
     soundService.playSuccess();
   };
 
@@ -1395,19 +1398,7 @@ export default function App() {
       lastUpdatedTimestamp: Date.now()
     };
 
-    stateRef.current = newState;
-    storageService.saveState(newState);
-    setState(newState);
-
-    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
-      console.error('Could not immediately sync agent debt settlement:', error);
-      if (isMountedRef.current) {
-        setSyncToast('تم تسجيل الدفعة محلياً وتعذرت مزامنتها حالياً');
-        setTimeout(() => {
-          if (isMountedRef.current) setSyncToast(null);
-        }, 3500);
-      }
-    });
+    persistStateImmediately(newState, 'Could not immediately sync agent debt settlement:', true);
 
     appFeatures.broadcastAdminUpdate({
       action: 'SETTLE_DEBT',
@@ -1482,19 +1473,7 @@ export default function App() {
       agents: updatedAgents,
       lastUpdatedTimestamp: Date.now()
     };
-    stateRef.current = newState;
-    storageService.saveState(newState);
-    setState(newState);
-
-    void firebaseService.saveRemoteState(newState, true, true).catch((error) => {
-      console.error('Could not immediately sync subscriber payment:', error);
-      if (isMountedRef.current) {
-        setSyncToast('تم تسجيل الدفعة محلياً وتعذرت مزامنتها حالياً');
-        setTimeout(() => {
-          if (isMountedRef.current) setSyncToast(null);
-        }, 3500);
-      }
-    });
+    persistStateImmediately(newState, 'Could not immediately sync subscriber payment:', true);
 
     appFeatures.broadcastAdminUpdate({
       action: 'SETTLE_DEBT',
@@ -1508,7 +1487,8 @@ export default function App() {
 
   // Reset Agent Data
   const handleResetAgentData = (agentId: string) => {
-    const updatedAgents = state.agents.map((ag) => {
+    const currentState = stateRef.current;
+    const updatedAgents = currentState.agents.map((ag) => {
       if (ag.id === agentId) {
         return {
           ...ag,
@@ -1521,19 +1501,21 @@ export default function App() {
       return ag;
     });
 
-    setState({
-      ...state,
+    persistStateImmediately({
+      ...currentState,
       agents: updatedAgents
-    });
+    }, 'Could not sync reset agent data:', true);
     soundService.playSuccess();
   };
 
   // Update Agent Branding
   const handleUpdateAgentBranding = (agentId: string, branding: Partial<Agent>) => {
-    setState({
-      ...state,
-      agents: state.agents.map((ag) => (ag.id === agentId ? { ...ag, ...branding } : ag))
-    });
+    const currentState = stateRef.current;
+    const updatedAgents = currentState.agents.map((ag) => (ag.id === agentId ? { ...ag, ...branding } : ag));
+    persistStateImmediately({
+      ...currentState,
+      agents: updatedAgents
+    }, 'Could not sync agent branding:', true);
   };
 
   // Product Inventory Handlers
