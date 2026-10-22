@@ -1053,11 +1053,12 @@ export default function App() {
         ...sub,
         status: stat,
         subscriptionType: dur,
-        amount: amt,
+        amount: (sub.amount || 0) + amt,
         startDate: sDate,
         endDate,
-        paymentStatus: payStat,
-        paidAmount: payStat === 'paid' ? (sub.paidAmount || 0) + amt : sub.paidAmount
+        paymentStatus: payStat === 'paid' && sub.paymentStatus !== 'debt' ? 'paid' : 'debt',
+        paidAmount: payStat === 'paid' ? (sub.paidAmount || 0) + amt : (sub.paidAmount || 0),
+        debtAmount: payStat === 'debt' ? (sub.debtAmount || 0) + amt : (sub.debtAmount || 0)
       };
       updatedSubscribers = currentState.subscribers.map((s) => (s.id === targetSubscriber.id ? targetSubscriber : s));
     }
