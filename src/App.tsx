@@ -956,29 +956,21 @@ export default function App() {
       notes: 'تجديد اشتراك رسمي معتمد'
     };
 
-    const updatedAgents = currentState.agents.map((ag) => {
-      if (ag.id === updatedSubscriber.agentId || (updatedSubscriber.agentName && ag.name === updatedSubscriber.agentName)) {
-        const newDebt = isDebt ? ag.totalDebt + amount : ag.totalDebt;
-        const newPaid = isDebt ? ag.totalPaid : ag.totalPaid + amount;
-        return {
-          ...ag,
-          totalSales: ag.totalSales + amount,
-          totalDebt: newDebt,
-          totalPaid: newPaid,
-          activeSubscriptions: ag.activeSubscriptions + (wasActive ? 0 : 1),
-          inactiveSubscriptions: Math.max(0, ag.inactiveSubscriptions - (wasActive ? 0 : 1)),
-          hasDebt: newDebt > 0
-        };
+    const remainingInvoices = currentState.invoices.filter((inv) => {
+      const isMatch = inv.subscriberId === finalSubscriber.id;
+      if (isMatch && inv.id) {
+        void firebaseService.deleteInvoice(inv.id);
       }
-      return ag;
+      return !isMatch;
     });
+
+    const updatedInvoices = [newInvoice, ...remainingInvoices];
 
     updateAppState({
       subscribers: currentState.subscribers.map((subscriber) =>
         subscriber.id === finalSubscriber.id ? finalSubscriber : subscriber
       ),
-      invoices: [newInvoice, ...currentState.invoices],
-      agents: updatedAgents,
+      invoices: updatedInvoices,
       pendingRequests: pendingRequestId
         ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
         : currentState.pendingRequests
@@ -1063,12 +1055,12 @@ export default function App() {
         ...sub,
         status: stat,
         subscriptionType: dur,
-        amount: (sub.amount || 0) + amt,
+        amount: amt,
         startDate: sDate,
         endDate,
-        paymentStatus: payStat === 'paid' && sub.paymentStatus !== 'debt' ? 'paid' : 'debt',
-        paidAmount: payStat === 'paid' ? (sub.paidAmount || 0) + amt : (sub.paidAmount || 0),
-        debtAmount: payStat === 'debt' ? (sub.debtAmount || 0) + amt : (sub.debtAmount || 0),
+        paymentStatus: payStat,
+        paidAmount: payStat === 'paid' ? amt : 0,
+        debtAmount: payStat === 'debt' ? amt : 0,
         isActive: true
       };
       updatedSubscribers = currentState.subscribers.map((s) => (s.id === targetSubscriber.id ? targetSubscriber : s));
@@ -1091,7 +1083,15 @@ export default function App() {
       notes: req.notes || 'اعتماد طلب رسمي معتمد'
     };
 
-    const updatedInvoices = [newInvoice, ...currentState.invoices];
+    const remainingInvoices = currentState.invoices.filter((inv) => {
+      const isMatch = !isNewDeviceSale && inv.subscriberId === targetSubscriber.id;
+      if (isMatch && inv.id) {
+        void firebaseService.deleteInvoice(inv.id);
+      }
+      return !isMatch;
+    });
+
+    const updatedInvoices = [newInvoice, ...remainingInvoices];
     const updatedPendingRequests = currentState.pendingRequests.map((request) =>
       request.id === requestId ? { ...request, status: 'approved' as const } : request
     );
@@ -1519,6 +1519,12 @@ export default function App() {
               subscribers={state.subscribers}
               invoices={state.invoices}
               agents={state.agents}
+              pricing={state.pricing}
+              onSelectDeviceQr={handleOpenDeviceQr}
+              onUpdateSubscriber={handleUpdateSubscriber}
+              onDeleteSubscriber={handleDeleteSubscriber}
+              onRenewSubscriber={handleRenewSubscriber}
+              onOpenWhatsApp={setActiveWhatsAppSub}
             />
           )}
 

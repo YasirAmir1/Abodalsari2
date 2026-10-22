@@ -368,7 +368,7 @@ function fullStateOperations(state: AppState): WriteOperation[] {
     recordsFor(state, stateKey).forEach((record) => {
       operations.push({
         type: 'set',
-        ref: doc(collectionRef, encodeURIComponent(recordId(record))),
+        ref: doc(collectionRef, recordId(record)),
         data: { ...sanitize(record), tenantId: TENANT_ID }
       });
     });
@@ -384,13 +384,13 @@ function diffOperations(previous: AppState, next: AppState): WriteOperation[] {
     const after = new Map(recordsFor(next, stateKey).map((record) => [recordId(record), record]));
 
     before.forEach((_record, id) => {
-      if (!after.has(id)) operations.push({ type: 'delete', ref: doc(collectionRef, encodeURIComponent(id)) });
+      if (!after.has(id)) operations.push({ type: 'delete', ref: doc(collectionRef, id) });
     });
     after.forEach((record, id) => {
       if (JSON.stringify(sanitize(before.get(id))) !== JSON.stringify(sanitize(record))) {
         operations.push({
           type: 'set',
-          ref: doc(collectionRef, encodeURIComponent(id)),
+          ref: doc(collectionRef, id),
           data: { ...sanitize(record), tenantId: TENANT_ID }
         });
       }
@@ -593,10 +593,10 @@ export const firebaseService = {
 
     const saveTask = saveQueue.then(async () => {
       updateSyncStatus('syncing');
-      const subDocRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), encodeURIComponent(subscriber.id));
-      const reqDocRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), encodeURIComponent(requestId));
-      const invDocRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), encodeURIComponent(invoice.id));
-      const agentDocRef = doc(collection(db, 'tenants', TENANT_ID, 'agents'), encodeURIComponent(agent.id));
+      const subDocRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), subscriber.id);
+      const reqDocRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), requestId);
+      const invDocRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), invoice.id);
+      const agentDocRef = doc(collection(db, 'tenants', TENANT_ID, 'agents'), agent.id);
       const metaDocRef = TENANT_METADATA_REF;
       const resolvedRequest = nextState.pendingRequests.find((request) => request.id === requestId);
       const resolvedRequestData = {
@@ -636,7 +636,7 @@ export const firebaseService = {
 
   async deleteInvoice(id: string): Promise<void> {
     try {
-      const invRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), encodeURIComponent(id));
+      const invRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), id);
       await deleteDoc(invRef);
     } catch (e) {
       console.error('Failed to delete remote invoice:', e);
@@ -645,7 +645,7 @@ export const firebaseService = {
 
   async deleteSubscriber(id: string): Promise<void> {
     try {
-      const subRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), encodeURIComponent(id));
+      const subRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), id);
       await deleteDoc(subRef);
     } catch (e) {
       console.error('Failed to delete remote subscriber:', e);

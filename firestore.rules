@@ -7,8 +7,24 @@ service cloud.firestore {
     match /system_state/{stateId} {
       allow read, write: if true;
     }
-    match /tenants/{tenantId}/{document=**} {
+    match /tenants/{tenantId} {
       allow read, write: if true;
+      
+      match /subscribers/{id} {
+        allow read, write: if true;
+      }
+      match /agents/{id} {
+        allow read, write: if true;
+      }
+      match /sales/{id} {
+        allow read, write: if true;
+      }
+      match /requests/{id} {
+        allow read, write: if true;
+      }
+      match /metadata/{id} {
+        allow read, write: if true;
+      }
     }
     match /{document=**} {
       allow read, write: if true;
