@@ -174,7 +174,7 @@ export default function App() {
     stateRef.current = state;
   }, [state]);
 
-  // Current logged in user
+  // Current logged in user with persistent state for refresh/HMR
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
     try {
       const stored = localStorage.getItem(USER_SESSION_KEY);
@@ -185,9 +185,38 @@ export default function App() {
     return null;
   });
 
-  const [currentTab, setCurrentTab] = useState<NavTab>('dashboard');
-  const [isAgentMode, setIsAgentMode] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState('agent-01');
+  const [currentTab, setCurrentTab] = useState<NavTab>(() => {
+    try {
+      const stored = localStorage.getItem(USER_SESSION_KEY);
+      if (stored) {
+        const user = JSON.parse(stored) as SystemUser;
+        if (user.role === 'وكيل معتمد') return 'agent_portal';
+      }
+    } catch {}
+    return 'dashboard';
+  });
+
+  const [isAgentMode, setIsAgentMode] = useState(() => {
+    try {
+      const stored = localStorage.getItem(USER_SESSION_KEY);
+      if (stored) {
+        const user = JSON.parse(stored) as SystemUser;
+        return user.role === 'وكيل معتمد';
+      }
+    } catch {}
+    return false;
+  });
+
+  const [selectedAgentId, setSelectedAgentId] = useState(() => {
+    try {
+      const stored = localStorage.getItem(USER_SESSION_KEY);
+      if (stored) {
+        const user = JSON.parse(stored) as SystemUser;
+        if (user.role === 'وكيل معتمد' && user.agentId) return user.agentId;
+      }
+    } catch {}
+    return 'agent-01';
+  });
 
   // Modals state
   const [activeWhatsAppSub, setActiveWhatsAppSub] = useState<Subscriber | null>(null);
