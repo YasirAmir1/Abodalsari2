@@ -9,9 +9,18 @@ import {
   ShieldCheck,
   Send,
   PlusCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  CalendarRange,
+  BarChart3
 } from 'lucide-react';
-import { calculateTotalSales, calculateTotalDebts, getSubscriberOutstandingDebt, buildSubscriberDebtMap } from '../utils/calculationUtils';
+import {
+  calculateTotalSales,
+  calculateTotalDebts,
+  getSubscriberOutstandingDebt,
+  buildSubscriberDebtMap,
+  getSalesChartData,
+  getMonthlyFinancialSummary
+} from '../utils/calculationUtils';
 import { Agent, Invoice, Subscriber } from '../types';
 
 interface DashboardViewProps {
@@ -50,16 +59,64 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const activeAgentsCount = agents.filter((a) => a.id !== 'agent-main').length;
   const totalOperations = invoices.length;
 
-  // Chart data points matching Screenshot 1
-  const chartDays = [
-    { day: 'الأحد', amount: 315000, label: '315k' },
-    { day: 'الإثنين', amount: 15000, label: '15k' },
-    { day: 'الثلاثاء', amount: 97000, label: '97k' },
-    { day: 'الأربعاء', amount: 22000, label: '22k' },
-    { day: 'الخميس', amount: 8000, label: '8k' },
-    { day: 'الجمعة', amount: 0, label: '0' },
-    { day: 'السبت', amount: 0, label: '0' }
-  ];
+  // Today's sales calculation
+  const todaySales = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return invoices
+      .filter(inv => inv.date && inv.date.startsWith(todayStr))
+      .reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);
+  }, [invoices]);
+
+  // Chart data points
+  const chartDays = useMemo(() => getSalesChartData(invoices), [invoices]);
+
+  // SVG Point calculation
+  const maxAmount = useMemo(() => {
+    const max = Math.max(...chartDays.map(d => d.amount));
+    return max === 0 ? 100000 : max; // Default to 100k if no sales
+  }, [chartDays]);
+
+  const svgPoints = useMemo(() => {
+    return chartDays.map((d, i) => {
+      const x = 50 + i * 100;
+      // Y range: 180 (bottom) to 25 (top) -> Height 155
+      const y = 180 - (d.amount / maxAmount) * 155;
+      return { ...d, cx: x, cy: y };
+    });
+  }, [chartDays, maxAmount]);
+
+  const pathD = useMemo(() => {
+    if (svgPoints.length === 0) return '';
+    return svgPoints.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.cx} ${pt.cy}`).join(' ');
+  }, [svgPoints]);
+
+  const areaD = useMemo(() => {
+    if (svgPoints.length === 0) return '';
+    const lastPt = svgPoints[svgPoints.length - 1];
+    const firstPt = svgPoints[0];
+    return `${pathD} L ${lastPt.cx} 180 L ${firstPt.cx} 180 Z`;
+  }, [pathD, svgPoints]);
+
+  // Monthly Summary
+  const monthlySummary = useMemo(() => getMonthlyFinancialSummary(invoices), [invoices]);
+  
+  // Growth Chart Data (Last 6 months)
+  const growthChartData = useMemo(() => {
+    const data = [...monthlySummary].reverse().slice(-6);
+    if (data.length === 0) return [];
+    
+    const maxSales = Math.max(...data.map(d => d.sales)) || 1000000;
+    return data.map((d, i) => {
+      const x = 50 + (i * (600 / (data.length - 1 || 1)));
+      const y = 150 - (d.sales / maxSales) * 120;
+      return { ...d, x, y };
+    });
+  }, [monthlySummary]);
+
+  const growthPathD = useMemo(() => {
+    if (growthChartData.length === 0) return '';
+    return growthChartData.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`).join(' ');
+  }, [growthChartData]);
 
   return (
     <div className="space-y-6">
@@ -127,7 +184,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="mt-4">
             <div className="text-2xl font-black text-slate-900 tracking-tight flex items-baseline gap-1">
-              <span>0</span>
+              <span>{todaySales.toLocaleString()}</span>
               <span className="text-xs font-bold text-slate-400">د.ع</span>
             </div>
           </div>
@@ -252,15 +309,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <line x1="0" y1="60" x2="700" y2="60" stroke="#f1f5f9" strokeWidth="1" />
 
             {/* Area Fill */}
-            {/* Coordinates calculated for 7 days: X at 50, 150, 250, 350, 450, 550, 650 */}
             <path
-              d="M 50 180 L 50 25 L 150 170 L 250 110 L 350 160 L 450 175 L 550 180 L 650 180 L 650 180 Z"
+              d={areaD}
               fill="url(#areaGradient)"
             />
 
-            {/* Line Path matching Screenshot 1 curve */}
+            {/* Line Path */}
             <path
-              d="M 50 25 L 150 170 L 250 110 L 350 160 L 450 175 L 550 180 L 650 180"
+              d={pathD}
               fill="none"
               stroke="#0369a1"
               strokeWidth="3.5"
@@ -269,15 +325,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             />
 
             {/* Data Points */}
-            {[
-              { cx: 50, cy: 25, label: '315k', val: '315,000 د.ع' },
-              { cx: 150, cy: 170, label: '', val: '15,000 د.ع' },
-              { cx: 250, cy: 110, label: '97k', val: '97,000 د.ع' },
-              { cx: 350, cy: 160, label: '22k', val: '22,000 د.ع' },
-              { cx: 450, cy: 175, label: '', val: '8,000 د.ع' },
-              { cx: 550, cy: 180, label: '', val: '0 د.ع' },
-              { cx: 650, cy: 180, label: '', val: '0 د.ع' }
-            ].map((pt, i) => (
+            {svgPoints.map((pt, i) => (
               <g key={i} className="cursor-pointer">
                 {pt.label && (
                   <text
@@ -315,6 +363,124 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 {d.day}
               </span>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Monthly Financial Summary & Growth Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Table: Monthly Summary */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <CalendarRange className="w-5 h-5 text-sky-600" />
+              <h3 className="font-black text-slate-900 text-lg">الملخص المالي الشهري</h3>
+            </div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">البيانات التاريخية</span>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-slate-400 font-bold">
+                  <th className="pb-3 pr-2">الشهر</th>
+                  <th className="pb-3">إجمالي المبيعات</th>
+                  <th className="pb-3">المدفوعات</th>
+                  <th className="pb-3">الديون المتبقية</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {monthlySummary.slice(0, 6).map((item, idx) => (
+                  <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="py-4 pr-2 font-bold text-slate-700">
+                      {item.monthName} {item.year}
+                    </td>
+                    <td className="py-4 font-black text-slate-900">
+                      {item.sales.toLocaleString()} <span className="text-[10px] text-slate-400">د.ع</span>
+                    </td>
+                    <td className="py-4 font-bold text-emerald-600">
+                      {item.paid.toLocaleString()} <span className="text-[10px] text-emerald-400">د.ع</span>
+                    </td>
+                    <td className="py-4 font-bold text-red-500">
+                      {item.debt.toLocaleString()} <span className="text-[10px] text-red-400">د.ع</span>
+                    </td>
+                  </tr>
+                ))}
+                {monthlySummary.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-8 text-center text-slate-400 italic">
+                      لا توجد بيانات متاحة حالياً
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Growth Chart */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col">
+          <div className="flex items-center gap-2 mb-6">
+            <BarChart3 className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-black text-slate-900 text-lg">نمو المبيعات شهرياً</h3>
+          </div>
+          
+          <div className="flex-1 relative min-h-[200px]">
+            {growthChartData.length > 0 ? (
+              <svg className="w-full h-full overflow-visible" viewBox="0 0 700 180" preserveAspectRatio="none">
+                {/* Horizontal Gridlines */}
+                <line x1="0" y1="150" x2="700" y2="150" stroke="#f8fafc" strokeWidth="1" />
+                <line x1="0" y1="100" x2="700" y2="100" stroke="#f8fafc" strokeWidth="1" />
+                <line x1="0" y1="50" x2="700" y2="50" stroke="#f8fafc" strokeWidth="1" />
+                
+                {/* Growth Path */}
+                <path
+                  d={growthPathD}
+                  fill="none"
+                  stroke="#4f46e5"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="drop-shadow-sm"
+                />
+                
+                {/* Points */}
+                {growthChartData.map((pt, i) => (
+                  <g key={i}>
+                    <circle
+                      cx={pt.x}
+                      cy={pt.y}
+                      r="5"
+                      fill="#ffffff"
+                      stroke="#4f46e5"
+                      strokeWidth="3"
+                    />
+                    <text
+                      x={pt.x}
+                      y={175}
+                      textAnchor="middle"
+                      className="text-[10px] font-bold fill-slate-400"
+                    >
+                      {pt.monthName}
+                    </text>
+                  </g>
+                ))}
+              </svg>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-slate-300 text-sm italic">
+                بانتظار اكتمال بيانات الأشهر القادمة
+              </div>
+            )}
+          </div>
+          
+          <div className="mt-6 pt-4 border-t border-slate-50">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500">معدل النمو التقريبي:</span>
+              <span className="font-bold text-emerald-600 flex items-center gap-1">
+                <ArrowUpRight className="w-3 h-3" />
+                إيجابي
+              </span>
+            </div>
           </div>
         </div>
       </div>

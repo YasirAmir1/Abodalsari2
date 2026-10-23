@@ -205,3 +205,91 @@ export function computeUpdatedAgents(agents: any[], subscribers: Subscriber[], i
     };
   });
 }
+
+export function getSalesChartData(invoices: Invoice[] = []) {
+  const daysInArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const chartData = [];
+  
+  // Get last 7 days including today
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (let i = 6; i >= 0; i--) {
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() - i);
+    
+    const dateStr = targetDate.toISOString().split('T')[0];
+    const dayName = daysInArabic[targetDate.getDay()];
+    
+    // Sum invoice amounts for this date
+    const dailyTotal = invoices
+      .filter(inv => inv.date && inv.date.startsWith(dateStr))
+      .reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);
+      
+    // Format label (e.g., 315k or 15k)
+    let label = '0';
+    if (dailyTotal >= 1000) {
+      label = (dailyTotal / 1000).toFixed(dailyTotal % 1000 === 0 ? 0 : 1) + 'k';
+    } else if (dailyTotal > 0) {
+      label = dailyTotal.toString();
+    }
+
+    chartData.push({
+      day: dayName,
+      amount: dailyTotal,
+      label: label === '0' ? '' : label,
+      fullLabel: dailyTotal.toLocaleString() + ' د.ع'
+    });
+  }
+
+  return chartData;
+}
+
+export function getMonthlyFinancialSummary(invoices: Invoice[] = []) {
+  const monthsInArabic = [
+    'كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران',
+    'تموز', 'آب', 'أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول'
+  ];
+  
+  const monthlyMap = new Map<string, { 
+    monthName: string, 
+    year: number, 
+    month: number,
+    sales: number, 
+    paid: number, 
+    debt: number 
+  }>();
+
+  // Process all invoices to group by month
+  invoices.forEach(inv => {
+    if (!inv.date) return;
+    const date = new Date(inv.date);
+    const month = date.getMonth();
+    const year = date.getFullYear();
+    const key = `${year}-${month}`;
+
+    if (!monthlyMap.has(key)) {
+      monthlyMap.set(key, {
+        monthName: monthsInArabic[month],
+        year,
+        month,
+        sales: 0,
+        paid: 0,
+        debt: 0
+      });
+    }
+
+    const entry = monthlyMap.get(key)!;
+    entry.sales += Number(inv.amount) || 0;
+    entry.paid += Number(inv.paidAmount) || 0;
+    entry.debt += Number(inv.remainingAmount) || 0;
+  });
+
+  // Convert map to array and sort by date (descending for table, ascending for chart)
+  const summary = Array.from(monthlyMap.values()).sort((a, b) => {
+    if (a.year !== b.year) return b.year - a.year;
+    return b.month - a.month;
+  });
+
+  return summary;
+}

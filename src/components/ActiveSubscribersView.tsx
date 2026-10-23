@@ -143,64 +143,69 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
 
         <div className="mt-6 overflow-x-auto">
           <table className="w-full text-right text-sm">
-            <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-              <tr>
-                <th className="px-4 py-3">المشترك</th>
-                <th className="px-4 py-3">رقم الجهاز</th>
-                <th className="px-4 py-3">الوكيل</th>
-                <th className="px-4 py-3">نوع الاشتراك</th>
-                <th className="px-4 py-3">المبلغ</th>
-                <th className="px-4 py-3">تاريخ البداية</th>
-                <th className="px-4 py-3">تاريخ الانتهاء</th>
-                <th className="px-4 py-3">الدفع</th>
-                <th className="px-4 py-3">الحالة</th>
-                <th className="px-4 py-3 text-center">إجراءات</th>
+            <thead className="bg-slate-50/80 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400">
+              <tr className="border-b border-slate-200 dark:border-slate-700">
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">المشترك</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">رقم الجهاز</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">الوكيل</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">نوع الاشتراك</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">المبلغ</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">تاريخ البداية</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">تاريخ الانتهاء</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">الدفع</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider">الحالة</th>
+                <th className="px-4 py-4 text-xs font-black uppercase tracking-wider text-center">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {filteredSubscribers.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800">
-                  <td className="px-4 py-3 font-bold text-slate-900 dark:text-slate-100">{s.name}</td>
-                  <td className="px-4 py-3 font-mono">
+                <tr key={s.id} className="group hover:bg-sky-50/30 dark:hover:bg-sky-900/10 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0">
+                  <td className="px-4 py-4 font-black text-slate-900 dark:text-slate-100">{s.name}</td>
+                  <td className="px-4 py-4 font-mono">
                     <button
                       onClick={() => onSelectDeviceQr(s.deviceId, s.name, s.agentName)}
-                      className="text-sky-700 dark:text-sky-400 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                      className="text-sky-600 dark:text-sky-400 font-black hover:text-sky-800 dark:hover:text-sky-300 cursor-pointer flex items-center gap-1.5 transition-colors"
                       title="اضغط لعرض رمز QR للجهاز"
                     >
-                      <QrCode className="w-3.5 h-3.5 text-sky-600 opacity-70" />
+                      <QrCode className="w-3.5 h-3.5 opacity-70" />
                       <span>{s.deviceId}</span>
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{s.agentName || 'المركز الرئيسي'}</td>
-                  <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{s.subscriptionType}</td>
-                  <td className="px-4 py-3 font-bold text-sky-700 dark:text-sky-300">{s.amount.toLocaleString()} د.ع</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{s.startDate}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{s.endDate}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                      s.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                  <td className="px-4 py-4">
+                    <span className="text-slate-600 dark:text-slate-400 font-semibold">{s.agentName || 'المركز الرئيسي'}</span>
+                  </td>
+                  <td className="px-4 py-4 text-slate-600 dark:text-slate-400 font-medium">{s.subscriptionType}</td>
+                  <td className="px-4 py-4 font-black text-sky-700 dark:text-sky-300">{s.amount.toLocaleString()} <span className="text-[10px] opacity-70">د.ع</span></td>
+                  <td className="px-4 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs">{s.startDate}</td>
+                  <td className="px-4 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs font-bold">{s.endDate}</td>
+                  <td className="px-4 py-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-tight ${
+                      s.paymentStatus === 'paid' 
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border border-emerald-200 dark:border-emerald-800' 
+                        : 'bg-red-50 dark:bg-red-950/30 text-red-600 border border-red-200 dark:border-red-800'
                     }`}>
-                      {s.paymentStatus === 'paid' ? 'نقدي' : 'دين'}
+                      {s.paymentStatus === 'paid' ? 'تم الدفع' : 'متبقي دين'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> فعال
+                  <td className="px-4 py-4">
+                    <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-black text-[11px] bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-lg border border-emerald-100 dark:border-emerald-800/40">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      فعال
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
+                  <td className="px-4 py-4">
+                    <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => setRenewingSubscriber(s)}
-                        className="p-1.5 rounded-lg text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/30 transition-colors"
-                        title="تعديل الاشتراك"
+                        className="p-2 rounded-xl text-sky-600 bg-sky-50 dark:bg-sky-900/20 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-all border border-sky-100 dark:border-sky-800"
+                        title="تجديد / تعديل"
                       >
                         <RefreshCw className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => setDeletingSubscriber(s)}
-                        className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-                        title="حذف المشترك"
+                        className="p-2 rounded-xl text-red-600 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all border border-red-100 dark:border-red-800"
+                        title="حذف"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>

@@ -41,6 +41,7 @@ interface SidebarProps {
   isDark?: boolean;
   isOpen?: boolean;
   onClose?: () => void;
+  onPrefetchTab?: (tab: NavTab) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -55,7 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   isDark = false,
   isOpen = false,
-  onClose
+  onClose,
+  onPrefetchTab
 }) => {
   const menuItems = [
     { id: 'dashboard' as NavTab, label: 'الداشبورد', icon: LayoutDashboard },
@@ -125,6 +127,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onSelectTab('agent_portal');
                 if (onClose) onClose();
               }}
+              onMouseEnter={() => onPrefetchTab?.('agent_portal')}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                 currentTab === 'agent_portal'
                   ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'
@@ -148,6 +151,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onSelectTab(item.id);
                   if (onClose) onClose();
                 }}
+                onMouseEnter={() => onPrefetchTab?.(item.id)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                   isActive
                     ? 'bg-sky-100/90 text-sky-950 font-bold shadow-xs border border-sky-200/60 dark:bg-[#132A55] dark:text-sky-300 dark:border-sky-500/30'

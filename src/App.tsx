@@ -136,8 +136,8 @@ import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt, buildSubscribe
 import { INITIAL_AGENTS } from './data/mockData';
 
 import { Sidebar, NavTab } from './components/Sidebar';
-import { Header } from './components/Header';
-import { LoginView } from './components/LoginView';
+const LoginView = lazy(() => import('./components/LoginView').then(({ LoginView }) => ({ default: LoginView })));
+const Header = lazy(() => import('./components/Header').then(({ Header }) => ({ default: Header })));
 import { useAppDialogs } from './components/AppDialogProvider';
 
 const USER_SESSION_KEY = 'alsari_auth_user_v1';
@@ -148,8 +148,7 @@ const PendingRequestsView = lazy(() => import('./components/PendingRequestsView'
 const AgentsView = lazy(() => import('./components/AgentsView').then(({ AgentsView }) => ({ default: AgentsView })));
 const ProductsView = lazy(() => import('./components/ProductsView').then(({ ProductsView }) => ({ default: ProductsView })));
 const QrCodesView = lazy(() => import('./components/QrCodesView').then(({ QrCodesView }) => ({ default: QrCodesView })));
-import { PricingView } from './components/PricingView';
-// const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
+const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
 const SalesInvoicesView = lazy(() => import('./components/SalesInvoicesView').then(({ SalesInvoicesView }) => ({ default: SalesInvoicesView })));
 const DebtsView = lazy(() => import('./components/DebtsView').then(({ DebtsView }) => ({ default: DebtsView })));
 const ActiveSubscribersView = lazy(() => import('./components/ActiveSubscribersView').then(({ ActiveSubscribersView }) => ({ default: ActiveSubscribersView })));
@@ -158,6 +157,20 @@ const WhatsAppModal = lazy(() => import('./components/WhatsAppModal').then(({ Wh
 const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(({ ReceiptModal }) => ({ default: ReceiptModal })));
 const DeviceQrModal = lazy(() => import('./components/DeviceQrModal').then(({ DeviceQrModal }) => ({ default: DeviceQrModal })));
 const InvoiceSuccessModal = lazy(() => import('./components/InvoiceSuccessModal').then(({ InvoiceSuccessModal }) => ({ default: InvoiceSuccessModal })));
+
+const componentsMap: Record<NavTab, () => Promise<any>> = {
+  dashboard: () => import('./components/DashboardView'),
+  subscribers: () => import('./components/SubscribersView'),
+  pending: () => import('./components/PendingRequestsView'),
+  agents: () => import('./components/AgentsView'),
+  products: () => import('./components/ProductsView'),
+  barcodes: () => import('./components/QrCodesView'),
+  pricing: () => import('./components/PricingView'),
+  sales: () => import('./components/SalesInvoicesView'),
+  debts: () => import('./components/DebtsView'),
+  active_subscribers: () => import('./components/ActiveSubscribersView'),
+  agent_portal: () => import('./components/AgentPortalView'),
+};
 
 export default function App() {
   const { showAlert } = useAppDialogs();
@@ -603,6 +616,11 @@ export default function App() {
     setCurrentTab(tab);
     setSubscribersAgentFilter(undefined);
   };
+
+  const handlePrefetchTab = useCallback((tab: NavTab) => {
+    const loader = componentsMap[tab];
+    if (loader) loader();
+  }, []);
 
   // Open QR modal helper
   const handleOpenDeviceQr = (deviceId: string, subscriberName?: string, agentName?: string) => {
@@ -1609,7 +1627,11 @@ export default function App() {
 
   // If not logged in, display Login Page matching Screenshot 1!
   if (!currentUser) {
-    return <LoginView users={state.users} agents={state.agents} onLogin={handleLogin} />;
+    return (
+      <Suspense fallback={null}>
+        <LoginView users={state.users} agents={state.agents} onLogin={handleLogin} />
+      </Suspense>
+    );
   }
 
   // Titles mapping
@@ -1643,24 +1665,27 @@ export default function App() {
         isDark={isDarkMode}
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
+        onPrefetchTab={handlePrefetchTab}
       />
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         {/* Top Header */}
-        <Header
-          pageTitle={pageTitles[currentTab]}
-          currentTab={currentTab}
-          isAgentMode={isAgentMode}
-          agentsList={state.agents.filter((a) => a.id !== 'agent-main')}
-          selectedAgentId={selectedAgentId}
-          onSelectAgent={setSelectedAgentId}
-          onLogout={handleLogout}
-          isDark={isDarkMode}
-          onToggleDark={handleToggleDarkMode}
-          onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
-          onSync={handleManualSync}
-        />
+        <Suspense fallback={<div className="h-16 bg-white dark:bg-[#070D1E] border-b border-slate-200 dark:border-[#141D34]" />}>
+          <Header
+            pageTitle={pageTitles[currentTab]}
+            currentTab={currentTab}
+            isAgentMode={isAgentMode}
+            agentsList={state.agents.filter((a) => a.id !== 'agent-main')}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+            onLogout={handleLogout}
+            isDark={isDarkMode}
+            onToggleDark={handleToggleDarkMode}
+            onToggleSidebar={() => setIsMobileSidebarOpen((prev) => !prev)}
+            onSync={handleManualSync}
+          />
+        </Suspense>
 
         {/* Dynamic Views */}
         <main className="p-4 md:p-6 max-w-7xl w-full mx-auto flex-1">
