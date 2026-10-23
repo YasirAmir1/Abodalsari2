@@ -326,10 +326,18 @@ function stateFromRemoteTables(
   metadata: Record<string, unknown>
 ): AppState {
   const base = metadataToState(metadata, emptyState());
+  let agentList = (tables.agents && tables.agents.length > 0) ? (tables.agents as unknown as Agent[]) : INITIAL_AGENTS;
+  
+  // Ensure 'agent-main' (HQ) is always present in the list even if missing from Firestore collection
+  if (!agentList.some(a => a.id === 'agent-main')) {
+    const mainAgent = INITIAL_AGENTS.find(a => a.id === 'agent-main');
+    if (mainAgent) agentList = [mainAgent, ...agentList];
+  }
+
   return {
     ...base,
     subscribers: tables.subscribers as unknown as AppState['subscribers'],
-    agents: (tables.agents && tables.agents.length > 0) ? (tables.agents as unknown as AppState['agents']) : INITIAL_AGENTS,
+    agents: agentList,
     invoices: tables.invoices as unknown as AppState['invoices'],
     pendingRequests: tables.pendingRequests as unknown as AppState['pendingRequests']
   };

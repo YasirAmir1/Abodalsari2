@@ -26,6 +26,8 @@ export type NavTab =
   | 'pricing'
   | 'agent_portal';
 
+import { Agent, SystemUser } from '../types';
+
 interface SidebarProps {
   currentTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
@@ -34,6 +36,7 @@ interface SidebarProps {
   isAgentMode: boolean;
   onToggleAgentMode: () => void;
   selectedAgentName?: string;
+  currentUser?: SystemUser | null;
   onLogout?: () => void;
   isDark?: boolean;
   isOpen?: boolean;
@@ -48,6 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isAgentMode,
   onToggleAgentMode,
   selectedAgentName,
+  currentUser,
   onLogout,
   isDark = false,
   isOpen = false,
@@ -174,19 +178,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-2 rounded-xl bg-slate-50 hover:bg-slate-100/90 dark:bg-[#0D1836] dark:border-[#1E2C52] transition-colors border border-slate-200/70 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-full bg-sky-900 dark:bg-sky-600 text-white font-bold flex items-center justify-center text-xs shadow-xs shrink-0">
-              أ
+              {currentUser?.displayName ? currentUser.displayName.substring(0, 1) : 'أ'}
             </div>
             <div className="text-right">
               <div className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                {isAgentMode ? selectedAgentName || 'وكيل معتمد' : 'أدمن المركز (dsari...)'}
+                {isAgentMode ? selectedAgentName || 'وكيل معتمد' : (currentUser?.displayName || 'أدمن المركز')}
               </div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400">{isAgentMode ? 'وكالة معتمدة' : 'أدمن رئيسي'}</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400">{isAgentMode ? 'وكالة معتمدة' : (currentUser?.role || 'أدمن رئيسي')}</div>
             </div>
           </div>
           <button
-            onClick={onLogout || onToggleAgentMode}
+            onClick={onLogout ? onLogout : onToggleAgentMode}
             className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-white dark:hover:bg-slate-800 transition-colors"
-            title="تسجيل الخروج أو تبديل الحساب"
+            title={onLogout ? "تسجيل الخروج" : "تبديل الوضع"}
           >
             <LogOut className="w-4 h-4 rotate-180" />
           </button>

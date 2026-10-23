@@ -191,6 +191,7 @@ export default function App() {
       if (stored) {
         const user = JSON.parse(stored) as SystemUser;
         if (user.role === 'وكيل معتمد') return 'agent_portal';
+        if (user.role === 'مدير رئيسي') return 'dashboard';
       }
     } catch {}
     return 'dashboard';
@@ -201,6 +202,7 @@ export default function App() {
       const stored = localStorage.getItem(USER_SESSION_KEY);
       if (stored) {
         const user = JSON.parse(stored) as SystemUser;
+        // Strictly only agents enter Agent Mode by default
         return user.role === 'وكيل معتمد';
       }
     } catch {}
@@ -213,9 +215,11 @@ export default function App() {
       if (stored) {
         const user = JSON.parse(stored) as SystemUser;
         if (user.role === 'وكيل معتمد' && user.agentId) return user.agentId;
+        if (user.role === 'مدير رئيسي') return 'agent-main';
+        if (user.agentId) return user.agentId;
       }
     } catch {}
-    return 'agent-01';
+    return 'agent-main';
   });
 
   // Modals state
@@ -470,7 +474,7 @@ export default function App() {
     hasDebt: false,
     avatarInitials: 'م'
   };
-  const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents[0] || fallbackAgent;
+  const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents.find(a => a.id === 'agent-main') || state.agents[0] || fallbackAgent;
 
   // Auth Handlers
   useEffect(() => {
@@ -506,6 +510,7 @@ export default function App() {
       setCurrentTab('agent_portal');
     } else {
       setIsAgentMode(false);
+      setSelectedAgentId('agent-main');
       setCurrentTab('dashboard');
     }
     soundService.playSuccess();
@@ -1633,6 +1638,7 @@ export default function App() {
         isAgentMode={isAgentMode}
         onToggleAgentMode={handleToggleAgentMode}
         selectedAgentName={currentAgent.name}
+        currentUser={currentUser}
         onLogout={handleLogout}
         isDark={isDarkMode}
         isOpen={isMobileSidebarOpen}
