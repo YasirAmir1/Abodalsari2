@@ -121,6 +121,7 @@ import {
   SecurityAlert,
   Subscriber,
   SubscriptionDuration,
+  SubscriptionStatus,
   SystemUser,
   PaymentStatus
 } from './types';
@@ -1082,50 +1083,67 @@ export default function App() {
     const req = currentState.pendingRequests.find((r) => r.id === requestId && r.status === 'pending');
     if (!req) return;
 
-    const isNewDeviceSale = req.subscriberId.startsWith('new-sub-') || req.duration === '-';
-    const sDate = overrides?.startDate || new Date().toISOString().split('T')[0];
-    const requestedDuration = overrides?.duration || (req.duration && req.duration !== '-' ? req.duration : '1 شهر');
-    const supportedDurations: SubscriptionDuration[] = ['1 شهر', 'شهرين', '3 أشهر'];
-    const dur = supportedDurations.includes(requestedDuration) ? requestedDuration : '1 شهر';
-    const amt = overrides?.amount !== undefined ? overrides.amount : req.amount;
-    const stat = isNewDeviceSale ? 'inactive' : 'active';
-    const payStat = overrides?.paymentStatus || 'paid';
-    const expDate = new Date(sDate);
-    const months = dur === 'شهرين' ? 2 : dur === '3 أشهر' ? 3 : 1;
-    expDate.setMonth(expDate.getMonth() + months);
-    const endDate = expDate.toISOString().split('T')[0];
+    // Extract values with priority: overrides -> request -> defaults
+    const amt = overrides?.amount ?? req.amount ?? 22000;
+    const sDate = overrides?.startDate ?? req.requestDate ?? new Date().toISOString().split('T')[0];
+    const dur = (overrides?.duration ?? req.duration ?? '1 شهر') as SubscriptionDuration;
+    const payStat = (overrides?.paymentStatus ?? 'paid') as PaymentStatus;
+
+    // Determine if this is a new subscriber registration or a renewal
+    const isNewDeviceSale = req.requestType === 'new_device' || req.duration === '-' || req.subscriberId.startsWith('new-sub-');
+    const isNewSub = req.subscriberId.startsWith('new-sub-');
+    
+    // Generate a permanent subscriber ID if this is a new one
+    const finalSubscriberId = isNewSub ? 'sub-' + Date.now() : req.subscriberId;
+
+    // Calculate End Date
+    let endDate = '-';
+    if (!isNewDeviceSale) {
+      const start = new Date(sDate);
+      let days = 30;
+      if (dur === 'شهرين') days = 60;
+      else if (dur === '3 أشهر') days = 90;
+      endDate = new Date(start.getTime() + (days * 24 * 60 * 60 * 1000)).toISOString().split('T')[0];
+    }
+
+    const stat: SubscriptionStatus = isNewDeviceSale ? 'inactive' : 'active';
 
     let targetSubscriber: Subscriber;
     let updatedSubscribers: Subscriber[];
 
-    if (isNewDeviceSale) {
+    if (isNewSub) {
       const rawDev = (req.deviceId || '').trim();
       const cleanDev = rawDev
         ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`)
         : `00${Math.floor(100000 + Math.random() * 900000)}`;
+      
       const assignedAgent = currentState.agents.find(
         (agent) => agent.id === req.agentId || agent.name === req.agentName
       );
+
       targetSubscriber = {
-        id: req.subscriberId.startsWith('new-sub-') ? req.subscriberId : 'sub-' + Date.now(),
+        id: finalSubscriberId,
         name: req.subscriberName,
         phone: req.subscriberPhone,
         deviceId: cleanDev,
         agentId: assignedAgent?.id || req.agentId || 'agent-main',
         agentName: assignedAgent?.name || req.agentName || 'المركز الرئيسي',
-        subscriptionType: '-',
+        subscriptionType: isNewDeviceSale ? '-' : dur,
         status: stat,
         paymentStatus: payStat,
-        amount: amt,
+        amount: isNewDeviceSale ? 0 : amt,
         originalAmount: amt,
         paidAmount: payStat === 'paid' ? amt : 0,
         debtAmount: payStat === 'debt' ? amt : 0,
-        startDate: '-',
-        endDate: '-',
+        startDate: isNewDeviceSale ? '-' : sDate,
+        endDate: endDate,
         notes: req.notes || 'بيع جهاز جديد وتفعيل عبر الوكيل',
-        createdAt: req.requestDate || new Date().toISOString().split('T')[0]
+        createdAt: req.requestDate || new Date().toISOString().split('T')[0],
+        isActive: !isNewDeviceSale
       };
-      updatedSubscribers = [targetSubscriber, ...currentState.subscribers];
+      
+      // Remove the temporary new-sub- if it exists in local state
+      updatedSubscribers = [targetSubscriber, ...currentState.subscribers.filter(s => s.id !== req.subscriberId)];
     } else {
       const sub = currentState.subscribers.find((s) => s.id === req.subscriberId);
       if (!sub) {
@@ -1135,13 +1153,13 @@ export default function App() {
       targetSubscriber = {
         ...sub,
         status: stat,
-        subscriptionType: dur,
-        amount: amt,
-        startDate: sDate,
-        endDate,
+        subscriptionType: isNewDeviceSale ? '-' : dur,
+        amount: isNewDeviceSale ? 0 : amt,
+        startDate: isNewDeviceSale ? '-' : sDate,
+        endDate: endDate,
         paymentStatus: payStat,
-        paidAmount: payStat === 'paid' ? amt : 0,
-        debtAmount: payStat === 'debt' ? amt : 0,
+        paidAmount: payStat === 'paid' ? (sub.paidAmount || 0) + amt : (sub.paidAmount || 0),
+        debtAmount: payStat === 'debt' ? amt : (sub.debtAmount || 0),
         isActive: true
       };
       updatedSubscribers = currentState.subscribers.map((s) => (s.id === targetSubscriber.id ? targetSubscriber : s));
@@ -1164,18 +1182,15 @@ export default function App() {
       notes: req.notes || 'اعتماد طلب رسمي معتمد'
     };
 
-    const remainingInvoices = currentState.invoices.filter((inv) => {
-      const isMatch = !isNewDeviceSale && inv.subscriberId === targetSubscriber.id;
-      if (isMatch && inv.id) {
-        void firebaseService.deleteInvoice(inv.id);
-      }
-      return !isMatch;
-    });
-
-    const updatedInvoices = [newInvoice, ...remainingInvoices];
+    // Filter out OLD invoices for this subscriber only if it's a renewal (optional logic, keeping history is usually better)
+    // But for this app, we'll keep the history but ensure agents only count the latest debt correctly via computeUpdatedAgents
+    const updatedInvoices = [newInvoice, ...currentState.invoices];
+    
     const updatedPendingRequests = currentState.pendingRequests.map((request) =>
       request.id === requestId ? { ...request, status: 'approved' as const } : request
     );
+    
+    // Recompute agent metrics based on the new data
     const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
     const targetAgent = updatedAgents.find((ag) => ag.id === targetSubscriber.agentId) || updatedAgents[0];
 
@@ -1188,11 +1203,22 @@ export default function App() {
       lastUpdatedTimestamp: Date.now()
     };
 
-    updateAppState({
-      subscribers: updatedSubscribers,
-      invoices: updatedInvoices,
-      pendingRequests: updatedPendingRequests
-    }, 'Could not immediately sync pending request approval:');
+    // Update local state IMMEDIATELY for responsive UI
+    setState(nextFullState);
+    stateRef.current = nextFullState;
+    storageService.saveState(nextFullState);
+
+    // Use atomic transaction for bulletproof approval persistence in the cloud
+    void firebaseService.executeApprovalTransaction({
+      subscriber: targetSubscriber,
+      invoice: newInvoice,
+      agent: targetAgent,
+      requestId,
+      nextFullState
+    }).catch((err) => {
+      console.error('Approval transaction failed:', err);
+      showAlert('حدث خطأ أثناء مزامنة الاعتماد مع السحابة. يرجى التحقق من اتصالك.', 'خطأ في المزامنة', 'warning');
+    });
 
     appFeatures.broadcastAdminUpdate({
       action: 'APPROVE_PENDING_REQUEST',
@@ -1201,7 +1227,7 @@ export default function App() {
       agentId: targetSubscriber.agentId,
       timestamp: Date.now()
     });
-    firebaseService.broadcastLocalChange(nextFullState);
+    
     soundService.playSuccess();
   };
 
