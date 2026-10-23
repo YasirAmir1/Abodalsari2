@@ -465,18 +465,18 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
           onScroll={handleAgentSubscribersTableScroll}
           className="max-h-[70vh] overflow-auto"
         >
-          <table className="w-full min-w-[1120px] text-right text-xs border-collapse">
+          <table className="w-full md:min-w-[1120px] text-right text-xs border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 font-bold">
-                <th className="py-3 px-4">اسم المشترك</th>
-                <th className="py-3 px-3">رقم الجهاز</th>
-                <th className="py-3 px-3">الهاتف</th>
-                <th className="py-3 px-3">نوع الباقة</th>
-                <th className="py-3 px-3">المبلغ</th>
-                <th className="py-3 px-3">طريقة الدفع</th>
-                <th className="py-3 px-3">حالة البث</th>
-                <th className="py-3 px-3">تاريخ البدء</th>
-                <th className="py-3 px-3">تاريخ الانتهاء</th>
+                <th className="py-3 px-4">المشترك / الجهاز</th>
+                <th className="py-3 px-3 hidden md:table-cell">رقم الجهاز</th>
+                <th className="py-3 px-3 hidden md:table-cell">الهاتف</th>
+                <th className="py-3 px-3">الباقة / السعر</th>
+                <th className="py-3 px-3 hidden md:table-cell">المبلغ</th>
+                <th className="py-3 px-3">الدفع / الحالة</th>
+                <th className="py-3 px-3 hidden md:table-cell">حالة البث</th>
+                <th className="py-3 px-3">المدة (من - إلى)</th>
+                <th className="py-3 px-3 hidden md:table-cell">تاريخ الانتهاء</th>
                 <th className="py-3 px-4 text-center">الإجراءات</th>
               </tr>
             </thead>
@@ -516,9 +516,22 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
 
                   return (
                     <React.Fragment key={sub.id}>
-                      <tr className="h-16 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">{sub.name || '—'}</td>
-                        <td className="py-3 px-3 font-mono">
+                      <tr className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors border-b border-slate-100 dark:border-slate-800 md:h-16">
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-bold text-slate-900 dark:text-slate-100">{sub.name || '—'}</span>
+                            <div className="md:hidden flex flex-col gap-0.5">
+                              <button
+                                onClick={() => onSelectDeviceQr && onSelectDeviceQr(sub.deviceId, sub.name, currentAgent.name)}
+                                className="font-bold text-sky-700 dark:text-sky-400 text-[10px] text-right"
+                              >
+                                📱 {sub.deviceId || '—'}
+                              </button>
+                              <span className="text-[10px] text-slate-500 font-mono">{sub.phone || '—'}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono hidden md:table-cell">
                           <button
                             onClick={() => onSelectDeviceQr && onSelectDeviceQr(sub.deviceId, sub.name, currentAgent.name)}
                             className="font-bold text-sky-800 dark:text-sky-400 hover:underline cursor-pointer flex items-center gap-1"
@@ -527,22 +540,44 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                             <span>📱 {sub.deviceId || '—'}</span>
                           </button>
                         </td>
-                        <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-400">{sub.phone || '—'}</td>
-                        <td className="py-3 px-3 font-semibold text-slate-700 dark:text-slate-300">{sub.subscriptionType || '—'}</td>
-                        <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-400 hidden md:table-cell">{sub.phone || '—'}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-1">
+                            <span className="font-semibold text-slate-700 dark:text-slate-300">{sub.subscriptionType || '—'}</span>
+                            <div className="md:hidden font-mono font-bold text-slate-900 dark:text-slate-100">
+                              {(sub.amount ?? 0).toLocaleString()} <span className="text-[10px] text-slate-400">د.ع</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-slate-100 hidden md:table-cell">
                           {(sub.amount ?? 0).toLocaleString()} <span className="text-[10px] text-slate-400">د.ع</span>
                         </td>
                         <td className="py-3 px-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${paymentMethodLabel === 'نقد'
-                            ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
-                            : paymentMethodLabel === 'دين'
-                              ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                          }`}>
-                            {paymentMethodLabel}
-                          </span>
+                          <div className="flex flex-col gap-1.5 items-start">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${paymentMethodLabel === 'نقد'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                              : paymentMethodLabel === 'دين'
+                                ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                            }`}>
+                              {paymentMethodLabel}
+                            </span>
+                            <div className="md:hidden">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  sub.status === 'active'
+                                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                    : sub.status === 'expiring_soon'
+                                      ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                                      : 'bg-red-50 dark:bg-red-950/60 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
+                                }`}
+                              >
+                                {statusLabel}
+                              </span>
+                            </div>
+                          </div>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="py-3 px-3 hidden md:table-cell">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                               sub.status === 'active'
@@ -555,10 +590,15 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                             {statusLabel}
                           </span>
                         </td>
-                        <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{sub.startDate || '—'}</td>
-                        <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400">{sub.endDate || '—'}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-0.5 text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                            <span>{sub.startDate || '—'}</span>
+                            <span className="md:hidden pt-0.5 border-t border-slate-100 dark:border-slate-800">{sub.endDate || '—'}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-slate-500 dark:text-slate-400 hidden md:table-cell">{sub.endDate || '—'}</td>
                         <td className="py-3 px-4 text-center">
-                          <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          <div className="flex flex-col md:flex-row items-center justify-center gap-1.5">
                             {sub.status !== 'active' && (
                               <button
                                 onClick={() => {
@@ -566,10 +606,10 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
                                   setSubSearchQuery(sub.name);
                                   setShowOrderModal(true);
                                 }}
-                                className="shrink-0 whitespace-nowrap px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                                className="shrink-0 whitespace-nowrap px-2.5 py-1 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer w-full md:w-auto justify-center"
                               >
                                 <RefreshCw className="w-3 h-3" />
-                                <span>طلب تجديد</span>
+                                <span>تجديد</span>
                               </button>
                             )}
                             <button
