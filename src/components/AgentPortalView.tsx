@@ -83,6 +83,7 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showDeviceSaleModal, setShowDeviceSaleModal] = useState(false);
   const [expandedSubscriberId, setExpandedSubscriberId] = useState<string | null>(null);
+  const [tableSearchQuery, setTableSearchQuery] = useState('');
   const [subscriberPaymentFilter, setSubscriberPaymentFilter] = useState<'all' | 'cash' | 'debt'>('all');
   const [subscriberBroadcastFilter, setSubscriberBroadcastFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
@@ -122,8 +123,18 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
     if (subscriberPaymentFilter === 'debt' && !isDebt) return false;
     if (subscriberBroadcastFilter === 'active' && !isBroadcastActive) return false;
     if (subscriberBroadcastFilter === 'inactive' && isBroadcastActive) return false;
+
+    if (tableSearchQuery.trim()) {
+      const query = tableSearchQuery.toLowerCase();
+      return (
+        subscriber.name.toLowerCase().includes(query) ||
+        subscriber.deviceId.toLowerCase().includes(query) ||
+        subscriber.phone.includes(query)
+      );
+    }
+
     return true;
-  }), [agentSubs, subscriberBroadcastFilter, subscriberPaymentFilter]);
+  }), [agentSubs, subscriberBroadcastFilter, subscriberPaymentFilter, tableSearchQuery]);
   const subSuggestions = useMemo(() => {
     const query = subSearchQuery.trim().toLowerCase();
     if (!query) return [];
@@ -385,33 +396,67 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
               بيانات المشتركين المسجلين لهذا الوكيل، وتتحدث تلقائياً عند تعديلها من لوحة الإدارة
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl">
-            <label htmlFor="agent-subscriber-payment-filter" className="block">
-              <span className="block mb-1 text-xs font-bold text-slate-600 dark:text-slate-300">تصنيف حسب طريقة الدفع</span>
-              <select
-                id="agent-subscriber-payment-filter"
-                value={subscriberPaymentFilter}
-                onChange={(event) => setSubscriberPaymentFilter(event.target.value as 'all' | 'cash' | 'debt')}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">كل طرق الدفع</option>
-                <option value="cash">نقد</option>
-                <option value="debt">دين</option>
-              </select>
-            </label>
-            <label htmlFor="agent-subscriber-broadcast-filter" className="block">
-              <span className="block mb-1 text-xs font-bold text-slate-600 dark:text-slate-300">تصنيف حسب حالة البث</span>
-              <select
-                id="agent-subscriber-broadcast-filter"
-                value={subscriberBroadcastFilter}
-                onChange={(event) => setSubscriberBroadcastFilter(event.target.value as 'all' | 'active' | 'inactive')}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-800 dark:text-slate-200"
-              >
-                <option value="all">كل حالات البث</option>
-                <option value="active">فعال</option>
-                <option value="inactive">غير فعال</option>
-              </select>
-            </label>
+          <div className="flex flex-col gap-4">
+            <div className="relative max-w-md">
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <Users className="h-4 w-4 text-slate-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="ابحث باسم المشترك أو رقم الجهاز..."
+                value={tableSearchQuery}
+                onChange={(e) => setTableSearchQuery(e.target.value)}
+                className="block w-full pr-10 pl-3 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 transition-all outline-none"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-6">
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">طريقة الدفع:</span>
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 w-fit">
+                  {[
+                    { id: 'all', label: 'الكل' },
+                    { id: 'cash', label: 'نقد' },
+                    { id: 'debt', label: 'دين' }
+                  ].map((btn) => (
+                    <button
+                      key={btn.id}
+                      onClick={() => setSubscriberPaymentFilter(btn.id as any)}
+                      className={`px-4 py-1.5 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                        subscriberPaymentFilter === btn.id
+                          ? 'bg-white dark:bg-slate-700 text-sky-700 dark:text-sky-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">حالة البث:</span>
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 w-fit">
+                  {[
+                    { id: 'all', label: 'الكل' },
+                    { id: 'active', label: 'فعال' },
+                    { id: 'inactive', label: 'غير فعال' }
+                  ].map((btn) => (
+                    <button
+                      key={btn.id}
+                      onClick={() => setSubscriberBroadcastFilter(btn.id as any)}
+                      className={`px-4 py-1.5 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                        subscriberBroadcastFilter === btn.id
+                          ? 'bg-white dark:bg-slate-700 text-sky-700 dark:text-sky-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
