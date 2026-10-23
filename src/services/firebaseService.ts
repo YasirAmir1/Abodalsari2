@@ -22,6 +22,7 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { AppState } from './storageService';
 import type { Agent, Invoice, Subscriber } from '../types';
+import { INITIAL_AGENTS } from '../data/mockData';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const databaseId = firebaseConfig.firestoreDatabaseId || '(default)';
@@ -328,7 +329,7 @@ function stateFromRemoteTables(
   return {
     ...base,
     subscribers: tables.subscribers as unknown as AppState['subscribers'],
-    agents: tables.agents as unknown as AppState['agents'],
+    agents: (tables.agents && tables.agents.length > 0) ? (tables.agents as unknown as AppState['agents']) : INITIAL_AGENTS,
     invoices: tables.invoices as unknown as AppState['invoices'],
     pendingRequests: tables.pendingRequests as unknown as AppState['pendingRequests']
   };
@@ -689,7 +690,7 @@ export const firebaseService = {
     // Internal state buffer initialized from currently known remoteState or emptyState
     const syncedTables: Record<CoreStateKey, CoreRecord[]> = {
       subscribers: remoteState?.subscribers as any || [],
-      agents: remoteState?.agents as any || [],
+      agents: (remoteState?.agents && remoteState.agents.length > 0) ? (remoteState.agents as any) : (INITIAL_AGENTS as any),
       invoices: remoteState?.invoices as any || [],
       pendingRequests: remoteState?.pendingRequests as any || []
     };
@@ -730,10 +731,8 @@ export const firebaseService = {
       const subsRef = collection(db, 'tenants', TENANT_ID, 'subscribers');
       const unsubSubs = onSnapshot(subsRef, (snapshot) => {
         const records = recordsFromSnapshot(snapshot);
-        if (records.length > 0 || syncedTables.subscribers.length === 0) {
-          syncedTables.subscribers = records;
-          dispatchSyncedState();
-        }
+        syncedTables.subscribers = records;
+        dispatchSyncedState();
       }, (err) => {
         console.warn('Realtime subscribers onSnapshot listener notice:', err);
       });
@@ -747,10 +746,8 @@ export const firebaseService = {
       const agentsRef = collection(db, 'tenants', TENANT_ID, 'agents');
       const unsubAgents = onSnapshot(agentsRef, (snapshot) => {
         const records = recordsFromSnapshot(snapshot);
-        if (records.length > 0) {
-          syncedTables.agents = records;
-          dispatchSyncedState();
-        }
+        syncedTables.agents = records;
+        dispatchSyncedState();
       }, (err) => {
         console.warn('Realtime agents onSnapshot listener notice:', err);
       });

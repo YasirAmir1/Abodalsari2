@@ -132,6 +132,7 @@ import { syncManager } from './services/firebase-sync';
 import { appFeatures } from './services/app-features';
 import { soundService } from './services/soundService';
 import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt, buildSubscriberDebtMap } from './utils/calculationUtils';
+import { INITIAL_AGENTS } from './data/mockData';
 
 import { Sidebar, NavTab } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -146,7 +147,8 @@ const PendingRequestsView = lazy(() => import('./components/PendingRequestsView'
 const AgentsView = lazy(() => import('./components/AgentsView').then(({ AgentsView }) => ({ default: AgentsView })));
 const ProductsView = lazy(() => import('./components/ProductsView').then(({ ProductsView }) => ({ default: ProductsView })));
 const QrCodesView = lazy(() => import('./components/QrCodesView').then(({ QrCodesView }) => ({ default: QrCodesView })));
-const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
+import { PricingView } from './components/PricingView';
+// const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
 const SalesInvoicesView = lazy(() => import('./components/SalesInvoicesView').then(({ SalesInvoicesView }) => ({ default: SalesInvoicesView })));
 const DebtsView = lazy(() => import('./components/DebtsView').then(({ DebtsView }) => ({ default: DebtsView })));
 const ActiveSubscribersView = lazy(() => import('./components/ActiveSubscribersView').then(({ ActiveSubscribersView }) => ({ default: ActiveSubscribersView })));
@@ -277,9 +279,16 @@ export default function App() {
     };
 
     // If subscribers or invoices changed, recompute agent metrics immediately
-    if (updates.subscribers || updates.invoices || updates.agents) {
+    if (updates.subscribers || updates.invoices || updates.agents || updates.pricing) {
+      let agentsToUpdate = updates.agents || currentState.agents;
+      
+      // Defensive: If agents list is empty, restore INITIAL_AGENTS
+      if (!agentsToUpdate || agentsToUpdate.length === 0) {
+        agentsToUpdate = INITIAL_AGENTS;
+      }
+
       nextState.agents = computeUpdatedAgents(
-        updates.agents || currentState.agents,
+        agentsToUpdate,
         updates.subscribers || currentState.subscribers,
         updates.invoices || currentState.invoices
       );
@@ -1516,7 +1525,25 @@ export default function App() {
 
   // Pricing Handlers
   const handleSavePricing = (rows: PricingRow[]) => {
-    updateAppState({ pricing: rows });
+    const currentState = stateRef.current;
+    
+    // Sync credentials from pricing rows back to agents list
+    const updatedAgents = currentState.agents.map(agent => {
+      const pricingRow = rows.find(r => r.agentId === agent.id);
+      if (pricingRow) {
+        return {
+          ...agent,
+          username: pricingRow.username || agent.username,
+          password: pricingRow.password || agent.password
+        };
+      }
+      return agent;
+    });
+
+    updateAppState({ 
+      pricing: rows,
+      agents: updatedAgents
+    });
     soundService.playSuccess();
   };
 

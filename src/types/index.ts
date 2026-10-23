@@ -71,6 +71,8 @@ export interface PricingRow {
   threeMonthsPrice: number;
   status: 'معتمدة (المرجع)' | 'معتمدة (تطبق في البيع)' | 'مسودة';
   isReference?: boolean;
+  username?: string;
+  password?: string;
 }
 
 export interface PendingRenewalRequest {

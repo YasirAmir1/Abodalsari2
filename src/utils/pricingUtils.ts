@@ -12,7 +12,7 @@ export const getPriceByDuration = (
   switch (duration) {
     case '1 شهر': return agentPricing.oneMonthPrice || 22000;
     case 'شهرين': return agentPricing.twoMonthsPrice || 44000;
-    case '3 أشهر': return agentPricing.threeMonthsPrice || 60000;
+    case '3 أشهر': return agentPricing.threeMonthsPrice || 66000;
     default: return 22000;
   }
 };

@@ -44,6 +44,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
       }
 
       if (!matchedUser) {
+        console.log('Available agents:', agents.map(a => ({ name: a.name, username: a.username, code: a.code })));
         const foundAgent = agents.find(
           (ag) =>
             (ag.username && ag.username.toLowerCase() === cleanUser) ||
@@ -52,6 +53,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
         );
 
         if (foundAgent) {
+          console.log('Found agent:', foundAgent);
           const agentPass = foundAgent.password || '123';
           if (cleanPass === agentPass || cleanPass === '123' || cleanPass === '123456' || cleanPass.length >= 3) {
             matchedUser = {
