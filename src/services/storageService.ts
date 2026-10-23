@@ -256,8 +256,11 @@ export const storageService = {
   },
 
   saveState(state: AppState) {
-    // Completely bypass saving or caching in localStorage as requested.
-    // All persistence is handled directly via Firebase Firestore integrations.
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {
+      console.warn('Failed to cache state to localStorage:', e);
+    }
   },
 
   createWhatsAppLink(phone: string, message: string): string {

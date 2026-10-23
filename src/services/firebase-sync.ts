@@ -63,6 +63,12 @@ export class FirebaseSyncManager {
     this.stateCallback = onStateUpdate;
     const generation = ++this.generation;
 
+    // Diagnostic check: verify connectivity status
+    if (!navigator.onLine) {
+      console.warn('[FirebaseSync] Offline: sync paused');
+      this.dispatchStatus('offline');
+    }
+
     this.unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
       this.dispatchStatus(status);
     });
@@ -73,8 +79,15 @@ export class FirebaseSyncManager {
     };
   }
 
-  private startFirestoreListener(generation: number) {
+  private async startFirestoreListener(generation: number) {
     if (!this.isListening || generation !== this.generation || this.unsubscribeFirestore) return;
+
+    // Robust connectivity check
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        console.warn('[FirebaseSync] Offline: sync paused. Waiting for connection...');
+        this.dispatchStatus('offline');
+        return;
+    }
 
     try {
       let unsubscribe: (() => void) | null = null;

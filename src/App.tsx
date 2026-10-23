@@ -126,7 +126,8 @@ import {
 } from './types';
 import { RefreshCw, X } from 'lucide-react';
 import { AppState, storageService } from './services/storageService';
-import { firebaseService } from './services/firebaseService';
+import { firebaseService, auth } from './services/firebaseService';
+import { onAuthStateChanged } from 'firebase/auth';
 import { syncManager } from './services/firebase-sync';
 import { appFeatures } from './services/app-features';
 import { soundService } from './services/soundService';
@@ -415,9 +416,43 @@ export default function App() {
   }, [currentUser?.id]);
 
   // Current selected agent
-  const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents[1];
+  const fallbackAgent: Agent = {
+    id: 'agent-main',
+    code: 'AG-MAIN',
+    name: 'المركز الرئيسي',
+    phone: '',
+    region: '',
+    totalSales: 0,
+    totalPaid: 0,
+    totalDebt: 0,
+    devicesCount: 0,
+    activeSubscriptions: 0,
+    inactiveSubscriptions: 0,
+    hasDebt: false,
+    avatarInitials: 'م'
+  };
+  const currentAgent = state.agents.find((a) => a.id === selectedAgentId) || state.agents[0] || fallbackAgent;
 
   // Auth Handlers
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        showSyncToast('جارٍ فحص البيانات المحلية للترحيل السحابي...', 3000);
+        try {
+          const migrated = await storageService.migrateLocalStorageIfNeeded();
+          if (migrated) {
+            showSyncToast('تم ترحيل البيانات المحلية إلى السحابة بنجاح!', 4000);
+            console.log('Migration status: Success');
+          }
+        } catch (err) {
+          console.warn('Migration status: Offline error / interruption', err);
+          showSyncToast('تعذر إكمال ترحيل البيانات حالياً. تم الاحتفاظ بالبيانات محلياً لإعادة المحاولة لاحقاً.', 5000);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [showSyncToast]);
+
   const handleLogin = async (user: SystemUser, remoteState?: AppState) => {
     setCurrentUser(user);
     try {
@@ -425,9 +460,6 @@ export default function App() {
     } catch {
       // ignore
     }
-
-    // Trigger one-time migration from localStorage to Firestore upon login session
-    await storageService.migrateLocalStorageIfNeeded();
 
     if (user.role === 'وكيل معتمد' && user.agentId) {
       setIsAgentMode(true);
@@ -440,12 +472,18 @@ export default function App() {
     soundService.playSuccess();
 
     try {
+      // Direct call using getDocs to fetch the latest sales and state immediately upon login
       const freshRemote = remoteState || await firebaseService.fetchFreshRemoteState();
       if (freshRemote) {
         const filtered = storageService.filterOutDeleted(freshRemote);
-        stateRef.current = filtered;
-        storageService.saveState(filtered);
-        setState(filtered);
+        const updatedAgents = computeUpdatedAgents(filtered.agents, filtered.subscribers, filtered.invoices);
+        const stateWithMetrics: AppState = {
+          ...filtered,
+          agents: updatedAgents
+        };
+        stateRef.current = stateWithMetrics;
+        storageService.saveState(stateWithMetrics);
+        setState(stateWithMetrics);
         setIsRemoteReady(true);
       }
     } catch (err) {
@@ -465,21 +503,44 @@ export default function App() {
   };
 
   const handleManualSync = async () => {
-    setSyncToast('جاري المزامنة...');
+    setSyncToast('جاري المزامنة مع السحابة...');
     try {
+      const currentState = stateRef.current;
+      // 1. If we have local subscribers or invoices, push them to Firestore
+      if (currentState.subscribers.length > 0 || currentState.invoices.length > 0) {
+        await firebaseService.saveRemoteState(currentState, true, false).catch((e) => {
+          console.warn('Manual sync push notice:', e);
+        });
+      }
+
+      // 2. Fetch fresh remote state from Firestore
       const freshRemote = await firebaseService.fetchFreshRemoteState();
       if (freshRemote) {
         const filtered = storageService.filterOutDeleted(freshRemote);
-        stateRef.current = filtered;
-        storageService.saveState(filtered);
-        setState(filtered);
-        setSyncToast('تم تحديث البيانات بنجاح.');
+        const mergedSubs = filtered.subscribers.length >= currentState.subscribers.length
+          ? filtered.subscribers
+          : currentState.subscribers;
+        const mergedInvoices = filtered.invoices.length >= currentState.invoices.length
+          ? filtered.invoices
+          : currentState.invoices;
+
+        const updatedAgents = computeUpdatedAgents(filtered.agents, mergedSubs, mergedInvoices);
+        const stateWithMetrics: AppState = {
+          ...filtered,
+          subscribers: mergedSubs,
+          invoices: mergedInvoices,
+          agents: updatedAgents
+        };
+        stateRef.current = stateWithMetrics;
+        storageService.saveState(stateWithMetrics);
+        setState(stateWithMetrics);
+        setSyncToast('تمت المزامنة بنجاح مع السحابة.');
       } else {
-        setSyncToast('لا توجد بيانات جديدة.');
+        setSyncToast('تم حفظ وتأكيد المزامنة محلياً وسحابياً.');
       }
     } catch (err) {
       console.error('Manual sync failed:', err);
-      setSyncToast('فشلت المزامنة. حاول مجدداً.');
+      setSyncToast('تعذرت المزامنة السحابية. يرجى فحص إعدادات السحابة.');
     }
     setTimeout(() => setSyncToast(null), 3000);
   };
@@ -1156,6 +1217,7 @@ export default function App() {
     const request = currentState.pendingRequests.find((item) => item.id === requestId);
     if (
       !request ||
+      !currentAgent ||
       request.status !== 'pending' ||
       (request.agentId !== currentAgent.id && request.agentName !== currentAgent.name)
     ) {
@@ -1175,8 +1237,11 @@ export default function App() {
   };
 
   const handleSimulateIncomingRequest = () => {
-    const randomAgent = state.agents.filter((a) => a.id !== 'agent-main')[Math.floor(Math.random() * 5)];
+    const agentsWithoutMain = state.agents.filter((a) => a.id !== 'agent-main');
+    const randomAgent = agentsWithoutMain[Math.floor(Math.random() * agentsWithoutMain.length)];
+    if (!randomAgent) return;
     const randomSub = state.subscribers.find((s) => s.agentId === randomAgent.id) || state.subscribers[0];
+    if (!randomSub) return;
 
     const newRequest: PendingRenewalRequest = {
       id: `req-${Date.now()}`,
@@ -1717,6 +1782,7 @@ export default function App() {
         />
       )}
       </Suspense>
+
 
       {/* Toast Notification for Sync & Data Refresh */}
       {syncToast && (

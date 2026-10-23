@@ -76,12 +76,13 @@ export const Header: React.FC<HeaderProps> = ({
           <span>{new Date().toLocaleDateString('ar-IQ', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
         </div>
 
+
         {/* Sync Button */}
         {onSync && (
           <button
             onClick={onSync}
             className="w-9 h-9 rounded-full border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 flex items-center justify-center text-sky-600 dark:text-sky-400 transition-all shadow-xs active:scale-95 cursor-pointer"
-            title="مزامنة الآن"
+            title="مزامنة وتحديث البيانات الآن"
           >
             <RefreshCw className="w-4 h-4" />
           </button>

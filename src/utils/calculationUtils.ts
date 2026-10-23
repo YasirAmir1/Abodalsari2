@@ -118,3 +118,90 @@ export const calculateAgentSubscriberDebt = (
   }
   return total;
 };
+
+function normalizeStr(str?: string): string {
+  if (!str) return '';
+  return str.trim().toLowerCase().replace(/\s+/g, ' ').replace(/أ/g, 'ا').replace(/إ/g, 'ا').replace(/آ/g, 'ا').replace(/ة/g, 'ه');
+}
+
+function doesSubscriberBelongToAgent(sub: Subscriber, agent: any): boolean {
+  if (!sub || !agent) return false;
+  if (sub.agentId && agent.id && sub.agentId === agent.id) return true;
+  const subName = normalizeStr(sub.agentName);
+  const agentName = normalizeStr(agent.name);
+  const agentCode = normalizeStr(agent.code);
+  if (subName && agentName && (subName === agentName || subName.includes(agentName) || agentName.includes(subName))) return true;
+  if (subName && agentCode && (subName === agentCode || subName.includes(agentCode))) return true;
+  return false;
+}
+
+function doesInvoiceBelongToAgent(inv: Invoice, agent: any): boolean {
+  if (!inv || !agent) return false;
+  if (inv.agentId && agent.id && inv.agentId === agent.id) return true;
+  const invName = normalizeStr(inv.agentName);
+  const agentName = normalizeStr(agent.name);
+  const agentCode = normalizeStr(agent.code);
+  if (invName && agentName && (invName === agentName || invName.includes(agentName) || agentName.includes(invName))) return true;
+  if (invName && agentCode && (invName === agentCode || invName.includes(agentCode))) return true;
+  return false;
+}
+
+function getInvoiceAmount(invoice: Invoice): number {
+  const amount = Number(invoice?.amount);
+  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+}
+
+export function computeUpdatedAgents(agents: any[], subscribers: Subscriber[], invoices: Invoice[]): any[] {
+  const debtMap = buildSubscriberDebtMap(invoices);
+  return agents.map((agent) => {
+    const agentSubscribers = subscribers.filter((sub) => doesSubscriberBelongToAgent(sub, agent));
+    const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
+    const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
+    const agentInvoices = invoices.filter((inv) => doesInvoiceBelongToAgent(inv, agent));
+
+    let invoiceSales = 0;
+    for (let i = 0; i < agentInvoices.length; i++) {
+      invoiceSales += getInvoiceAmount(agentInvoices[i]);
+    }
+
+    let subscriberDebt = 0;
+    const countedSubIds = new Set<string>();
+    for (let i = 0; i < agentSubscribers.length; i++) {
+      const sub = agentSubscribers[i];
+      subscriberDebt += getSubscriberOutstandingDebt(sub, debtMap);
+      if (sub.id) countedSubIds.add(sub.id);
+    }
+
+    let additionalInvoiceDebt = 0;
+    for (let i = 0; i < agentInvoices.length; i++) {
+      const inv = agentInvoices[i];
+      if (!inv.subscriberId || !countedSubIds.has(inv.subscriberId)) {
+        additionalInvoiceDebt += getInvoiceRemainingAmount(inv);
+      }
+    }
+
+    const calculatedDebt = Math.max(0, subscriberDebt + additionalInvoiceDebt);
+
+    const totalSales = agentInvoices.length > 0
+      ? invoiceSales
+      : Math.max(0, Number(agent.totalSales) || 0);
+
+    const totalDebt = (agentSubscribers.length > 0 || agentInvoices.length > 0)
+      ? calculatedDebt
+      : Math.max(0, Number(agent.totalDebt) || 0);
+
+    const totalPaid = Math.max(0, totalSales - totalDebt);
+    const hasDebt = totalDebt > 0;
+
+    return {
+      ...agent,
+      devicesCount: agentSubscribers.length,
+      activeSubscriptions: activeSubscribers.length,
+      inactiveSubscriptions: inactiveSubscribers.length,
+      totalSales,
+      totalDebt,
+      totalPaid,
+      hasDebt
+    };
+  });
+}
