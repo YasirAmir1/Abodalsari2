@@ -24,6 +24,8 @@ export interface Subscriber {
   address?: string;
   createdAt: string;
   isActive?: boolean;
+  originalAgentId?: string;
+  originalAgentName?: string;
 }
 
 

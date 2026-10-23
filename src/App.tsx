@@ -330,8 +330,16 @@ export default function App() {
 
         changed = true;
         const outstandingDebt = getSubscriberOutstandingDebt(subscriber, debtMap);
+        
+        const restoredAgentId = subscriber.originalAgentId || subscriber.agentId;
+        const restoredAgentName = subscriber.originalAgentName || subscriber.agentName;
+
         return {
           ...subscriber,
+          agentId: restoredAgentId,
+          agentName: restoredAgentName,
+          originalAgentId: undefined,
+          originalAgentName: undefined,
           status: 'inactive' as const,
           subscriptionType: '' as SubscriptionDuration,
           startDate: '',
@@ -417,6 +425,9 @@ export default function App() {
     } catch {
       // ignore
     }
+
+    // Trigger one-time migration from localStorage to Firestore upon login session
+    await storageService.migrateLocalStorageIfNeeded();
 
     if (user.role === 'وكيل معتمد' && user.agentId) {
       setIsAgentMode(true);

@@ -200,34 +200,10 @@ export const storageService = {
   },
 
   loadState(): AppState {
-    const isCleared = this.isAllSubscribersCleared();
-    const deletedSet = this.getDeletedSubscriberIds();
-
     try {
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
         const parsed: AppState = JSON.parse(data);
-        if (parsed.subscribers && Array.isArray(parsed.subscribers)) {
-          parsed.subscribers = isCleared
-            ? []
-            : parsed.subscribers
-                .filter((s) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId))
-                .map((s) => {
-                  const raw = (s.deviceId || '').trim();
-                  const clean = raw ? (raw.startsWith('00') ? raw : `00${raw}`) : `00123456`;
-                  return { ...s, deviceId: clean };
-                });
-        }
-        if (parsed.invoices && Array.isArray(parsed.invoices)) {
-          parsed.invoices = parsed.invoices.filter(
-            (inv) => !deletedSet.has(inv.subscriberId) && !deletedSet.has(inv.deviceId)
-          );
-        }
-        if (parsed.pendingRequests && Array.isArray(parsed.pendingRequests)) {
-          parsed.pendingRequests = parsed.pendingRequests.filter(
-            (req) => !deletedSet.has(req.subscriberId) && !deletedSet.has(req.deviceId)
-          );
-        }
         return {
           ...parsed,
           subscribers: Array.isArray(parsed.subscribers) ? parsed.subscribers : [],
@@ -243,17 +219,11 @@ export const storageService = {
         };
       }
     } catch (e) {
-      console.error('Failed to load state from localStorage:', e);
+      console.error('Failed to read localStorage state:', e);
     }
 
-    const initialFilteredSubs = isCleared
-      ? []
-      : INITIAL_SUBSCRIBERS.filter(
-          (s) => !deletedSet.has(s.id) && !deletedSet.has(s.deviceId)
-        );
-
     return {
-      subscribers: initialFilteredSubs,
+      subscribers: INITIAL_SUBSCRIBERS,
       agents: INITIAL_AGENTS,
       products: INITIAL_PRODUCTS,
       pricing: INITIAL_PRICING,
@@ -265,17 +235,29 @@ export const storageService = {
     };
   },
 
-  saveState(state: AppState) {
+  async migrateLocalStorageIfNeeded(): Promise<boolean> {
     try {
-      const toSave: AppState = {
-        ...state,
-        lastUpdatedTimestamp: state.lastUpdatedTimestamp || Date.now()
-      };
-      console.log('State saved at:', new Date(toSave.lastUpdatedTimestamp).toLocaleTimeString());
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    } catch (e) {
-      console.error('Failed to save state to localStorage:', e);
+      const data = localStorage.getItem(STORAGE_KEY);
+      if (data) {
+        const parsed: AppState = JSON.parse(data);
+        const { firebaseService } = await import('./firebaseService');
+        await firebaseService.saveRemoteState(parsed, true, false);
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(DELETED_SUBS_KEY);
+        localStorage.removeItem(DELETED_INVOICES_KEY);
+        localStorage.removeItem(ALL_CLEARED_KEY);
+        console.log('Successfully migrated localStorage data to Firestore and cleared localStorage.');
+        return true;
+      }
+    } catch (err) {
+      console.error('Failed to migrate localStorage data to Firestore:', err);
     }
+    return false;
+  },
+
+  saveState(state: AppState) {
+    // Completely bypass saving or caching in localStorage as requested.
+    // All persistence is handled directly via Firebase Firestore integrations.
   },
 
   createWhatsAppLink(phone: string, message: string): string {

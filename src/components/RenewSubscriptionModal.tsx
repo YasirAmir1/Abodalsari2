@@ -98,6 +98,14 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
     const rawDev = (subscriber.deviceId || '').trim();
     const cleanDeviceId = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
 
+    const isRenewingForMain = forceMainCenter;
+    const originalAgentId = isRenewingForMain 
+      ? (subscriber.originalAgentId || (subscriber.agentId && subscriber.agentId !== 'agent-main' ? subscriber.agentId : undefined))
+      : subscriber.originalAgentId;
+    const originalAgentName = isRenewingForMain 
+      ? (subscriber.originalAgentName || (subscriber.agentName && subscriber.agentName !== 'المركز الرئيسي' ? subscriber.agentName : undefined))
+      : subscriber.originalAgentName;
+
     const updated: Subscriber = {
       ...subscriber,
       deviceId: cleanDeviceId,
@@ -111,7 +119,9 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
       paymentStatus: isDebt ? 'debt' : 'paid',
       amount: price,
       startDate,
-      endDate
+      endDate,
+      originalAgentId,
+      originalAgentName
     };
 
     onSaveAndActivate(updated, isDebt, price);
