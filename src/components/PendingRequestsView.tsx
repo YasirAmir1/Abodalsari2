@@ -127,16 +127,26 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
     setEditPaymentStatus('debt');
   };
 
-  const handleConfirmActivation = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleConfirmActivation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activatingRequest) return;
-    onApproveRequest(activatingRequest.id, {
-      amount: editAmount,
-      startDate: editStartDate,
-      duration: editDuration,
-      paymentStatus: editPaymentStatus
-    });
-    setActivatingRequest(null);
+    if (!activatingRequest || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    try {
+      await onApproveRequest(activatingRequest.id, {
+        amount: editAmount,
+        startDate: editStartDate,
+        duration: editDuration,
+        paymentStatus: editPaymentStatus
+      });
+      setActivatingRequest(null);
+    } catch (err) {
+      console.error('Activation error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -440,9 +450,17 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {activatingDeviceSale ? 'تأكيد اعتماد البيع' : 'تأكيد الاعتماد والتفعيل'}
+                  {isSubmitting ? (
+                    <>
+                      <RotateCcw className="w-4 h-4 animate-spin" />
+                      <span>جاري المعالجة...</span>
+                    </>
+                  ) : (
+                    <span>{activatingDeviceSale ? 'تأكيد اعتماد البيع' : 'تأكيد الاعتماد والتفعيل'}</span>
+                  )}
                 </button>
               </div>
             </form>

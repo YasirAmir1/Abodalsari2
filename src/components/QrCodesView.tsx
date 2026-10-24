@@ -110,7 +110,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   };
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6 no-print" dir="rtl">
       {/* Title Header Banner */}
       <div className="bg-gradient-to-r from-sky-900 via-sky-800 to-blue-900 text-white p-6 rounded-2xl shadow-sm flex items-center justify-between">
         {/* Count Card */}
@@ -182,7 +182,8 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                 </span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
                       setShowCustomPrintModal(true);
                     }}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
@@ -192,7 +193,8 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                     <span>تصدير (PDF)</span>
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
                       window.print();
                     }}
                     className="px-4 py-2 bg-sky-100 hover:bg-sky-200 text-sky-700 font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-200"
@@ -544,34 +546,79 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
             <style>{`
               @media print {
-                body { visibility: hidden; }
-                .print-section, .print-section * { visibility: visible; }
-                .print-section {
-                  position: absolute;
-                  left: 0;
-                  top: 0;
-                  width: 100%;
+                /* Reset for print */
+                body * { visibility: hidden !important; }
+                
+                /* Choose which section to show based on active tab or which modal is open */
+                #registry-print-section, #registry-print-section * { 
+                  visibility: visible !important; 
                 }
+                
+                #registry-print-section {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  display: grid !important;
+                  grid-template-columns: repeat(3, 1fr) !important;
+                  gap: 15px !important;
+                }
+                
                 .no-print { display: none !important; }
-                .page-break { page-break-after: always; }
-                @page { size: A4; margin: 10mm; }
+                .page-break { page-break-after: always !important; }
+                @page { size: A4; margin: 15mm 10mm; }
+                
+                .print-card {
+                  border: 1px solid #cbd5e1 !important;
+                  padding: 15px !important;
+                  border-radius: 12px !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  align-items: center !important;
+                  text-align: center !important;
+                  background: white !important;
+                  page-break-inside: avoid !important;
+                  height: 180px !important;
+                  justify-content: center !important;
+                }
+                
+                .print-card .code-text {
+                  font-family: monospace !important;
+                  font-weight: 900 !important;
+                  font-size: 12px !important;
+                  margin-bottom: 8px !important;
+                }
+                
+                .print-card .qr-box {
+                  padding: 8px !important;
+                  border: 1px solid #e2e8f0 !important;
+                  border-radius: 8px !important;
+                }
+
+                .print-card .manual-box {
+                  width: 100% !important;
+                  height: 20px !important;
+                  margin-top: 10px !important;
+                  border: 1px solid #e2e8f0 !important;
+                  border-radius: 4px !important;
+                }
               }
+              
+              /* Hide print sections in normal view */
+              #registry-print-section, #custom-print-section { display: none; }
             `}</style>
-            <div className="print-section mt-4 grid grid-cols-3 gap-3" id="printable-labels">
+
+            <div id="registry-print-section">
               {printableCodes.map((c, index) => (
                 <div
                   key={c.id}
-                  className={`p-3 border border-slate-300 rounded-xl flex flex-col items-center text-center bg-white ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}
+                  className={`print-card ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}
                 >
-                  <div className="font-mono font-black text-[10px] text-slate-900 mb-1 tracking-tight">{c.code}</div>
-                  
-                  {/* Visual QR with real SVG */}
-                  <div className="p-1 border border-slate-200 rounded-lg shadow-xs">
-                    <QRCodeSVG value={c.code} size={80} level="M" />
+                  <div className="code-text">{c.code}</div>
+                  <div className="qr-box">
+                    <QRCodeSVG value={c.code} size={100} level="M" />
                   </div>
-
-                  {/* Empty box for manual writing */}
-                  <div className="w-full h-4 mt-2 border border-slate-200 rounded-sm"></div>
+                  <div className="manual-box"></div>
                 </div>
               ))}
             </div>
@@ -597,21 +644,21 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
       )}
       {/* Modal: Printable Custom QR Labels Preview */}
       {showCustomPrintModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-[999] animate-in fade-in" dir="rtl">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
-              <h3 className="font-extrabold text-base text-slate-900">معاينة طباعة الباركودات الجديدة</h3>
-              <button onClick={() => setShowCustomPrintModal(false)} className="text-slate-400 p-1">
+              <h3 className="font-extrabold text-base text-slate-900 text-right">معاينة طباعة الباركودات الجديدة</h3>
+              <button onClick={() => setShowCustomPrintModal(false)} className="text-slate-400 p-1 cursor-pointer">
                 ✕
               </button>
             </div>
             
-            <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-xs text-center">
+            <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-xs text-center no-print">
               يتم هنا عرض معاينة لترتيب الباركودات في الورقة. سيتم توزيع 9 باركودات في كل صفحة تلقائياً.
             </div>
 
             {/* Visual Preview (Non-print) */}
-            <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden scale-75 origin-top opacity-80 pointer-events-none">
+            <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden scale-90 origin-top opacity-90 pointer-events-none no-print">
               <table className="w-full text-right text-[10px] border-collapse bg-white">
                 <thead className="bg-slate-50 border-b border-slate-200 font-bold">
                   <tr>
@@ -642,7 +689,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             <div className="mt-6 flex items-center justify-end gap-2 no-print">
               <button
                 onClick={() => setShowCustomPrintModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold hover:bg-slate-200"
               >
                 إغلاق المعاينة
               </button>
@@ -658,59 +705,97 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
         </div>
       )}
 
-      {/* Hidden Print-Only Container (Always in DOM for direct window.print support) */}
+      {/* Global Print-Only Styles for New Barcodes */}
       <style>{`
         @media print {
-          /* Hide EVERYTHING */
-          body > * { display: none !important; }
-          /* Show ONLY the print container */
-          #custom-print-container { 
+          /* Universal hide */
+          body * { visibility: hidden !important; }
+          
+          /* Show custom-print-section ONLY if activeTab is new_barcodes OR if the specific modal is triggered */
+          /* Note: We rely on the fact that if we click print in the Custom Modal, it's what we want */
+          #custom-print-section, #custom-print-section * { 
+            visibility: visible !important; 
+          }
+          
+          #custom-print-section { 
             display: block !important; 
-            background: white !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            visibility: visible !important;
+            background: white !important;
           }
-          #custom-print-container * {
-            visibility: visible !important;
-          }
+          
           .no-print { display: none !important; }
-          .page-break { page-break-after: always; display: block; height: 0; border: none; }
+          
+          .page-break-row { 
+            page-break-after: always !important; 
+            display: table-row !important;
+            height: 0 !important;
+          }
+          
           @page { size: A4; margin: 15mm 10mm; }
-          table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
-          tr { page-break-inside: avoid; page-break-after: auto; }
-          thead { display: table-header-group; }
-          th, td { border: 1px solid #e2e8f0 !important; padding: 12px; text-align: right; }
+          
+          table.print-table { 
+            width: 100% !important; 
+            border-collapse: collapse !important; 
+            table-layout: fixed !important;
+          }
+          
+          table.print-table thead { 
+            display: table-header-group !important; 
+          }
+          
+          table.print-table th, table.print-table td { 
+            border: 1px solid #cbd5e1 !important; 
+            padding: 15px !important; 
+            text-align: center !important;
+          }
+          
+          table.print-table tr { 
+            page-break-inside: avoid !important; 
+          }
+
+          .print-qr-box {
+            display: inline-block !important;
+            padding: 10px !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 12px !important;
+            background: white !important;
+          }
         }
-        #custom-print-container { display: none; }
       `}</style>
 
-      <div id="custom-print-container">
-        <table className="w-full text-right text-xs border-collapse">
-          <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-            <tr>
-              <th className="py-3 px-4 w-16 text-center">#</th>
-              <th className="py-3 px-4">رقم الباركود / الجهاز (عمود الإكسل)</th>
-              <th className="py-3 px-4 text-center">رمز الاستجابة السريعة (QR-Code)</th>
+      <div id="custom-print-section">
+        <div style={{ textAlign: 'center', marginBottom: '20px', fontWeight: 'bold', fontSize: '18px' }} className="no-print-actually-show-in-print">
+          جدول الباركودات والأجهزة الجديدة
+        </div>
+        <table className="print-table w-full text-right text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+              <th style={{ width: '60px' }}>#</th>
+              <th>رقم الباركود / الجهاز</th>
+              <th style={{ width: '150px' }}>رمز QR</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {customBarcodes.map((code, index) => (
               <React.Fragment key={index}>
-                <tr className="h-28">
-                  <td className="py-3 px-4 text-center font-mono text-slate-400 font-bold">{index + 1}</td>
-                  <td className="py-3 px-4 font-mono font-black text-slate-900 text-sm">
+                <tr style={{ height: '100px' }}>
+                  <td className="font-mono font-bold text-slate-400">{index + 1}</td>
+                  <td className="font-mono font-black text-slate-900 text-lg">
                     {code}
                   </td>
-                  <td className="py-3 px-4 text-center">
-                    <div className="inline-block p-2 border border-slate-200 rounded-xl bg-white shadow-2xs">
-                      <QRCodeSVG value={code} size={64} level="M" />
+                  <td>
+                    <div className="print-qr-box">
+                      <QRCodeSVG value={code} size={80} level="M" />
                     </div>
                   </td>
                 </tr>
                 {(index + 1) % 9 === 0 && index !== customBarcodes.length - 1 && (
-                  <tr className="page-break"><td colSpan={3} className="p-0 border-0 h-0"></td></tr>
+                  <tr className="page-break-row"><td colSpan={3}></td></tr>
                 )}
               </React.Fragment>
             ))}
