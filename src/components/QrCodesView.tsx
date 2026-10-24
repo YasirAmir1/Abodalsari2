@@ -392,7 +392,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
       <div id="registry-print-section">
         {printableCodes.map((c, index) => (
-          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 10 === 1 ? 'page-break' : ''}`}>
+          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 8 === 1 ? 'page-break' : ''}`}>
             <div className="code-text">{c.code}</div>
             <div className="qr-box">
               <QRCodeSVG value={c.code} size={100} level="M" />
@@ -411,7 +411,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
           {customBarcodes.map((code, index) => (
             <div 
               key={index} 
-              className={`print-grid-item ${(index + 1) % 10 === 0 ? 'page-break-after' : ''}`}
+              className={`print-grid-item ${(index + 1) % 8 === 0 ? 'page-break-after' : ''}`}
             >
               <div className="print-item-index">#{index + 1}</div>
               <div className="print-item-qr">
@@ -468,7 +468,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             text-align: center !important;
             background: white !important;
             page-break-inside: avoid !important;
-            min-height: 220px !important;
+            min-height: 240px !important;
             justify-content: center !important;
           }
 
@@ -482,7 +482,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             text-align: center !important;
             background: white !important;
             page-break-inside: avoid !important;
-            height: 190px !important;
+            height: 240px !important;
             justify-content: center !important;
           }
 
