@@ -597,34 +597,60 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
             <style>{`
               @media print {
-                body { visibility: hidden; }
+                body { visibility: hidden; background: white !important; }
                 .print-section, .print-section * { visibility: visible; }
                 .print-section {
                   position: absolute;
                   left: 0;
                   top: 0;
                   width: 100%;
+                  padding: 0;
+                  margin: 0;
                 }
                 .no-print { display: none !important; }
-                .page-break { page-break-after: always; }
-                @page { size: A4; margin: 10mm; }
+                .page-break { page-break-after: always; display: block; height: 0; }
+                @page { size: A4; margin: 15mm 10mm; }
+                table { width: 100%; border-collapse: collapse; }
+                th, td { border: 1px solid #e2e8f0; padding: 12px; }
+                tr { page-break-inside: avoid; }
               }
             `}</style>
-            <div className="print-section mt-4">
-              <div className="grid grid-cols-3 gap-3">
-                {customBarcodes.map((code, index) => (
-                  <div
-                    key={index}
-                    className={`p-3 border border-slate-300 rounded-xl flex flex-col items-center text-center bg-white ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}
-                  >
-                    <div className="font-mono font-black text-[10px] text-slate-900 mb-1 tracking-tight">{code}</div>
-                    <div className="p-1 border border-slate-200 rounded-lg shadow-xs">
-                      <QRCodeSVG value={code} size={80} level="M" />
-                    </div>
-                    <div className="w-full h-4 mt-2 border border-slate-200 rounded-sm"></div>
-                  </div>
-                ))}
+            
+            <div className="print-section mt-4 bg-white border border-slate-200 shadow-xs overflow-hidden">
+              <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex items-center justify-between no-print">
+                <span>معاينة جدول الطباعة (9 سطور لكل صفحة)</span>
+                <span className="font-mono text-[11px] text-slate-500">الإجمالي: {customBarcodes.length}</span>
               </div>
+              
+              <table className="w-full text-right text-xs border-collapse">
+                <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                  <tr>
+                    <th className="py-3 px-4 w-16 text-center">#</th>
+                    <th className="py-3 px-4">رقم الباركود / الجهاز (عمود الإكسل)</th>
+                    <th className="py-3 px-4 text-center">رمز الاستجابة السريعة (QR-Code)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {customBarcodes.map((code, index) => (
+                    <React.Fragment key={index}>
+                      <tr className="h-28">
+                        <td className="py-3 px-4 text-center font-mono text-slate-400 font-bold">{index + 1}</td>
+                        <td className="py-3 px-4 font-mono font-black text-slate-900 text-sm">
+                          {code}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="inline-block p-2 border border-slate-200 rounded-xl bg-white shadow-2xs">
+                            <QRCodeSVG value={code} size={64} level="M" />
+                          </div>
+                        </td>
+                      </tr>
+                      {(index + 1) % 9 === 0 && index !== customBarcodes.length - 1 && (
+                        <tr className="page-break no-print"><td colSpan={3}></td></tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-2 no-print">
