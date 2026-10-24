@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   QrCode,
@@ -47,11 +47,17 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // New Barcodes Tab State: list of entered code strings
-  const [newBarcodesText, setNewBarcodesText] = useState('');
-  const [customBarcodes, setCustomBarcodes] = useState<string[]>([]);
+  const [newBarcodesText, setNewBarcodesText] = useState(() => {
+    return localStorage.getItem('alsari_pasted_barcodes') || '';
+  });
+  const [customBarcodes, setCustomBarcodes] = useState<string[]>(() => {
+    const saved = localStorage.getItem('alsari_pasted_barcodes') || '';
+    return saved.split(/[\r\n\t,]+/).map((s) => s.trim()).filter((s) => s.length > 0);
+  });
 
   const handleParseAndAddCustomBarcodes = (text: string) => {
     setNewBarcodesText(text);
+    localStorage.setItem('alsari_pasted_barcodes', text);
     // Split by newlines, tabs, commas, or spaces if pasted from Excel/WhatsApp
     const lines = text
       .split(/[\r\n\t,]+/)
@@ -59,6 +65,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
       .filter((s) => s.length > 0);
     setCustomBarcodes(lines);
   };
+
 
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const printableCodes = useMemo(() => {
@@ -190,6 +197,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                       customBarcodes.forEach((code) => onAddCode(code));
                       setCustomBarcodes([]);
                       setNewBarcodesText('');
+                      localStorage.removeItem('alsari_pasted_barcodes');
                       setActiveTab('registry');
                     }}
                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer"
