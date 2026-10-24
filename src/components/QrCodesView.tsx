@@ -597,26 +597,27 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
             <style>{`
               @media print {
-                body { visibility: hidden; background: white !important; }
-                .print-section, .print-section * { visibility: visible; }
-                .print-section {
-                  position: absolute;
-                  left: 0;
-                  top: 0;
-                  width: 100%;
-                  padding: 0;
-                  margin: 0;
+                /* Hide everything by default */
+                body > * { display: none !important; }
+                /* Show ONLY the print container */
+                #custom-print-container { 
+                  display: block !important; 
+                  background: white !important;
+                  width: 100% !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
                 }
                 .no-print { display: none !important; }
-                .page-break { page-break-after: always; display: block; height: 0; }
+                .page-break { page-break-after: always; }
                 @page { size: A4; margin: 15mm 10mm; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { border: 1px solid #e2e8f0; padding: 12px; }
-                tr { page-break-inside: avoid; }
+                table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+                tr { page-break-inside: avoid; page-break-after: auto; }
+                thead { display: table-header-group; } /* Standard: repeat header on each page */
+                th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: right; }
               }
             `}</style>
             
-            <div className="print-section mt-4 bg-white border border-slate-200 shadow-xs overflow-hidden">
+            <div id="custom-print-container" className="mt-4 bg-white border border-slate-200 shadow-xs overflow-hidden">
               <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex items-center justify-between no-print">
                 <span>معاينة جدول الطباعة (9 سطور لكل صفحة)</span>
                 <span className="font-mono text-[11px] text-slate-500">الإجمالي: {customBarcodes.length}</span>
@@ -645,7 +646,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                         </td>
                       </tr>
                       {(index + 1) % 9 === 0 && index !== customBarcodes.length - 1 && (
-                        <tr className="page-break no-print"><td colSpan={3}></td></tr>
+                        <tr className="page-break"><td colSpan={3} className="p-0 border-0 h-0"></td></tr>
                       )}
                     </React.Fragment>
                   ))}
