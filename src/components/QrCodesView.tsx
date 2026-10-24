@@ -40,6 +40,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   const [showBatchModal, setShowBatchModal] = useState(false);
   const [showScannerModal, setShowScannerModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showCustomPrintModal, setShowCustomPrintModal] = useState(false);
 
   const [singleCodeInput, setSingleCodeInput] = useState('');
   const [batchCountInput, setBatchCountInput] = useState(10);
@@ -182,10 +183,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
-                      // Logic to trigger print of customBarcodes
-                      // Reuse the printable grid style/component logic
-                      // For now, let's just trigger window.print if we can easily separate content
-                      window.print();
+                      setShowCustomPrintModal(true);
                     }}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
                   >
@@ -533,15 +531,22 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
               </button>
             </div>
 
-            {/* Printable Cards Grid */}
             <style>{`
               @media print {
+                body { visibility: hidden; }
+                .print-section, .print-section * { visibility: visible; }
+                .print-section {
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                }
+                .no-print { display: none !important; }
                 .page-break { page-break-after: always; }
                 @page { size: A4; margin: 10mm; }
-                .no-print { display: none !important; }
               }
             `}</style>
-            <div className="mt-4 grid grid-cols-3 gap-3" id="printable-labels">
+            <div className="print-section mt-4 grid grid-cols-3 gap-3" id="printable-labels">
               {printableCodes.map((c, index) => (
                 <div
                   key={c.id}
@@ -579,33 +584,67 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
           </div>
         </div>
       )}
-      {/* Printable Cards Grid */}
-      <style>{`
-        @media print {
-          body > :not(#printable-custom-barcodes) { display: none !important; }
-          #printable-custom-barcodes { display: block !important; }
-          .page-break { page-break-after: always; }
-          @page { size: A4; margin: 10mm; }
-        }
-        .print-only { display: none; }
-      `}</style>
-      <div className="print-only hidden" id="printable-custom-barcodes">
-        <div className="grid grid-cols-3 gap-3">
-          {customBarcodes.map((code, index) => (
-            <div
-              key={index}
-              className={`p-3 border border-slate-300 rounded-xl flex flex-col items-center text-center bg-white ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}
-            >
-              <div className="font-mono font-black text-[10px] text-slate-900 mb-1 tracking-tight">{code}</div>
-              <div className="p-1 border border-slate-200 rounded-lg shadow-xs">
-                <QRCodeSVG value={code} size={80} level="M" />
-              </div>
-              <div className="w-full h-4 mt-2 border border-slate-200 rounded-sm"></div>
+      {/* Modal: Printable Custom QR Labels */}
+      {showCustomPrintModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
+              <h3 className="font-extrabold text-base text-slate-900">طباعة ملصقات الباركود الجديدة</h3>
+              <button onClick={() => setShowCustomPrintModal(false)} className="text-slate-400 p-1">
+                ✕
+              </button>
             </div>
-          ))}
-        </div>
-      </div>
 
+            <style>{`
+              @media print {
+                body { visibility: hidden; }
+                .print-section, .print-section * { visibility: visible; }
+                .print-section {
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                }
+                .no-print { display: none !important; }
+                .page-break { page-break-after: always; }
+                @page { size: A4; margin: 10mm; }
+              }
+            `}</style>
+            <div className="print-section mt-4">
+              <div className="grid grid-cols-3 gap-3">
+                {customBarcodes.map((code, index) => (
+                  <div
+                    key={index}
+                    className={`p-3 border border-slate-300 rounded-xl flex flex-col items-center text-center bg-white ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}
+                  >
+                    <div className="font-mono font-black text-[10px] text-slate-900 mb-1 tracking-tight">{code}</div>
+                    <div className="p-1 border border-slate-200 rounded-lg shadow-xs">
+                      <QRCodeSVG value={code} size={80} level="M" />
+                    </div>
+                    <div className="w-full h-4 mt-2 border border-slate-200 rounded-sm"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2 no-print">
+              <button
+                onClick={() => setShowCustomPrintModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold"
+              >
+                إغلاق
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-xl bg-sky-700 text-white font-bold hover:bg-sky-800 flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+              >
+                <Download className="w-4 h-4" />
+                <span>تحويل للطباعة (PDF)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
