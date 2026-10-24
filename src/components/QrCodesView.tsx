@@ -186,9 +186,20 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                       setShowCustomPrintModal(true);
                     }}
                     className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
+                    title="معاينة وتصدير كملف PDF"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>تصدير (PDF)</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      window.print();
+                    }}
+                    className="px-4 py-2 bg-sky-100 hover:bg-sky-200 text-sky-700 font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-1.5 border border-sky-200"
+                    title="طباعة الورقة مباشرة"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>تصدير 9 بالصفحة (PDF)</span>
+                    <span>طباعة مباشرة</span>
                   </button>
                   <button
                     onClick={() => {
@@ -584,72 +595,46 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
           </div>
         </div>
       )}
-      {/* Modal: Printable Custom QR Labels */}
+      {/* Modal: Printable Custom QR Labels Preview */}
       {showCustomPrintModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
-              <h3 className="font-extrabold text-base text-slate-900">طباعة ملصقات الباركود الجديدة</h3>
+              <h3 className="font-extrabold text-base text-slate-900">معاينة طباعة الباركودات الجديدة</h3>
               <button onClick={() => setShowCustomPrintModal(false)} className="text-slate-400 p-1">
                 ✕
               </button>
             </div>
-
-            <style>{`
-              @media print {
-                /* Hide everything by default */
-                body > * { display: none !important; }
-                /* Show ONLY the print container */
-                #custom-print-container { 
-                  display: block !important; 
-                  background: white !important;
-                  width: 100% !important;
-                  margin: 0 !important;
-                  padding: 0 !important;
-                }
-                .no-print { display: none !important; }
-                .page-break { page-break-after: always; }
-                @page { size: A4; margin: 15mm 10mm; }
-                table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
-                tr { page-break-inside: avoid; page-break-after: auto; }
-                thead { display: table-header-group; } /* Standard: repeat header on each page */
-                th, td { border: 1px solid #e2e8f0; padding: 12px; text-align: right; }
-              }
-            `}</style>
             
-            <div id="custom-print-container" className="mt-4 bg-white border border-slate-200 shadow-xs overflow-hidden">
-              <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex items-center justify-between no-print">
-                <span>معاينة جدول الطباعة (9 سطور لكل صفحة)</span>
-                <span className="font-mono text-[11px] text-slate-500">الإجمالي: {customBarcodes.length}</span>
-              </div>
-              
-              <table className="w-full text-right text-xs border-collapse">
-                <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+            <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-600 text-xs text-center">
+              يتم هنا عرض معاينة لترتيب الباركودات في الورقة. سيتم توزيع 9 باركودات في كل صفحة تلقائياً.
+            </div>
+
+            {/* Visual Preview (Non-print) */}
+            <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden scale-75 origin-top opacity-80 pointer-events-none">
+              <table className="w-full text-right text-[10px] border-collapse bg-white">
+                <thead className="bg-slate-50 border-b border-slate-200 font-bold">
                   <tr>
-                    <th className="py-3 px-4 w-16 text-center">#</th>
-                    <th className="py-3 px-4">رقم الباركود / الجهاز (عمود الإكسل)</th>
-                    <th className="py-3 px-4 text-center">رمز الاستجابة السريعة (QR-Code)</th>
+                    <th className="p-2 w-10 text-center">#</th>
+                    <th className="p-2">الباركود</th>
+                    <th className="p-2 text-center">QR</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {customBarcodes.map((code, index) => (
-                    <React.Fragment key={index}>
-                      <tr className="h-28">
-                        <td className="py-3 px-4 text-center font-mono text-slate-400 font-bold">{index + 1}</td>
-                        <td className="py-3 px-4 font-mono font-black text-slate-900 text-sm">
-                          {code}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <div className="inline-block p-2 border border-slate-200 rounded-xl bg-white shadow-2xs">
-                            <QRCodeSVG value={code} size={64} level="M" />
-                          </div>
-                        </td>
-                      </tr>
-                      {(index + 1) % 9 === 0 && index !== customBarcodes.length - 1 && (
-                        <tr className="page-break"><td colSpan={3} className="p-0 border-0 h-0"></td></tr>
-                      )}
-                    </React.Fragment>
+                <tbody>
+                  {customBarcodes.slice(0, 3).map((code, i) => (
+                    <tr key={i} className="border-b border-slate-100">
+                      <td className="p-2 text-center">{i + 1}</td>
+                      <td className="p-2 font-mono">{code}</td>
+                      <td className="p-2 text-center">
+                        <QRCodeSVG value={code} size={30} />
+                      </td>
+                    </tr>
                   ))}
+                  {customBarcodes.length > 3 && (
+                    <tr>
+                      <td colSpan={3} className="p-2 text-center italic text-slate-400">... باقي الباركودات ({customBarcodes.length - 3})</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -659,19 +644,79 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
                 onClick={() => setShowCustomPrintModal(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold"
               >
-                إغلاق
+                إغلاق المعاينة
               </button>
               <button
                 onClick={() => window.print()}
                 className="px-5 py-2 rounded-xl bg-sky-700 text-white font-bold hover:bg-sky-800 flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
               >
-                <Download className="w-4 h-4" />
-                <span>تحويل للطباعة (PDF)</span>
+                <Printer className="w-4 h-4" />
+                <span>بدء الطباعة الآن</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Hidden Print-Only Container (Always in DOM for direct window.print support) */}
+      <style>{`
+        @media print {
+          /* Hide EVERYTHING */
+          body > * { display: none !important; }
+          /* Show ONLY the print container */
+          #custom-print-container { 
+            display: block !important; 
+            background: white !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            visibility: visible !important;
+          }
+          #custom-print-container * {
+            visibility: visible !important;
+          }
+          .no-print { display: none !important; }
+          .page-break { page-break-after: always; display: block; height: 0; border: none; }
+          @page { size: A4; margin: 15mm 10mm; }
+          table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
+          th, td { border: 1px solid #e2e8f0 !important; padding: 12px; text-align: right; }
+        }
+        #custom-print-container { display: none; }
+      `}</style>
+
+      <div id="custom-print-container">
+        <table className="w-full text-right text-xs border-collapse">
+          <thead className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+            <tr>
+              <th className="py-3 px-4 w-16 text-center">#</th>
+              <th className="py-3 px-4">رقم الباركود / الجهاز (عمود الإكسل)</th>
+              <th className="py-3 px-4 text-center">رمز الاستجابة السريعة (QR-Code)</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {customBarcodes.map((code, index) => (
+              <React.Fragment key={index}>
+                <tr className="h-28">
+                  <td className="py-3 px-4 text-center font-mono text-slate-400 font-bold">{index + 1}</td>
+                  <td className="py-3 px-4 font-mono font-black text-slate-900 text-sm">
+                    {code}
+                  </td>
+                  <td className="py-3 px-4 text-center">
+                    <div className="inline-block p-2 border border-slate-200 rounded-xl bg-white shadow-2xs">
+                      <QRCodeSVG value={code} size={64} level="M" />
+                    </div>
+                  </td>
+                </tr>
+                {(index + 1) % 9 === 0 && index !== customBarcodes.length - 1 && (
+                  <tr className="page-break"><td colSpan={3} className="p-0 border-0 h-0"></td></tr>
+                )}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
