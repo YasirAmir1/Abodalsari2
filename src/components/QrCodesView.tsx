@@ -185,32 +185,36 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             </div>
             <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex items-center justify-between">
-                <span>جدول باركودات جديدة (معاينة)</span>
-                <span className="font-mono text-[11px] text-slate-500">إجمالي السطور: {customBarcodes.length}</span>
+                <span>شبكة الباركودات الجديدة (معاينة 4 أعمدة)</span>
+                <span className="font-mono text-[11px] text-slate-500">إجمالي: {customBarcodes.length}</span>
               </div>
-              <div className="max-h-[60vh] overflow-auto">
-                <table className="w-full text-right text-xs border-collapse">
-                  <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-                    <tr>
-                      <th className="py-3 px-4 w-16 text-center">#</th>
-                      <th className="py-3 px-4">رقم الباركود / الجهاز</th>
-                      <th className="py-3 px-4 text-center">رمز QR</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {customBarcodes.map((code, index) => (
-                      <tr key={index} className="hover:bg-slate-50 h-16">
-                        <td className="py-3 px-4 text-center font-mono text-slate-400 font-bold">{index + 1}</td>
-                        <td className="py-3 px-4 font-mono font-black text-slate-900 text-sm select-all">{code}</td>
-                        <td className="py-3 px-4 text-center">
-                          <div className="inline-block p-1.5 border border-slate-200 rounded-xl bg-white">
-                            <QRCodeSVG value={code} size={50} level="M" />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="max-h-[60vh] overflow-auto p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {customBarcodes.map((code, index) => (
+                    <div 
+                      key={index} 
+                      className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex flex-col items-center gap-2 hover:bg-white hover:shadow-md transition-all group"
+                    >
+                      <div className="flex items-center justify-between w-full mb-1">
+                        <span className="bg-slate-200 text-slate-500 text-[10px] px-2 py-0.5 rounded-full font-bold">#{index + 1}</span>
+                        <button 
+                          onClick={() => handleCopy(code, `custom-${index}`)}
+                          className="text-slate-400 hover:text-sky-600 transition-colors"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      
+                      <div className="p-2 bg-white rounded-xl border border-slate-100 shadow-sm">
+                        <QRCodeSVG value={code} size={70} level="M" />
+                      </div>
+                      
+                      <div className="text-[11px] font-mono font-black text-slate-800 text-center break-all select-all leading-tight">
+                        {code}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -386,7 +390,40 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
         )}
       </div>
 
-      {/* 2. Print-Only Containers & Styles */}
+      {/* Registry Print Container */}
+      <div id="registry-print-section">
+        {printableCodes.map((c, index) => (
+          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 9 === 1 ? 'page-break' : ''}`}>
+            <div className="code-text">{c.code}</div>
+            <div className="qr-box">
+              <QRCodeSVG value={c.code} size={100} level="M" />
+            </div>
+            <div className="manual-box"></div>
+          </div>
+        ))}
+      </div>
+
+      {/* Custom Table/Grid Print Container (4 columns) */}
+      <div id="custom-print-section">
+        <div style={{ textAlign: 'center', marginBottom: '30px', fontWeight: 'bold', fontSize: '20px' }}>
+          جدول الباركودات والأجهزة الجديدة
+        </div>
+        <div className="print-grid">
+          {customBarcodes.map((code, index) => (
+            <div 
+              key={index} 
+              className={`print-grid-item ${(index + 1) % 12 === 0 ? 'page-break-after' : ''}`}
+            >
+              <div className="print-item-index">#{index + 1}</div>
+              <div className="print-item-qr">
+                <QRCodeSVG value={code} size={100} level="M" />
+              </div>
+              <div className="print-item-code">{code}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
@@ -406,7 +443,23 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             gap: 15px !important;
             background: white !important;
           }
-          .print-card {
+          
+          #custom-print-section { 
+            display: block !important; 
+            position: absolute !important;
+            left: 0 !important; top: 0 !important;
+            width: 100% !important;
+            background: white !important;
+          }
+
+          .print-grid {
+            display: grid !important;
+            grid-template-columns: repeat(4, 1fr) !important;
+            gap: 10px !important;
+            width: 100% !important;
+          }
+
+          .print-grid-item {
             border: 1px solid #cbd5e1 !important;
             padding: 15px !important;
             border-radius: 12px !important;
@@ -416,73 +469,35 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             text-align: center !important;
             background: white !important;
             page-break-inside: avoid !important;
-            height: 180px !important;
-            justify-content: center !important;
           }
-          .print-card .code-text { font-family: monospace !important; font-weight: 900 !important; font-size: 12px !important; margin-bottom: 8px !important; }
-          .print-card .qr-box { padding: 8px !important; border: 1px solid #e2e8f0 !important; border-radius: 8px !important; }
-          .print-card .manual-box { width: 100% !important; height: 20px !important; margin-top: 10px !important; border: 1px solid #e2e8f0 !important; border-radius: 4px !important; }
 
-          #custom-print-section { 
-            display: block !important; 
-            position: absolute !important;
-            left: 0 !important; top: 0 !important;
-            width: 100% !important;
-            background: white !important;
+          .print-item-index {
+            font-size: 10px !important;
+            color: #64748b !important;
+            margin-bottom: 8px !important;
+            font-weight: bold !important;
           }
-          table.print-table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
-          table.print-table thead { display: table-header-group !important; }
-          table.print-table th, table.print-table td { border: 1px solid #cbd5e1 !important; padding: 15px !important; text-align: center !important; background: white !important; }
-          table.print-table tr { page-break-inside: avoid !important; }
-          .page-break { page-break-after: always !important; }
-          .page-break-row { page-break-after: always !important; display: table-row !important; height: 0 !important; }
+
+          .print-item-qr {
+            margin-bottom: 8px !important;
+          }
+
+          .print-item-code {
+            font-family: monospace !important;
+            font-weight: 900 !important;
+            font-size: 13px !important;
+            word-break: break-all !important;
+          }
+
+          .page-break-after {
+            page-break-after: always !important;
+          }
           
           @page { size: A4; margin: 15mm 10mm; }
         }
         
         #registry-print-section, #custom-print-section { display: none; }
       `}</style>
-
-      <div id="registry-print-section">
-        {printableCodes.map((c, index) => (
-          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 9 === 1 ? 'page-break' : ''}`}>
-            <div className="code-text">{c.code}</div>
-            <div className="qr-box"><QRCodeSVG value={c.code} size={100} level="M" /></div>
-            <div className="manual-box"></div>
-          </div>
-        ))}
-      </div>
-
-      <div id="custom-print-section">
-        <div style={{ textAlign: 'center', marginBottom: '20px', fontWeight: 'bold', fontSize: '18px' }}>جدول الباركودات والأجهزة الجديدة</div>
-        <table className="print-table">
-          <thead>
-            <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-              <th style={{ width: '60px' }}>#</th>
-              <th>رقم الباركود / الجهاز</th>
-              <th style={{ width: '150px' }}>رمز QR</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customBarcodes.map((code, index) => (
-              <React.Fragment key={index}>
-                <tr style={{ height: '100px' }}>
-                  <td className="font-mono font-bold text-slate-400">{index + 1}</td>
-                  <td className="font-mono font-black text-slate-900 text-lg">{code}</td>
-                  <td>
-                    <div style={{ display: 'inline-block', padding: '8px', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
-                      <QRCodeSVG value={code} size={80} level="M" />
-                    </div>
-                  </td>
-                </tr>
-                {(index + 1) % 9 === 0 && index !== customBarcodes.length - 1 && (
-                  <tr className="page-break-row"><td colSpan={3}></td></tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 };
