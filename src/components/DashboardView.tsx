@@ -8,10 +8,11 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Send,
-  PlusCircle,
   FileSpreadsheet,
   CalendarRange,
-  BarChart3
+  BarChart3,
+  PieChart,
+  Users
 } from 'lucide-react';
 import {
   calculateTotalSales,
@@ -58,6 +59,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const activeAgentsCount = agents.filter((a) => a.id !== 'agent-main').length;
   const totalOperations = invoices.length;
+
+  // Active vs Inactive Subscription metrics
+  const totalSubsCount = subscribers.length;
+  const activeSubsCount = useMemo(
+    () => subscribers.filter((s) => s.status === 'active' || s.isActive).length,
+    [subscribers]
+  );
+  const inactiveSubsCount = useMemo(
+    () => subscribers.filter((s) => s.status === 'inactive' || (!s.isActive && s.status !== 'active' && s.status !== 'expiring_soon')).length,
+    [subscribers]
+  );
+  const expiringSubsCount = useMemo(
+    () => subscribers.filter((s) => s.status === 'expiring_soon').length,
+    [subscribers]
+  );
+
+  const activePercent = totalSubsCount > 0 ? Math.round((activeSubsCount / totalSubsCount) * 100) : 0;
+  const inactivePercent = totalSubsCount > 0 ? Math.round((inactiveSubsCount / totalSubsCount) * 100) : 0;
+  const expiringPercent = totalSubsCount > 0 ? Math.max(0, 100 - activePercent - inactivePercent) : 0;
+
+  // Donut geometry for radius 46
+  const donutRadius = 46;
+  const donutCircumference = 2 * Math.PI * donutRadius;
+  const activeDash = (activeSubsCount / (totalSubsCount || 1)) * donutCircumference;
+  const inactiveDash = (inactiveSubsCount / (totalSubsCount || 1)) * donutCircumference;
+  const expiringDash = (expiringSubsCount / (totalSubsCount || 1)) * donutCircumference;
 
   // Today's sales calculation
   const todaySales = useMemo(() => {
@@ -136,15 +163,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Action Shortcut Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
           <button
-            onClick={onOpenNewSale}
-            className="flex items-center gap-2 px-4 py-2.5 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>+ تسجيل بيع جديد</span>
-          </button>
-          <button
             onClick={onExportExcel}
-            className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span>تصدير إكسل</span>
@@ -284,86 +304,231 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         })}
       </div>
 
-      {/* Sales Movement Chart (Matching Screenshot 1) */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="font-black text-slate-900 text-lg">مخطط حركة المبيعات لآخر 7 أيام</h3>
-          <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-600 border border-slate-200">
-            بالدينار العراقي
-          </span>
+      {/* Middle Analytics Section: Sales Movement (2 cols) & Subscription Ratio Donut Chart (1 col) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Sales Movement Chart */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-black text-slate-900 text-lg">مخطط حركة المبيعات لآخر 7 أيام</h3>
+              <span className="px-3 py-1 bg-slate-100 rounded-full text-xs font-bold text-slate-600 border border-slate-200">
+                بالدينار العراقي
+              </span>
+            </div>
+
+            {/* SVG Area / Line Chart with Crisp Aesthetics */}
+            <div className="relative h-64 w-full">
+              <svg className="w-full h-full overflow-visible" viewBox="0 0 700 200" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#0284c7" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="#0284c7" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
+
+                {/* Horizontal Gridlines */}
+                <line x1="0" y1="180" x2="700" y2="180" stroke="#f1f5f9" strokeWidth="1" />
+                <line x1="0" y1="120" x2="700" y2="120" stroke="#f1f5f9" strokeWidth="1" />
+                <line x1="0" y1="60" x2="700" y2="60" stroke="#f1f5f9" strokeWidth="1" />
+
+                {/* Area Fill */}
+                <path
+                  d={areaD}
+                  fill="url(#areaGradient)"
+                />
+
+                {/* Line Path */}
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke="#0369a1"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+
+                {/* Data Points */}
+                {svgPoints.map((pt, i) => (
+                  <g key={i} className="cursor-pointer">
+                    {pt.label && (
+                      <text
+                        x={pt.cx}
+                        y={pt.cy - 12}
+                        textAnchor="middle"
+                        className="text-xs font-bold fill-slate-700"
+                        style={{ fontSize: '12px' }}
+                      >
+                        {pt.label}
+                      </text>
+                    )}
+                    <circle
+                      cx={pt.cx}
+                      cy={pt.cy}
+                      r="6"
+                      fill="#ffffff"
+                      stroke="#0284c7"
+                      strokeWidth="3"
+                      className="hover:r-8 transition-all"
+                      onMouseEnter={() => setActiveChartPoint(i)}
+                      onMouseLeave={() => setActiveChartPoint(null)}
+                    />
+                  </g>
+                ))}
+              </svg>
+
+              {/* Days Labels Row */}
+              <div className="flex justify-between px-6 mt-4 text-xs font-bold text-slate-500">
+                {chartDays.map((d, index) => (
+                  <span
+                    key={index}
+                    className={activeChartPoint === index ? 'text-sky-700 font-extrabold' : ''}
+                  >
+                    {d.day}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* SVG Area / Line Chart with Crisp Aesthetics */}
-        <div className="relative h-64 w-full">
-          <svg className="w-full h-full overflow-visible" viewBox="0 0 700 200" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#0284c7" stopOpacity="0.3" />
-                <stop offset="100%" stopColor="#0284c7" stopOpacity="0.0" />
-              </linearGradient>
-            </defs>
-
-            {/* Horizontal Gridlines */}
-            <line x1="0" y1="180" x2="700" y2="180" stroke="#f1f5f9" strokeWidth="1" />
-            <line x1="0" y1="120" x2="700" y2="120" stroke="#f1f5f9" strokeWidth="1" />
-            <line x1="0" y1="60" x2="700" y2="60" stroke="#f1f5f9" strokeWidth="1" />
-
-            {/* Area Fill */}
-            <path
-              d={areaD}
-              fill="url(#areaGradient)"
-            />
-
-            {/* Line Path */}
-            <path
-              d={pathD}
-              fill="none"
-              stroke="#0369a1"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-
-            {/* Data Points */}
-            {svgPoints.map((pt, i) => (
-              <g key={i} className="cursor-pointer">
-                {pt.label && (
-                  <text
-                    x={pt.cx}
-                    y={pt.cy - 12}
-                    textAnchor="middle"
-                    className="text-xs font-bold fill-slate-700"
-                    style={{ fontSize: '12px' }}
-                  >
-                    {pt.label}
-                  </text>
-                )}
-                <circle
-                  cx={pt.cx}
-                  cy={pt.cy}
-                  r="6"
-                  fill="#ffffff"
-                  stroke="#0284c7"
-                  strokeWidth="3"
-                  className="hover:r-8 transition-all"
-                  onMouseEnter={() => setActiveChartPoint(i)}
-                  onMouseLeave={() => setActiveChartPoint(null)}
-                />
-              </g>
-            ))}
-          </svg>
-
-          {/* Days Labels Row */}
-          <div className="flex justify-between px-6 mt-4 text-xs font-bold text-slate-500">
-            {chartDays.map((d, index) => (
-              <span
-                key={index}
-                className={activeChartPoint === index ? 'text-sky-700 font-extrabold' : ''}
-              >
-                {d.day}
+        {/* Subscription Ratio Circular / Donut Summary Card */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <PieChart className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base leading-tight">حالة الاشتراكات</h3>
+                  <p className="text-[11px] text-slate-400">الفعالة مقابل غير الفعالة</p>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full border border-slate-200 font-mono">
+                {totalSubsCount} مشترك
               </span>
-            ))}
+            </div>
+
+            {/* Circular / Donut SVG Graphic */}
+            <div className="flex flex-col items-center justify-center my-4">
+              <div className="relative w-36 h-36 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 120 120">
+                  {/* Background Track Circle */}
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r={donutRadius}
+                    fill="none"
+                    stroke="#f1f5f9"
+                    strokeWidth="11"
+                  />
+
+                  {/* Active Segment (Emerald Green) */}
+                  {activeSubsCount > 0 && (
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r={donutRadius}
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="11"
+                      strokeDasharray={`${activeDash} ${donutCircumference - activeDash}`}
+                      strokeDashoffset={0}
+                      strokeLinecap="round"
+                      className="transition-all duration-700 ease-out"
+                    />
+                  )}
+
+                  {/* Inactive Segment (Rose Red) */}
+                  {inactiveSubsCount > 0 && (
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r={donutRadius}
+                      fill="none"
+                      stroke="#f43f5e"
+                      strokeWidth="11"
+                      strokeDasharray={`${inactiveDash} ${donutCircumference - inactiveDash}`}
+                      strokeDashoffset={-activeDash}
+                      strokeLinecap="round"
+                      className="transition-all duration-700 ease-out"
+                    />
+                  )}
+
+                  {/* Expiring Soon Segment (Amber) */}
+                  {expiringSubsCount > 0 && (
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r={donutRadius}
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth="11"
+                      strokeDasharray={`${expiringDash} ${donutCircumference - expiringDash}`}
+                      strokeDashoffset={-(activeDash + inactiveDash)}
+                      strokeLinecap="round"
+                      className="transition-all duration-700 ease-out"
+                    />
+                  )}
+                </svg>
+
+                {/* Center label inside donut */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none">
+                  <span className="text-2xl font-black text-slate-800 tracking-tight">{activePercent}%</span>
+                  <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded-md">
+                    فعال
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Legend list with counts and percentages */}
+            <div className="space-y-2 mt-4 pt-4 border-t border-slate-100 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-slate-700 font-bold">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-xs" />
+                  <span>اشتراكات فعالة:</span>
+                </span>
+                <span className="font-extrabold text-slate-900 font-mono">
+                  {activeSubsCount.toLocaleString()}{' '}
+                  <span className="text-[11px] text-emerald-600 font-sans font-bold">({activePercent}%)</span>
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-slate-700 font-bold">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-xs" />
+                  <span>اشتراكات غير فعالة:</span>
+                </span>
+                <span className="font-extrabold text-slate-900 font-mono">
+                  {inactiveSubsCount.toLocaleString()}{' '}
+                  <span className="text-[11px] text-rose-500 font-sans font-bold">({inactivePercent}%)</span>
+                </span>
+              </div>
+
+              {expiringSubsCount > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-slate-700 font-bold">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-xs" />
+                    <span>منتهية قريباً:</span>
+                  </span>
+                  <span className="font-extrabold text-slate-900 font-mono">
+                    {expiringSubsCount.toLocaleString()}{' '}
+                    <span className="text-[11px] text-amber-600 font-sans font-bold">({expiringPercent}%)</span>
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
+
+          <button
+            onClick={() => onNavigate('subscribers')}
+            className="mt-4 w-full py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center justify-center gap-1.5 cursor-pointer group hover:border-slate-300"
+          >
+            <Users className="w-3.5 h-3.5 text-slate-500" />
+            <span>عرض وإدارة المشتركين</span>
+            <ChevronLeft className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 transition-transform group-hover:-translate-x-0.5" />
+          </button>
         </div>
       </div>
 

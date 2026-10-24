@@ -5,14 +5,15 @@ import { storageService } from '../services/storageService';
 
 interface WhatsAppModalProps {
   subscriber: Subscriber;
-  initialTemplate?: 'renew' | 'reminder' | 'debt' | 'custom';
+  initialTemplate?: 'renew' | 'reminder' | 'debt' | 'inactive' | 'custom';
   onClose: () => void;
 }
 
 export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, initialTemplate, onClose }) => {
   const isDebt = subscriber.paymentStatus === 'debt' || subscriber.paymentStatus === 'partial';
-  const defaultType = initialTemplate || (isDebt ? 'debt' : 'renew');
-  const [templateType, setTemplateType] = useState<'renew' | 'reminder' | 'debt' | 'custom'>(defaultType);
+  const isInactive = subscriber.status === 'inactive';
+  const defaultType = initialTemplate || (isInactive ? 'inactive' : isDebt ? 'debt' : 'renew');
+  const [templateType, setTemplateType] = useState<'renew' | 'reminder' | 'debt' | 'inactive' | 'custom'>(defaultType);
   const [copied, setCopied] = useState(false);
 
   const defaultTemplates = {
@@ -42,12 +43,28 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, initia
 شاكرين حسن تعاونكم معنا.
 لأي استفسار: هاتف الإدارة: 07726218685`,
 
+    inactive: `مرحباً بك أخي المشترك (${subscriber.name}) 🌸
+
+نود إعلامك بأن اشتراكك في شبكة الساري للبث الرقمي لجهاز رقم (${subscriber.deviceId}) غير فعال حالياً 🔴.
+
+✨ هل ترغب في تجديد اشتراكك الآن والاستمتاع بمشاهدة بدون انقطاع؟ 📺
+يسرنا تواصلك معنا لتجديد الاشتراك ومواصلة التمتع بأقوى المزايا:
+⚽ تغطية كاملة وشاملة لكافة المباريات والدوريات الحصرية بأعلى دقة واستقرار تام وبدون أي تقطيع.
+🎬 باقة متكاملة من قنوات الأفلام، المسلسلات، الوثائقيات وبرامج الأطفال لجميع أفراد العائلة بجودة فائقة (FHD).
+⚡ تفعيل وتجديد فوري لجهازك دون الحاجة للانتظار.
+🛠️ دعم فني مخصص وخدمة سريعة في أي وقت لضمان رضاكم.
+
+إذا كنت ترغب بالتجديد أو الاستفسار عن باقاتنا وعروضنا الخاصة، فقط رد على هذه الرسالة وسنكون بخدمتك فوراً! 🤝
+
+مع تحيات: إدارة المركز الرئيسي - شبكة الساري للبث الرقمي
+هاتف الإدارة: 07726218685`,
+
     custom: `مرحباً بك أستاذ ${subscriber.name}، بخصوص جهاز البث الأرضي رقم (${subscriber.deviceId})...\n\nلأي استفسار: هاتف الإدارة: 07726218685`
   };
 
   const [messageText, setMessageText] = useState(defaultTemplates[defaultType]);
 
-  const handleSelectTemplate = (type: 'renew' | 'reminder' | 'debt' | 'custom') => {
+  const handleSelectTemplate = (type: 'renew' | 'reminder' | 'debt' | 'inactive' | 'custom') => {
     setTemplateType(type);
     setMessageText(defaultTemplates[type]);
   };
@@ -91,7 +108,7 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, initia
         {/* Quick Templates Buttons */}
         <div className="mt-4">
           <label className="block font-bold text-slate-700 text-xs mb-1.5">اختر نموذج الرسالة السريعة:</label>
-          <div className="grid grid-cols-3 gap-1.5 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
             <button
               type="button"
               onClick={() => handleSelectTemplate('renew')}
@@ -124,6 +141,17 @@ export const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ subscriber, initia
               }`}
             >
               💳 تذكير بالسداد
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectTemplate('inactive')}
+              className={`p-2 rounded-xl border font-bold text-center transition-all ${
+                templateType === 'inactive'
+                  ? 'bg-rose-50 border-rose-500 text-rose-800'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              🔴 ترغيب التجديد
             </button>
           </div>
         </div>

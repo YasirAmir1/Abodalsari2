@@ -17,11 +17,14 @@ import {
   CheckCircle2,
   UserCheck,
   DollarSign,
-  History
+  History,
+  AlertTriangle
 } from 'lucide-react';
 import { Agent, Invoice, PricingRow, Subscriber, SubscriptionDuration } from '../types';
 import { excelService } from '../services/excelService';
+import { storageService } from '../services/storageService';
 import { getPriceByDuration } from '../utils/pricingUtils';
+import { buildSubscriberDebtMap, getSubscriberOutstandingDebt } from '../utils/calculationUtils';
 import { RenewSubscriptionModal } from './RenewSubscriptionModal';
 import { DeactivateSubscriberModal } from './DeactivateSubscriberModal';
 import { DeleteSubscriberModal } from './DeleteSubscriberModal';
@@ -71,6 +74,9 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expiring_soon'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [agentFilter, setAgentFilter] = useState<string>(currentAgentFilter || 'all');
+  const [debtThreshold, setDebtThreshold] = useState<number>(50000);
+  const [onlyHighDebt, setOnlyHighDebt] = useState<boolean>(false);
+  const debtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
   const [historySubscriber, setHistorySubscriber] = useState<Subscriber | null>(null);
   const subscriberInvoiceHistory = useMemo(
     () => historySubscriber
@@ -369,9 +375,46 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
     setSelectedAgentSubscriber(null);
   };
 
+  const handleSendInactiveRenewalWhatsApp = (sub: Subscriber) => {
+    const rawPhone = (sub.phone || '').trim();
+    const cleanDigits = rawPhone.replace(/[^0-9]/g, '');
+
+    if (!cleanDigits) {
+      showAlert(
+        `المشترك "${sub.name}" لا يمتلك رقم هاتف مسجل. يرجى الضغط على زر (تعديل) وإضافة رقم الهاتف أولاً لإرسال رسالة الواتساب.`,
+        'لا يوجد رقم هاتف',
+        'warning'
+      );
+      return;
+    }
+
+    const message = `مرحباً بك أخي المشترك (${sub.name}) 🌸
+
+نود إعلامك بأن اشتراكك في شبكة الساري للبث الرقمي لجهاز رقم (${sub.deviceId}) غير فعال حالياً 🔴.
+
+✨ هل ترغب في تجديد اشتراكك الآن والاستمتاع بمشاهدة بدون انقطاع؟ 📺
+يسرنا تواصلك معنا لتجديد الاشتراك ومواصلة التمتع بأقوى المزايا:
+⚽ تغطية كاملة وشاملة لكافة المباريات والبطولات الحصرية بأعلى دقة واستقرار تام وبدون أي تقطيع.
+🎬 باقة متكاملة من قنوات الأفلام، المسلسلات، الوثائقيات وبرامج الأطفال لجميع أفراد العائلة بجودة فائقة (FHD).
+⚡ تفعيل وتجديد فوري لجهازك دون الحاجة للانتظار.
+🛠️ دعم فني مخصص وخدمة سريعة في أي وقت لضمان رضاكم.
+
+إذا كنت ترغب بالتجديد أو الاستفسار عن باقاتنا وعروضنا الخاصة، فقط رد على هذه الرسالة وسنكون بخدمتك فوراً! 🤝
+
+مع تحيات: إدارة المركز الرئيسي - شبكة الساري للبث الرقمي
+هاتف الإدارة: 07726218685`;
+
+    const link = storageService.createWhatsAppLink(rawPhone, message);
+    window.open(link, '_blank');
+  };
+
   // Filter logic
   const filteredSubscribers = useMemo(() => subscribersForView.filter((sub) => {
     if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
+    if (onlyHighDebt) {
+      const debt = getSubscriberOutstandingDebt(sub, debtMap);
+      if (debt < debtThreshold) return false;
+    }
     if (agentFilter !== 'all') {
       if (agentFilter === 'agent-main') {
         const isMain = sub.agentId === 'agent-main' || sub.agentName === 'المركز الرئيسي' || !sub.agentId || sub.agentName === 'الأدمن';
@@ -392,14 +435,15 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
       return matchName || matchPhone || matchDevice || matchAgent;
     }
     return true;
-  }), [agentFilter, agents, isAdmin, searchTerm, statusFilter, subscribersForView]);
+  }), [agentFilter, agents, debtMap, debtThreshold, onlyHighDebt, searchTerm, statusFilter, subscribersForView]);
 
-  const { activeCount, inactiveCount, expiringCount } = useMemo(() => subscribersForView.reduce((counts, subscriber) => {
+  const { activeCount, inactiveCount, expiringCount, highDebtCount } = useMemo(() => subscribersForView.reduce((counts, subscriber) => {
     if (subscriber.status === 'active') counts.activeCount += 1;
     if (subscriber.status === 'inactive') counts.inactiveCount += 1;
     if (subscriber.status === 'expiring_soon') counts.expiringCount += 1;
+    if (getSubscriberOutstandingDebt(subscriber, debtMap) >= debtThreshold) counts.highDebtCount += 1;
     return counts;
-  }, { activeCount: 0, inactiveCount: 0, expiringCount: 0 }), [subscribersForView]);
+  }, { activeCount: 0, inactiveCount: 0, expiringCount: 0, highDebtCount: 0 }), [debtMap, debtThreshold, subscribersForView]);
   const {
     scrollRef: subscriberTableRef,
     handleScroll: handleSubscriberTableScroll,
@@ -582,23 +626,27 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
             <span>منتهي قريباً</span>
             <span className="text-[10px] opacity-80">{expiringCount}</span>
           </button>
-        </div>
 
-        {/* New sale action */}
-        <div className="flex items-center gap-2 flex-wrap">
+          {/* High Debt Filter Toggle */}
+          <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block" />
           <button
-            onClick={openNewSaleModal}
-            className="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2"
+            onClick={() => setOnlyHighDebt((prev) => !prev)}
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
+              onlyHighDebt
+                ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+            }`}
+            title={`تصفية المشتركين الذين تتجاوز ديونهم ${debtThreshold.toLocaleString()} د.ع`}
           >
-            <Plus className="w-4 h-4" />
-            <span>بيع جهاز جديد</span>
-          </button>
-          <button
-            onClick={openAgentRenewalModal}
-            className="px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>تجديد اشتراك مشتركين الوكيل</span>
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-500 inline-block" />
+            <span>ديون مرتفعة (≥ {debtThreshold.toLocaleString()} د.ع)</span>
+            <span
+              className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                onlyHighDebt ? 'bg-white/20 text-white' : 'bg-rose-200 text-rose-900'
+              }`}
+            >
+              {highDebtCount}
+            </span>
           </button>
         </div>
       </div>
@@ -660,11 +708,27 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
         })}
       </div>
 
-      {/* Sub Header: Counter & Search */}
+      {/* Sub Header: Counter, Threshold & Search */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="text-xs text-slate-500 font-bold">
             عرض {filteredSubscribers.length} من إجمالي {subscribersForView.length} مشترك
           </div>
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl">
+            <span className="font-bold text-slate-600">سقف تمييز الديون:</span>
+            <select
+              value={debtThreshold}
+              onChange={(e) => setDebtThreshold(Number(e.target.value))}
+              className="bg-white border border-slate-200 rounded-lg px-2 py-0.5 text-xs font-black text-rose-600 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
+            >
+              <option value={25000}>25,000 د.ع</option>
+              <option value={50000}>50,000 د.ع (افتراضي)</option>
+              <option value={75000}>75,000 د.ع</option>
+              <option value={100000}>100,000 د.ع</option>
+              <option value={150000}>150,000 د.ع</option>
+            </select>
+          </div>
+        </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* Agent Filter Dropdown */}
@@ -723,20 +787,40 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
               {visibleSubscribers.map((sub) => {
                 const isActive = sub.status === 'active';
                 const isMainCenterSub = sub.agentName === 'المركز الرئيسي' || sub.agentId === 'agent-main';
-
+                const subDebt = getSubscriberOutstandingDebt(sub, debtMap);
+                const isHighDebt = subDebt >= debtThreshold;
 
                 return (
                   <tr
                     key={sub.id}
-                    className={`h-16 hover:bg-slate-50/80 transition-colors ${
-                      isActive ? 'bg-emerald-50/20' : ''
+                    className={`h-16 transition-colors ${
+                      isHighDebt
+                        ? 'bg-rose-50/75 hover:bg-rose-100/75 border-r-4 border-r-rose-500'
+                        : isActive
+                        ? 'bg-emerald-50/20 hover:bg-slate-50/80'
+                        : 'hover:bg-slate-50/80'
                     }`}
                   >
                     <td className="py-3 px-4 font-semibold text-slate-800">
                       <div className="flex items-center gap-1.5">
-                        {isActive && <span className="w-1.5 h-6 bg-emerald-500 rounded-full shrink-0" />}
+                        {isHighDebt ? (
+                          <span className="w-1.5 h-7 bg-rose-500 rounded-full shrink-0 shadow-xs" title={`دين مرتفع: ${subDebt.toLocaleString()} د.ع`} />
+                        ) : (
+                          isActive && <span className="w-1.5 h-6 bg-emerald-500 rounded-full shrink-0" />
+                        )}
                         <div>
-                          <div className="font-bold text-slate-900 text-[13px]">{sub.name}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-slate-900 text-[13px]">{sub.name}</span>
+                            {isHighDebt && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300 text-[10px] font-black tracking-tight shrink-0 shadow-2xs"
+                                title={`تجاوز سقف الدين (${debtThreshold.toLocaleString()} د.ع)`}
+                              >
+                                <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                                <span>دين: {subDebt.toLocaleString()} د.ع</span>
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-400">{sub.phone || '-'}</div>
                         </div>
                       </div>
@@ -764,7 +848,6 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                               <RefreshCw className="w-2.5 h-2.5" />
                               <span>تجديد للرئيسية</span>
                             </button>
-                            
                             {!isMainCenterSub && (
                               <button
                                 onClick={() => {
@@ -792,13 +875,21 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
 
                     {/* Status Column */}
                     <td className="py-3 px-3 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        isActive 
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
-                          : 'bg-slate-100 text-slate-500 border border-slate-200'
-                      }`}>
-                        {isActive ? 'فعال' : 'غير فعال'}
-                      </span>
+                      <div className="flex flex-col items-center justify-center gap-1">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                          isActive 
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}>
+                          {isActive ? 'فعال' : 'غير فعال'}
+                        </span>
+                        {isHighDebt && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                            <span>مطلوب</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Actions: Edit, Deactivate (X), Delete */}
@@ -823,14 +914,29 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                           <Edit2 className="w-4 h-4" />
                         </button>
 
-                        {/* Deactivate Button (X): Opens Deactivate Confirmation Modal matching Screenshot 4 */}
-                        <button
-                          onClick={() => setDeactivatingSubscriber(sub)}
-                          className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors border border-transparent hover:border-red-200"
-                          title="إلغاء تفعيل الاشتراك وتفريغ البيانات"
-                        >
-                          <X className="w-4 h-4 stroke-[3]" />
-                        </button>
+                        {/* WhatsApp Button: Appears only for inactive subscribers adjacent to Edit */}
+                        {!isActive && (
+                          <button
+                            type="button"
+                            onClick={() => handleSendInactiveRenewalWhatsApp(sub)}
+                            className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors border border-transparent hover:border-emerald-200 cursor-pointer"
+                            title="إرسال رسالة تشجيع وعرض تجديد عبر واتساب"
+                            aria-label={`إرسال رسالة تشجيع وتجديد عبر واتساب لـ ${sub.name}`}
+                          >
+                            <MessageSquare className="w-4 h-4 fill-emerald-100" />
+                          </button>
+                        )}
+
+                        {/* Deactivate Button (X): Appears only for active subscribers */}
+                        {isActive && (
+                          <button
+                            onClick={() => setDeactivatingSubscriber(sub)}
+                            className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 transition-colors border border-transparent hover:border-red-200"
+                            title="إلغاء تفعيل الاشتراك وتفريغ البيانات"
+                          >
+                            <X className="w-4 h-4 stroke-[3]" />
+                          </button>
+                        )}
 
                         {/* Delete */}
                         <button
@@ -1090,10 +1196,14 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                     id="agent-renewal-payment"
                     value={agentRenewalPayment}
                     onChange={(event) => setAgentRenewalPayment(event.target.value as 'paid' | 'debt')}
-                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-teal-500"
+                    className={`w-full px-3 py-2.5 rounded-xl border-2 bg-white dark:bg-slate-900 font-bold transition-colors focus:ring-2 ${
+                      agentRenewalPayment === 'paid'
+                        ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400 focus:ring-emerald-500'
+                        : 'border-red-500 text-red-600 dark:text-red-400 focus:ring-red-500'
+                    }`}
                   >
-                    <option value="paid">نقدي — مدفوع</option>
-                    <option value="debt">دين — يسجل كمستحق</option>
+                    <option value="paid" className="text-emerald-600 dark:text-emerald-400 font-bold">نقدي — مدفوع</option>
+                    <option value="debt" className="text-red-600 dark:text-red-400 font-bold">دين — يسجل كمستحق</option>
                   </select>
                 </div>
               </div>

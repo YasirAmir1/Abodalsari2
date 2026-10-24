@@ -150,35 +150,35 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
           مراجعة والاعتماد الفوري لطلبات تجديد الاشتراكات الواردة من كافة الوكلاء باستخدام بطاقات المعالجة مع التنبيه الفوري
         </p>
 
-        {/* Audio and Controls Bar matching Screenshot */}
+        {/* Audio and Controls Bar matching clean layout */}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Pending count badge */}
-            <span className="px-3.5 py-1.5 rounded-xl bg-amber-950/40 border border-amber-500/80 text-amber-300 text-xs font-bold flex items-center gap-2 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-300 text-xs font-bold flex items-center gap-2 shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               <span>الطلبات المعلقة: {visiblePendingRequests.length}</span>
             </span>
 
             {/* Test sound button */}
             <button
               onClick={handleTestSound}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-950/30 hover:bg-amber-900/40 border border-amber-600/70 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
               title="تشغيل وتجربة نغمة التنبيه"
             >
-              <Play className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              <Play className="w-3.5 h-3.5 fill-white text-white" />
               <span>تجربة الصوت</span>
             </button>
 
             {/* Volume selector */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-700/80 text-xs font-semibold text-slate-200">
-              <span className="text-slate-400">مستوى الصوت:</span>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200">
+              <span className="text-slate-500 dark:text-slate-400">مستوى الصوت:</span>
               <select
                 value={volumeLevel}
                 onChange={(e) => {
                   setVolumeLevel(e.target.value);
                   soundService.setVolume(Number(e.target.value) / 100);
                 }}
-                className="bg-transparent font-mono font-bold text-sky-400 focus:outline-none cursor-pointer"
+                className="bg-transparent font-mono font-bold text-sky-700 dark:text-sky-400 focus:outline-none cursor-pointer"
               >
                 <option value="10">X 10</option>
                 <option value="20">X 20</option>
@@ -193,8 +193,8 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
               onClick={() => setRepeatAlert(!repeatAlert)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
                 repeatAlert
-                  ? 'bg-teal-950/50 border-teal-500/70 text-teal-300'
-                  : 'bg-slate-900/60 border-slate-700 text-slate-400'
+                  ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-200'
+                  : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
               }`}
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -206,22 +206,22 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
               onClick={handleToggleMute}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
                 isMuted
-                  ? 'bg-slate-900/60 border-slate-700 text-slate-300'
-                  : 'bg-emerald-950/50 border-emerald-500/70 text-emerald-300'
+                  ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
               }`}
             >
-              {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+              {isMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-500" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-600" />}
               <span>صوت التنبيه: {isMuted ? 'مكتوم' : 'رنين'}</span>
             </button>
 
             {/* Chime Melody Selector */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-sky-950/30 border border-sky-800/60 text-xs font-semibold text-sky-300">
-              <Music className="w-3.5 h-3.5 text-sky-400" />
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-xs font-semibold text-sky-800 dark:text-sky-200">
+              <Music className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
               <span>النغمة:</span>
               <select
                 value={toneType}
                 onChange={(e) => handleToneChange(e.target.value)}
-                className="bg-transparent font-bold focus:outline-none cursor-pointer"
+                className="bg-transparent font-bold focus:outline-none cursor-pointer text-sky-900 dark:text-sky-100"
               >
                 <option value="westminster">رنين الأجراس الرسمي</option>
                 <option value="dingdong">رنين كلاسيكي (Ding-Dong)</option>
@@ -232,7 +232,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
 
             {/* Upload Custom Audio File */}
             <label
-              className="p-1.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 text-slate-400 hover:text-white cursor-pointer text-xs font-semibold flex items-center gap-1 transition-colors"
+              className="p-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer text-xs font-semibold flex items-center gap-1 transition-colors"
               title="رفع ملف نغمة تنبيه مخصصة (MP3/WAV)"
             >
               <Upload className="w-3.5 h-3.5" />
@@ -248,24 +248,27 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
         </div>
       </div>
 
-      {/* Main Container matching Screenshot */}
-      <div className="bg-slate-900 rounded-3xl border border-amber-500/50 p-8 min-h-[380px] flex flex-col justify-center items-center shadow-lg">
-        <div className="w-full text-right mb-4">
-          <span className="text-xs font-extrabold text-amber-400 flex items-center gap-2">
+      {/* Main Container - Clean modern theme */}
+      <div className="bg-gradient-to-b from-sky-50/50 via-white to-slate-50/70 dark:from-slate-850 dark:via-slate-900 dark:to-slate-900 rounded-3xl border border-sky-100 dark:border-slate-800 p-6 sm:p-8 min-h-[380px] flex flex-col justify-center items-center shadow-xs">
+        <div className="w-full text-right mb-5 pb-3 border-b border-sky-100/80 dark:border-slate-800 flex items-center justify-between">
+          <span className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-            قائمة طلبات التجديد الواردة من الوكلاء ({visiblePendingRequests.length})
+            <span>قائمة طلبات التجديد الواردة من الوكلاء</span>
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-xs font-mono font-bold">
+              {visiblePendingRequests.length}
+            </span>
           </span>
         </div>
 
         {visiblePendingRequests.length === 0 ? (
-          /* Empty State exactly matching the screenshot */
+          /* Empty State */
           <div className="py-12 flex flex-col items-center justify-center text-center max-w-md animate-in fade-in">
-            <div className="w-14 h-14 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-lg mb-4 ring-4 ring-emerald-500/20 border-2 border-black/40">
-              <Check className="w-9 h-9 stroke-[3]" />
+            <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-xs mb-4 ring-8 ring-emerald-50 dark:ring-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
+              <Check className="w-8 h-8 stroke-[2.5]" />
             </div>
 
-            <h3 className="text-lg font-black text-slate-100 mb-2">لا توجد طلبات معلقة حالياً</h3>
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <h3 className="text-base font-black text-slate-800 dark:text-slate-100 mb-1.5">لا توجد طلبات معلقة حالياً</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-sm">
               جميع طلبات التجديد الواردة من الوكلاء تم اعتمادها أو رفضها بنجاح، وسينبهك النظام فور وصول أي طلب جديد.
             </p>
           </div>
@@ -275,31 +278,31 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
             {visiblePendingRequests.map((req) => (
               <div
                 key={req.id}
-                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/90 dark:border-slate-700 p-5 shadow-xs hover:shadow-md hover:border-sky-300 dark:hover:border-sky-600 transition-all flex flex-col justify-between"
               >
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
-                    <span className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-900 dark:text-amber-200 font-bold text-[11px] border border-amber-200 dark:border-amber-700">
+                    <span className="px-2.5 py-1 rounded-full bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-200 font-bold text-[11px] border border-sky-200 dark:border-sky-800">
                       طلب من: {req.agentName}
                     </span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{req.requestDate}</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-400 font-mono">{req.requestDate}</span>
                   </div>
 
                   <div className="mt-3 space-y-2 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-slate-600 dark:text-slate-400">اسم المشترك:</span>
+                      <span className="text-slate-500 dark:text-slate-400">اسم المشترك:</span>
                       <span className="font-bold text-slate-900 dark:text-slate-100">{req.subscriberName}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-600 dark:text-slate-400">رقم الجهاز:</span>
+                      <span className="text-slate-500 dark:text-slate-400">رقم الجهاز:</span>
                       <span className="font-mono font-bold text-sky-700 dark:text-sky-300">{req.deviceId}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-600 dark:text-slate-400">الهاتف:</span>
-                      <span className="font-mono text-slate-800 dark:text-slate-200">{req.subscriberPhone}</span>
+                      <span className="text-slate-500 dark:text-slate-400">الهاتف:</span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300">{req.subscriberPhone}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-600 dark:text-slate-400">نوع الطلب / الباقة:</span>
+                      <span className="text-slate-500 dark:text-slate-400">نوع الطلب / الباقة:</span>
                       <span className="font-bold text-teal-700 dark:text-teal-300">
                         {isDeviceSaleRequest(req) ? 'بيع جهاز جديد فقط' : req.duration}
                       </span>
@@ -309,7 +312,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                       <span className="text-sm font-black text-slate-900 dark:text-slate-100">{req.amount.toLocaleString()} د.ع</span>
                     </div>
                     {req.notes && (
-                      <div className="p-2 bg-slate-50 dark:bg-slate-900 rounded-lg text-[11px] text-slate-600 dark:text-slate-400">
+                      <div className="p-2.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl text-[11px] text-amber-900 dark:text-amber-200 border border-amber-200/50 dark:border-amber-800/30">
                         ملاحظة الوكيل: {req.notes}
                       </div>
                     )}

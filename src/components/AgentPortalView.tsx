@@ -277,13 +277,6 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={() => setShowOrderModal(true)}
-            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>+ طلب تجديد إلكتروني فوري</span>
-          </button>
-          <button
             onClick={() => setShowDeviceSaleModal(true)}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
           >

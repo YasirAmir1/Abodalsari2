@@ -7,11 +7,13 @@ import {
   QrCode,
   Edit2,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 import { Agent, Invoice, PricingRow, Subscriber } from '../types';
 import { DeleteSubscriberModal } from './DeleteSubscriberModal';
 import { RenewSubscriptionModal } from './RenewSubscriptionModal';
+import { buildSubscriberDebtMap, getSubscriberOutstandingDebt } from '../utils/calculationUtils';
 
 interface ActiveSubscribersViewProps {
   subscribers: Subscriber[];
@@ -41,6 +43,7 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null);
   const [deletingSubscriber, setDeletingSubscriber] = useState<Subscriber | null>(null);
   const [renewingSubscriber, setRenewingSubscriber] = useState<Subscriber | null>(null);
+  const debtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
 
   const activeSubscribers = useMemo(() => {
     return subscribers.filter((s) => s.status === 'active' && s.isActive);
@@ -158,43 +161,74 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {filteredSubscribers.map((s) => (
-                <tr key={s.id} className="group hover:bg-sky-50/30 dark:hover:bg-sky-900/10 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0">
-                  <td className="px-4 py-4 font-black text-slate-900 dark:text-slate-100">{s.name}</td>
-                  <td className="px-4 py-4 font-mono">
-                    <button
-                      onClick={() => onSelectDeviceQr(s.deviceId, s.name, s.agentName)}
-                      className="text-sky-600 dark:text-sky-400 font-black hover:text-sky-800 dark:hover:text-sky-300 cursor-pointer flex items-center gap-1.5 transition-colors"
-                      title="اضغط لعرض رمز QR للجهاز"
-                    >
-                      <QrCode className="w-3.5 h-3.5 opacity-70" />
-                      <span>{s.deviceId}</span>
-                    </button>
-                  </td>
+              {filteredSubscribers.map((s) => {
+                const subDebt = getSubscriberOutstandingDebt(s, debtMap);
+                const isHighDebt = subDebt >= 50000;
+
+                return (
+                  <tr
+                    key={s.id}
+                    className={`group transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0 ${
+                      isHighDebt
+                        ? 'bg-rose-50/80 dark:bg-rose-950/20 hover:bg-rose-100/70 dark:hover:bg-rose-900/30 border-r-4 border-r-rose-500'
+                        : 'hover:bg-sky-50/30 dark:hover:bg-sky-900/10'
+                    }`}
+                  >
+                    <td className="px-4 py-4 font-black text-slate-900 dark:text-slate-100">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{s.name}</span>
+                        {isHighDebt && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-[10px] font-black"
+                            title="دين مرتفع يتجاوز 50,000 د.ع"
+                          >
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                            <span>دين: {subDebt.toLocaleString()} د.ع</span>
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 font-mono">
+                      <button
+                        onClick={() => onSelectDeviceQr(s.deviceId, s.name, s.agentName)}
+                        className="text-sky-600 dark:text-sky-400 font-black hover:text-sky-800 dark:hover:text-sky-300 cursor-pointer flex items-center gap-1.5 transition-colors"
+                        title="اضغط لعرض رمز QR للجهاز"
+                      >
+                        <QrCode className="w-3.5 h-3.5 opacity-70" />
+                        <span>{s.deviceId}</span>
+                      </button>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="text-slate-600 dark:text-slate-400 font-semibold">{s.agentName || 'المركز الرئيسي'}</span>
+                    </td>
+                    <td className="px-4 py-4 text-slate-600 dark:text-slate-400 font-medium">{s.subscriptionType}</td>
+                    <td className="px-4 py-4 font-black text-sky-700 dark:text-sky-300">{s.amount.toLocaleString()} <span className="text-[10px] opacity-70">د.ع</span></td>
+                    <td className="px-4 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs">{s.startDate}</td>
+                    <td className="px-4 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs font-bold">{s.endDate}</td>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-tight ${
+                        s.paymentStatus === 'paid' 
+                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border border-emerald-200 dark:border-emerald-800' 
+                          : 'bg-red-50 dark:bg-red-950/30 text-red-600 border border-red-200 dark:border-red-800'
+                      }`}>
+                        {s.paymentStatus === 'paid' ? 'تم الدفع' : 'متبقي دين'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-black text-[11px] bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-lg border border-emerald-100 dark:border-emerald-800/40">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          فعال
+                        </span>
+                        {isHighDebt && (
+                          <span className="px-1.5 py-0.2 rounded-md text-[9px] font-black bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                            مطلوب
+                          </span>
+                        )}
+                      </div>
+                    </td>
                   <td className="px-4 py-4">
-                    <span className="text-slate-600 dark:text-slate-400 font-semibold">{s.agentName || 'المركز الرئيسي'}</span>
-                  </td>
-                  <td className="px-4 py-4 text-slate-600 dark:text-slate-400 font-medium">{s.subscriptionType}</td>
-                  <td className="px-4 py-4 font-black text-sky-700 dark:text-sky-300">{s.amount.toLocaleString()} <span className="text-[10px] opacity-70">د.ع</span></td>
-                  <td className="px-4 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs">{s.startDate}</td>
-                  <td className="px-4 py-4 text-slate-500 dark:text-slate-500 font-mono text-xs font-bold">{s.endDate}</td>
-                  <td className="px-4 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-tight ${
-                      s.paymentStatus === 'paid' 
-                        ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 border border-emerald-200 dark:border-emerald-800' 
-                        : 'bg-red-50 dark:bg-red-950/30 text-red-600 border border-red-200 dark:border-red-800'
-                    }`}>
-                      {s.paymentStatus === 'paid' ? 'تم الدفع' : 'متبقي دين'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-black text-[11px] bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-lg border border-emerald-100 dark:border-emerald-800/40">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      فعال
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-center gap-1.5">
                       <button
                         onClick={() => setRenewingSubscriber(s)}
                         className="p-2 rounded-xl text-sky-600 bg-sky-50 dark:bg-sky-900/20 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-all border border-sky-100 dark:border-sky-800"
@@ -212,7 +246,8 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+            })}
             </tbody>
           </table>
         </div>
