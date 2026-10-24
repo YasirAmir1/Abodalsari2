@@ -390,10 +390,9 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
         )}
       </div>
 
-      {/* Registry Print Container */}
       <div id="registry-print-section">
         {printableCodes.map((c, index) => (
-          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 9 === 1 ? 'page-break' : ''}`}>
+          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 8 === 1 ? 'page-break' : ''}`}>
             <div className="code-text">{c.code}</div>
             <div className="qr-box">
               <QRCodeSVG value={c.code} size={100} level="M" />
@@ -439,8 +438,8 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             position: absolute !important;
             left: 0 !important; top: 0 !important;
             width: 100% !important;
-            grid-template-columns: repeat(3, 1fr) !important;
-            gap: 15px !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 20px !important;
             background: white !important;
           }
           
@@ -461,7 +460,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
           .print-grid-item {
             border: 1px solid #cbd5e1 !important;
-            padding: 15px !important;
+            padding: 20px !important;
             border-radius: 12px !important;
             display: flex !important;
             flex-direction: column !important;
@@ -469,6 +468,22 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             text-align: center !important;
             background: white !important;
             page-break-inside: avoid !important;
+            min-height: 220px !important;
+            justify-content: center !important;
+          }
+
+          .print-card {
+            border: 1px solid #cbd5e1 !important;
+            padding: 20px !important;
+            border-radius: 15px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            text-align: center !important;
+            background: white !important;
+            page-break-inside: avoid !important;
+            height: 240px !important;
+            justify-content: center !important;
           }
 
           .print-item-index {
