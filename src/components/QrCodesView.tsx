@@ -439,7 +439,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             left: 0 !important; top: 0 !important;
             width: 100% !important;
             grid-template-columns: repeat(2, 1fr) !important;
-            gap: 20px !important;
+            gap: 15px !important;
             background: white !important;
           }
           
@@ -454,13 +454,13 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
           .print-grid {
             display: grid !important;
             grid-template-columns: repeat(2, 1fr) !important;
-            gap: 10px !important;
+            gap: 15px !important;
             width: 100% !important;
           }
 
           .print-grid-item {
             border: 1px solid #cbd5e1 !important;
-            padding: 20px !important;
+            padding: 15px !important;
             border-radius: 12px !important;
             display: flex !important;
             flex-direction: column !important;
@@ -468,7 +468,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             text-align: center !important;
             background: white !important;
             page-break-inside: avoid !important;
-            min-height: 240px !important;
+            min-height: 215px !important;
             justify-content: center !important;
           }
 
@@ -482,7 +482,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             text-align: center !important;
             background: white !important;
             page-break-inside: avoid !important;
-            height: 240px !important;
+            height: 215px !important;
             justify-content: center !important;
           }
 
