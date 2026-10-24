@@ -21,6 +21,7 @@ import {
 import { Agent, PaymentStatus, PendingRenewalRequest, Subscriber, SubscriptionDuration } from '../types';
 import { soundService } from '../services/soundService';
 import { CustomModal } from './CustomModal';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface PendingRequestsViewProps {
   pendingRequests: PendingRenewalRequest[];
@@ -123,7 +124,7 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
     setEditStartDate(new Date().toISOString().split('T')[0]);
     const supportedDurations: SubscriptionDuration[] = ['1 شهر', 'شهرين', '3 أشهر'];
     setEditDuration(isDeviceSale ? '-' : supportedDurations.includes(req.duration) ? req.duration : '1 شهر');
-    setEditPaymentStatus('paid');
+    setEditPaymentStatus('debt');
   };
 
   const handleConfirmActivation = (e: React.FormEvent) => {
@@ -362,6 +363,17 @@ export const PendingRequestsView: React.FC<PendingRequestsViewProps> = ({
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">حالة المشترك</label>
                 <div className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
                   {activatingDeviceSale ? 'غير فعال — بيع جهاز بدون اشتراك' : 'فعال — تجديد معتمد'}
+                </div>
+              </div>
+
+              {/* Device ID and QR Code */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                  <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">رقم الجهاز:</span>
+                  <span className="font-mono font-black text-sky-700 dark:text-sky-300 text-sm">{activatingRequest.deviceId}</span>
+                </div>
+                <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-center">
+                  <QRCodeSVG value={activatingRequest.deviceId} size={48} />
                 </div>
               </div>
 

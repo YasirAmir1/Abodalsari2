@@ -34,6 +34,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   onClearAllCodes
 }) => {
   const { showConfirm } = useAppDialogs();
+  const [activeTab, setActiveTab] = useState<'registry' | 'new_barcodes'>('registry');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showAddSingleModal, setShowAddSingleModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
@@ -44,6 +45,21 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   const [batchCountInput, setBatchCountInput] = useState(10);
   const [scannedResult, setScannedResult] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // New Barcodes Tab State: list of entered code strings
+  const [newBarcodesText, setNewBarcodesText] = useState('');
+  const [customBarcodes, setCustomBarcodes] = useState<string[]>([]);
+
+  const handleParseAndAddCustomBarcodes = (text: string) => {
+    setNewBarcodesText(text);
+    // Split by newlines, tabs, commas, or spaces if pasted from Excel/WhatsApp
+    const lines = text
+      .split(/[\r\n\t,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    setCustomBarcodes(lines);
+  };
+
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const printableCodes = useMemo(() => {
     if (!showPrintModal) return [];
@@ -86,13 +102,13 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir="rtl">
       {/* Title Header Banner */}
       <div className="bg-gradient-to-r from-sky-900 via-sky-800 to-blue-900 text-white p-6 rounded-2xl shadow-sm flex items-center justify-between">
         {/* Count Card */}
         <div className="bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/20 text-center">
-          <div className="text-2xl font-black font-mono">{codes.length}</div>
-          <div className="text-[11px] text-sky-200 font-semibold">كود QR مسجل</div>
+          <div className="text-2xl font-black font-mono">{activeTab === 'registry' ? codes.length : customBarcodes.length}</div>
+          <div className="text-[11px] text-sky-200 font-semibold">{activeTab === 'registry' ? 'كود QR مسجل' : 'باركود جديد مدخل'}</div>
         </div>
 
         {/* Right Info */}
@@ -102,155 +118,255 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             <span>📱</span>
           </h2>
           <p className="text-xs text-sky-200 mt-1">
-            توليد أرقام الأجهزة المكونة من 16 رقماً، طباعة بطاقات QR، والمسح عبر الكاميرا
+            توليد أرقام الأجهزة، طباعة بطاقات QR، وإدخال و لصق الباركودات الجديدة مباشرة
           </p>
         </div>
       </div>
 
-      {/* Actions Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
-        {/* Right Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Add Single Code */}
-          <button
-            onClick={() => setShowAddSingleModal(true)}
-            className="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة رقم فردي</span>
-          </button>
-
-          {/* Batch Generate */}
-          <button
-            onClick={() => setShowBatchModal(true)}
-            className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
-          >
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <span>توليد دفعة سيريال QR</span>
-          </button>
-
-          {/* Camera / USB Scanner */}
-          <button
-            onClick={() => setShowScannerModal(true)}
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5"
-          >
-            <Camera className="w-4 h-4 text-slate-500" />
-            <span>مسح QR بالكاميرا / قارئ USB</span>
-          </button>
-
-          {/* Export to Excel */}
-          <button
-            onClick={() => excelService.exportBarcodes(codes)}
-            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>تصدير Excel</span>
-          </button>
-        </div>
-
-        {/* Left Actions */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Print PDF / Labels */}
-          <button
-            onClick={() => setShowPrintModal(true)}
-            disabled={codes.length === 0}
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 disabled:opacity-40"
-          >
-            <Printer className="w-4 h-4" />
-            <span>طباعة بطاقات QR ({selectedIds.length > 0 ? selectedIds.length : codes.length})</span>
-          </button>
-
-          {/* Reset / Delete All */}
-          <button
-            onClick={async () => {
-              if (await showConfirm('هل أنت متأكد من حذف وتصفير كافة الأكواد للبدء من جديد؟', 'حذف جميع الأكواد')) {
-                onClearAllCodes();
-                setSelectedIds([]);
-              }
-            }}
-            disabled={codes.length === 0}
-            className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-all border border-red-200 flex items-center gap-1.5 disabled:opacity-40"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>حذف وتصفير الأكواد (للبدء من جديد)</span>
-          </button>
-        </div>
+      {/* Tabs Navigation Bar */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+        <button
+          onClick={() => setActiveTab('registry')}
+          className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'registry'
+              ? 'bg-sky-700 text-white shadow-md'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <span>📋 السجل الرئيسي للأكواد ({codes.length})</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('new_barcodes')}
+          className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === 'new_barcodes'
+              ? 'bg-emerald-600 text-white shadow-md'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <span>✨ باركودات جديدة (لصق ولوليد سريع)</span>
+        </button>
       </div>
 
-      {/* Select All Checkbox Row */}
-      <div className="flex items-center justify-between px-2 text-xs">
-        <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={codes.length > 0 && selectedIds.length === codes.length}
-            onChange={(e) => handleSelectAll(e.target.checked)}
-            className="w-4 h-4 text-sky-600 rounded"
-          />
-          <span>تحديد كافة الأكواد ({codes.length})</span>
-        </label>
+      {activeTab === 'new_barcodes' ? (
+        /* New Barcodes Tab View */
+        <div className="space-y-4">
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+            <div>
+              <label className="block font-bold text-slate-800 text-xs mb-1.5">
+                الصق أرقام الباركود والأجهزة هنا (من واتساب، رسالة، أو جدول إكسل):
+              </label>
+              <textarea
+                rows={4}
+                value={newBarcodesText}
+                onChange={(e) => handleParseAndAddCustomBarcodes(e.target.value)}
+                placeholder="الصق الأرقام هنا (كل رقم في سطر أو مفصولة بفواصل أو مسافات)..."
+                className="w-full p-3 rounded-2xl border border-slate-300 text-xs font-mono text-slate-800 leading-relaxed focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                سيقوم النظام تلقائياً بإنشاء عمود إكسل افتراضي يعرض الأرقام المقبولة وبجانب كل رقم مربع QR-Code خاص به مباشرة.
+              </p>
+            </div>
 
-        <span className="text-slate-400">تم تحديد: {selectedIds.length} كود</span>
-      </div>
-
-      {/* Table / Empty State */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden min-h-[300px]">
-        {codes.length === 0 ? (
-          <div className="py-24 text-center text-slate-400 text-xs px-4">
-            لا توجد أكواد مسجلة بعد. استخدم زر "إضافة رقم فردي" أو "توليد دفعة سيريال QR" لإضافة أجهزة جديدة.
-          </div>
-        ) : (
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[70vh] overflow-auto">
-            {codes.map((c) => (
-              <div
-                key={c.id}
-                className="relative bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all flex flex-col items-center text-center group"
-              >
-                {/* Top Right: Delete Basket Icon & Checkbox */}
-                <div className="absolute top-3 right-3 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedIdSet.has(c.id)}
-                    onChange={() => toggleSelectOne(c.id)}
-                    className="w-4 h-4 text-sky-600 rounded cursor-pointer"
-                    title="تحديد البطاعة"
-                  />
+            {customBarcodes.length > 0 && (
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <span className="font-bold text-slate-700 text-xs">
+                  تم رصد ومعالجة ({customBarcodes.length}) رقم ورسم رموز الـ QR الخاصة بها:
+                </span>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onDeleteCode(c.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors border border-transparent hover:border-red-200 cursor-pointer"
-                    title="حذف البطاقة"
+                    onClick={() => {
+                      // Logic to trigger print of customBarcodes
+                      // Reuse the printable grid style/component logic
+                      // For now, let's just trigger window.print if we can easily separate content
+                      window.print();
+                    }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Printer className="w-4 h-4" />
+                    <span>تصدير 9 بالصفحة (PDF)</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      customBarcodes.forEach((code) => onAddCode(code));
+                      setCustomBarcodes([]);
+                      setNewBarcodesText('');
+                      setActiveTab('registry');
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition-colors cursor-pointer"
+                  >
+                    حفظ وتصدير الكل إلى السجل الرئيسي ({customBarcodes.length})
                   </button>
                 </div>
-
-                {/* Code Number & Copy */}
-                <div className="mt-6 mb-3 flex flex-col items-center w-full">
-                  <div className="font-mono font-black text-slate-900 text-xs sm:text-sm tracking-tight mb-1 select-all">
-                    {c.code}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleCopy(c.code, c.id)}
-                      className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center gap-1 transition-colors"
-                      title="نسخ الكود"
-                    >
-                      <Copy className="w-3 h-3" />
-                      <span>{copiedId === c.id ? 'تم النسخ!' : 'نسخ'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Barcode / QR Code SVG below the number */}
-                <div className="p-2 border border-slate-200 rounded-xl bg-white shadow-inner flex items-center justify-center">
-                  <QRCodeSVG value={c.code} size={100} level="M" />
-                </div>
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Modal: Add Single Code */}
+          {/* Excel-like Table for New Barcodes */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex items-center justify-between">
+              <span>جدول باركودات جديدة (اكسل فارغ / معاينة)</span>
+              <span className="font-mono text-[11px] text-slate-500">إجمالي السطور: {customBarcodes.length}</span>
+            </div>
+
+            {customBarcodes.length === 0 ? (
+              <div className="py-20 text-center text-slate-400 text-xs">
+                لم يتم إدخال أو لصق أي بيانات بعد. الصق الأبيانات في المربع أعلاه لملء الجدول وتوليد رموز QR مباشرة.
+              </div>
+            ) : (
+              <div className="max-h-[60vh] overflow-auto">
+                <table className="w-full text-right text-xs border-collapse">
+                  <thead className="sticky top-0 bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                    <tr>
+                      <th className="py-3 px-4 w-16 text-center">#</th>
+                      <th className="py-3 px-4">رقم الباركود / الجهاز (عمود الإكسل)</th>
+                      <th className="py-3 px-4 text-center">رمز الاستجابة السريعة (QR-Code)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {customBarcodes.map((code, index) => (
+                      <tr key={index} className="hover:bg-slate-50 transition-colors h-16">
+                        <td className="py-3 px-4 text-center font-mono text-slate-400 font-bold">{index + 1}</td>
+                        <td className="py-3 px-4 font-mono font-black text-slate-900 text-sm select-all">
+                          {code}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <div className="inline-block p-1.5 border border-slate-200 rounded-xl bg-white shadow-2xs">
+                            <QRCodeSVG value={code} size={50} level="M" />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Registry View */
+        <div className="space-y-6">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowAddSingleModal(true)}
+                className="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة رقم فردي</span>
+              </button>
+              <button
+                onClick={() => setShowBatchModal(true)}
+                className="px-3.5 py-2 bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>توليد دفعة سيريال QR</span>
+              </button>
+              <button
+                onClick={() => setShowScannerModal(true)}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5"
+              >
+                <Camera className="w-4 h-4 text-slate-500" />
+                <span>مسح QR بالكاميرا / قارئ USB</span>
+              </button>
+              <button
+                onClick={() => excelService.exportBarcodes(codes)}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>تصدير Excel</span>
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setShowPrintModal(true)}
+                disabled={codes.length === 0}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200 flex items-center gap-1.5 disabled:opacity-40"
+              >
+                <Printer className="w-4 h-4" />
+                <span>طباعة بطاقات QR ({selectedIds.length > 0 ? selectedIds.length : codes.length})</span>
+              </button>
+              <button
+                onClick={async () => {
+                  if (await showConfirm('هل أنت متأكد من حذف وتصفير كافة الأكواد للبدء من جديد؟', 'حذف جميع الأكواد')) {
+                    onClearAllCodes();
+                    setSelectedIds([]);
+                  }
+                }}
+                disabled={codes.length === 0}
+                className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-all border border-red-200 flex items-center gap-1.5 disabled:opacity-40"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>حذف وتصفير الأكواد (للبدء من جديد)</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between px-2 text-xs">
+            <label className="flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={codes.length > 0 && selectedIds.length === codes.length}
+                onChange={(e) => handleSelectAll(e.target.checked)}
+                className="w-4 h-4 text-sky-600 rounded"
+              />
+              <span>تحديد كافة الأكواد ({codes.length})</span>
+            </label>
+            <span className="text-slate-400">تم تحديد: {selectedIds.length} كود</span>
+          </div>
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden min-h-[300px]">
+            {codes.length === 0 ? (
+              <div className="py-24 text-center text-slate-400 text-xs px-4">
+                لا توجد أكواد مسجلة بعد. استخدم زر "إضافة رقم فردي" أو "توليد دفعة سيريال QR" لإضافة أجهزة جديدة.
+              </div>
+            ) : (
+              <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[70vh] overflow-auto">
+                {codes.map((c) => (
+                  <div
+                    key={c.id}
+                    className="relative bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all flex flex-col items-center text-center group"
+                  >
+                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIdSet.has(c.id)}
+                        onChange={() => toggleSelectOne(c.id)}
+                        className="w-4 h-4 text-sky-600 rounded cursor-pointer"
+                        title="تحديد البطاعة"
+                      />
+                      <button
+                        onClick={() => onDeleteCode(c.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors border border-transparent hover:border-red-200 cursor-pointer"
+                        title="حذف البطاقة"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="mt-6 mb-3 flex flex-col items-center w-full">
+                      <div className="font-mono font-black text-slate-900 text-xs sm:text-sm tracking-tight mb-1 select-all">
+                        {c.code}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleCopy(c.code, c.id)}
+                          className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                          title="نسخ الكود"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{copiedId === c.id ? 'تم النسخ!' : 'نسخ'}</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-2 border border-slate-200 rounded-xl bg-white shadow-inner flex items-center justify-center">
+                      <QRCodeSVG value={c.code} size={100} level="M" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+
       {showAddSingleModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
@@ -396,6 +512,8 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
         </div>
       )}
 
+
+
       {/* Modal: Printable QR Labels */}
       {showPrintModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in" dir="rtl">
@@ -453,6 +571,33 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
           </div>
         </div>
       )}
+      {/* Printable Cards Grid */}
+      <style>{`
+        @media print {
+          body > :not(#printable-custom-barcodes) { display: none !important; }
+          #printable-custom-barcodes { display: block !important; }
+          .page-break { page-break-after: always; }
+          @page { size: A4; margin: 10mm; }
+        }
+        .print-only { display: none; }
+      `}</style>
+      <div className="print-only hidden" id="printable-custom-barcodes">
+        <div className="grid grid-cols-3 gap-3">
+          {customBarcodes.map((code, index) => (
+            <div
+              key={index}
+              className={`p-3 border border-slate-300 rounded-xl flex flex-col items-center text-center bg-white ${index > 0 && index % 9 === 0 ? 'page-break' : ''}`}
+            >
+              <div className="font-mono font-black text-[10px] text-slate-900 mb-1 tracking-tight">{code}</div>
+              <div className="p-1 border border-slate-200 rounded-lg shadow-xs">
+                <QRCodeSVG value={code} size={80} level="M" />
+              </div>
+              <div className="w-full h-4 mt-2 border border-slate-200 rounded-sm"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
     </div>
   );
 };
