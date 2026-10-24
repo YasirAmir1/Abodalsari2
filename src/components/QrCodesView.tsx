@@ -185,11 +185,11 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             </div>
             <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="p-4 bg-slate-50 border-b border-slate-200 font-bold text-xs text-slate-700 flex items-center justify-between">
-                <span>شبكة الباركودات الجديدة (معاينة 4 أعمدة)</span>
+                <span>شبكة الباركودات الجديدة (معاينة عمودين)</span>
                 <span className="font-mono text-[11px] text-slate-500">إجمالي: {customBarcodes.length}</span>
               </div>
               <div className="max-h-[60vh] overflow-auto p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {customBarcodes.map((code, index) => (
                     <div 
                       key={index} 
@@ -392,7 +392,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
       <div id="registry-print-section">
         {printableCodes.map((c, index) => (
-          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 8 === 1 ? 'page-break' : ''}`}>
+          <div key={c.id} className={`print-card ${index > 0 && (index + 1) % 10 === 1 ? 'page-break' : ''}`}>
             <div className="code-text">{c.code}</div>
             <div className="qr-box">
               <QRCodeSVG value={c.code} size={100} level="M" />
@@ -411,7 +411,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
           {customBarcodes.map((code, index) => (
             <div 
               key={index} 
-              className={`print-grid-item ${(index + 1) % 12 === 0 ? 'page-break-after' : ''}`}
+              className={`print-grid-item ${(index + 1) % 10 === 0 ? 'page-break-after' : ''}`}
             >
               <div className="print-item-index">#{index + 1}</div>
               <div className="print-item-qr">
@@ -453,7 +453,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
           .print-grid {
             display: grid !important;
-            grid-template-columns: repeat(4, 1fr) !important;
+            grid-template-columns: repeat(2, 1fr) !important;
             gap: 10px !important;
             width: 100% !important;
           }
@@ -474,7 +474,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
 
           .print-card {
             border: 1px solid #cbd5e1 !important;
-            padding: 20px !important;
+            padding: 15px !important;
             border-radius: 15px !important;
             display: flex !important;
             flex-direction: column !important;
@@ -482,7 +482,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
             text-align: center !important;
             background: white !important;
             page-break-inside: avoid !important;
-            height: 240px !important;
+            height: 190px !important;
             justify-content: center !important;
           }
 
