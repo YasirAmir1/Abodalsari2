@@ -190,7 +190,7 @@ const SalesInvoicesView = lazy(() => import('./components/SalesInvoicesView').th
 const DebtsView = lazy(() => import('./components/DebtsView').then(({ DebtsView }) => ({ default: DebtsView })));
 const ActiveSubscribersView = lazy(() => import('./components/ActiveSubscribersView').then(({ ActiveSubscribersView }) => ({ default: ActiveSubscribersView })));
 const AgentPortalView = lazy(() => import('./components/AgentPortalView').then(({ AgentPortalView }) => ({ default: AgentPortalView })));
-const SportsView = lazy(() => import('./components/SportsView').then(({ SportsView }) => ({ default: SportsView })));
+
 const WhatsAppModal = lazy(() => import('./components/WhatsAppModal').then(({ WhatsAppModal }) => ({ default: WhatsAppModal })));
 const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(({ ReceiptModal }) => ({ default: ReceiptModal })));
 const DeviceQrModal = lazy(() => import('./components/DeviceQrModal').then(({ DeviceQrModal }) => ({ default: DeviceQrModal })));
@@ -207,7 +207,6 @@ const componentsMap: Record<NavTab, () => Promise<any>> = {
   sales: () => import('./components/SalesInvoicesView'),
   debts: () => import('./components/DebtsView'),
   active_subscribers: () => import('./components/ActiveSubscribersView'),
-  sports: () => import('./components/SportsView'),
   agent_portal: () => import('./components/AgentPortalView'),
 };
 
@@ -1774,8 +1773,7 @@ export default function App() {
     products: 'إدارة المنتجات والمعدات والمخزن',
     pricing: 'جدول أسعار الوكلاء والمركز',
     agent_portal: `بوابة الوكيل (${currentAgent.name})`,
-    active_subscribers: 'المشتركون الفعالون',
-    sports: 'المباريات المباشرة والنتائج والترتيب'
+    active_subscribers: 'المشتركون الفعالون'
   };
 
   return (
@@ -1981,9 +1979,7 @@ export default function App() {
             />
           )}
 
-          {currentTab === 'sports' && (
-            <SportsView />
-          )}
+
           </Suspense>
         </main>
       </div>

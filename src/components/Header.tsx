@@ -366,7 +366,7 @@ export const Header: React.FC<HeaderProps> = ({
                   onClick={() => setShowWeatherTooltip(false)}
                 />
 
-                <div className="fixed sm:absolute top-16 sm:top-full left-2 right-2 sm:left-0 sm:right-auto sm:mt-2 z-50 w-auto sm:w-84 max-w-[calc(100vw-1rem)] sm:max-w-none p-3.5 rounded-2xl bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-2xl text-xs space-y-3 animate-in fade-in zoom-in-95 duration-150">
+                <div className="fixed sm:absolute top-16 sm:top-full inset-x-2 sm:inset-x-auto sm:left-0 sm:right-auto sm:mt-2 z-50 w-auto sm:w-84 max-w-[calc(100vw-1rem)] sm:max-w-none p-3.5 rounded-2xl bg-white/95 dark:bg-[#0F172A]/95 backdrop-blur-xl border border-slate-200 dark:border-slate-800 shadow-2xl text-xs space-y-3 animate-in fade-in zoom-in-95 duration-150">
                   {/* Popover Header */}
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
                     <div className="flex items-center gap-1.5 min-w-0">
