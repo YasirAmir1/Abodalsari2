@@ -1,0 +1,22 @@
+{
+  "name": "شركة الساري للبث الأرضي",
+  "short_name": "الساري للبث",
+  "description": "نظام إدارة المشتركين والاشتراكات والوكلاء - شبكة الساري للبث الأرضي",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080E21",
+  "theme_color": "#0284c7",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

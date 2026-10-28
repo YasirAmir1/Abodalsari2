@@ -1,0 +1,131 @@
+{
+  "entities": {
+    "Subscriber": {
+      "title": "Subscriber",
+      "description": "Subscriber account in the broadcasting network.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "agentId": { "type": "string" },
+        "agentName": { "type": "string" },
+        "subscriptionType": { "type": "string" },
+        "status": { "type": "string" },
+        "paymentStatus": { "type": "string" },
+        "amount": { "type": "number" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "name", "deviceId", "agentId"]
+    },
+    "Agent": {
+      "title": "Agent",
+      "description": "Authorized distribution agent.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "region": { "type": "string" },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "code", "name"]
+    },
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Sales invoice record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "subscriberId": { "type": "string" },
+        "subscriberName": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "agentId": { "type": "string" },
+        "amount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "remainingAmount": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "invoiceNumber", "amount"]
+    },
+    "PendingRenewalRequest": {
+      "title": "PendingRenewalRequest",
+      "description": "Agent request for subscriber renewal.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subscriberId": { "type": "string" },
+        "subscriberName": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "agentId": { "type": "string" },
+        "status": { "type": "string" },
+        "tenantId": { "type": "string" }
+      },
+      "required": ["id", "subscriberId", "agentId", "status"]
+    },
+    "TenantMetadata": {
+      "title": "TenantMetadata",
+      "description": "Metadata and operational configuration for tenant.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string" },
+        "schemaVersion": { "type": "number" },
+        "lastUpdatedTimestamp": { "type": "number" }
+      },
+      "required": ["tenantId"]
+    },
+    "AppState": {
+      "title": "AppState",
+      "description": "Global application state snapshot.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/app_state/{stateId}": {
+      "schema": {
+        "$ref": "#/entities/AppState"
+      },
+      "description": "Global app state document for real-time synchronization across devices."
+    },
+    "/tenants/{tenantId}/subscribers/{subscriberId}": {
+      "schema": {
+        "$ref": "#/entities/Subscriber"
+      },
+      "description": "Subscriber records for a tenant."
+    },
+    "/tenants/{tenantId}/agents/{agentId}": {
+      "schema": {
+        "$ref": "#/entities/Agent"
+      },
+      "description": "Authorized agent records for a tenant."
+    },
+    "/tenants/{tenantId}/sales/{invoiceId}": {
+      "schema": {
+        "$ref": "#/entities/Invoice"
+      },
+      "description": "Sales invoice records for a tenant."
+    },
+    "/tenants/{tenantId}/requests/{requestId}": {
+      "schema": {
+        "$ref": "#/entities/PendingRenewalRequest"
+      },
+      "description": "Pending agent renewal requests."
+    },
+    "/tenants/{tenantId}/metadata/{metadataId}": {
+      "schema": {
+        "$ref": "#/entities/TenantMetadata"
+      },
+      "description": "Tenant metadata and state timestamps."
+    }
+  }
+}

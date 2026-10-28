@@ -1,0 +1,19 @@
+{
+  "short_name": "الساري للبث الأرضي",
+  "name": "شركة الساري للبث الأرضي - وكيل قنوات الرابعة الرياضية",
+  "description": "نظام إدارة المشتركين والاشتراكات والوكلاء والفوترة لشبكة الساري للبث الأرضي في محافظة صلاح الدين",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0284c7",
+  "theme_color": "#0284c7",
+  "display": "standalone",
+  "orientation": "portrait",
+  "dir": "rtl",
+  "lang": "ar"
+}
