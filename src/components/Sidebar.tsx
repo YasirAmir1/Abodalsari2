@@ -14,7 +14,8 @@ import {
   X,
   ShieldCheck,
   Sparkles,
-  Layers
+  Layers,
+  Trophy
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -29,6 +30,7 @@ export type NavTab =
   | 'barcodes'
   | 'products'
   | 'pricing'
+  | 'sports'
   | 'agent_portal';
 
 import { SystemUser } from '../types';
@@ -111,6 +113,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'barcodes', label: 'أكواد وأجهزة QR', icon: QrCode },
         { id: 'products', label: 'المنتجات والمعدات', icon: Package },
         { id: 'pricing', label: 'جدول الأسعار', icon: DollarSign }
+      ]
+    },
+    {
+      title: 'الرياضة والمتابعة',
+      items: [
+        {
+          id: 'sports',
+          label: 'المباريات المباشرة',
+          icon: Trophy,
+          badge: 'مباشر',
+          badgeVariant: 'warning'
+        }
       ]
     }
   ];
@@ -239,6 +253,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                   <span className="text-[13.5px]">لوحة تحكم الوكيل</span>
                 </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  onSelectTab('sports');
+                  if (onClose) onClose();
+                }}
+                onMouseEnter={() => onPrefetchTab?.('sports')}
+                className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all group overflow-hidden ${
+                  currentTab === 'sports'
+                    ? 'bg-gradient-to-l from-sky-500/15 via-sky-500/8 to-transparent text-sky-950 dark:text-sky-200 border border-sky-500/30 shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/[0.04] dark:hover:text-white'
+                }`}
+              >
+                {currentTab === 'sports' && (
+                  <span className="absolute right-0 top-2 bottom-2 w-1 rounded-l-full bg-gradient-to-b from-sky-400 to-sky-600 shadow-sm shadow-sky-500/50" />
+                )}
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      currentTab === 'sports'
+                        ? 'bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100/70 dark:bg-slate-800/40 text-slate-500 dark:text-slate-400 group-hover:text-sky-600'
+                    }`}
+                  >
+                    <Trophy className="w-4 h-4 shrink-0 text-amber-400" />
+                  </div>
+                  <span className="text-[13.5px]">المباريات المباشرة</span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                  مباشر
+                </span>
               </button>
             </div>
           ) : (

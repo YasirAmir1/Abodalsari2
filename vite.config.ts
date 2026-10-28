@@ -17,6 +17,22 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/api/apisports': {
+          target: 'https://v3.football.api-sports.io',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (p) => p.replace(/^\/api\/apisports/, ''),
+          headers: {
+            'x-apisports-key': '3245db41976cfeae9ceed6f34f14fbc2'
+          }
+        },
+        '/api/football': {
+          target: 'https://api.football-data.org/v4',
+          changeOrigin: true,
+          rewrite: (p) => p.replace(/^\/api\/football/, '')
+        }
+      }
     },
     build: {
       rollupOptions: {

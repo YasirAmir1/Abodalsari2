@@ -258,6 +258,77 @@ class SoundService {
     this.playPendingAlert();
   }
 
+  /**
+   * Referee whistle sound for match kickoff or final whistle
+   */
+  public playFootballWhistle() {
+    if (this.isMuted) return;
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      // Two short sharp whistle bursts
+      const bursts = [0.0, 0.22];
+      bursts.forEach((offset) => {
+        const t = now + offset;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(2600, t);
+        osc.frequency.linearRampToValueAtTime(2850, t + 0.1);
+        osc.frequency.setValueAtTime(2600, t + 0.16);
+
+        gain.gain.setValueAtTime(this.volume * 0.45, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.18);
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Goal fanfare sound: Exciting triumphant chime
+   */
+  public playGoalFanfare() {
+    if (this.isMuted) return;
+    try {
+      const ctx = this.getAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      // 4 ascending triumph notes: C5, E5, G5, C6
+      const notes = [
+        { freq: 523.25, time: 0.0, dur: 0.15 },
+        { freq: 659.25, time: 0.12, dur: 0.15 },
+        { freq: 783.99, time: 0.24, dur: 0.2 },
+        { freq: 1046.50, time: 0.4, dur: 0.6 }
+      ];
+
+      notes.forEach((n) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(n.freq, now + n.time);
+
+        gain.gain.setValueAtTime(this.volume * 0.4, now + n.time);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.time + n.dur);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + n.time);
+        osc.stop(now + n.time + n.dur);
+      });
+    } catch {
+      // ignore
+    }
+  }
+
   public startRepeatAlert(intervalSeconds = 12) {
     this.stopRepeat();
     this.playPendingAlert();
