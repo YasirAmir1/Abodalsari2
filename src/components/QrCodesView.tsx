@@ -132,7 +132,7 @@ export const QrCodesView: React.FC<QrCodesViewProps> = ({
               activeTab === 'new_barcodes' ? 'bg-emerald-600 text-white shadow-md' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
             }`}
           >
-            <span>✨ باركودات جديدة (لصق ولوليد سريع)</span>
+            <span>باركودات جديدة</span>
           </button>
         </div>
 
