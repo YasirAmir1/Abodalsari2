@@ -418,9 +418,19 @@ function diffOperations(previous: AppState, next: AppState): WriteOperation[] {
   return operations;
 }
 
+let quotaExceededFlag = false;
+
+function checkAndHandleQuotaError(err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err || '');
+  if (msg.includes('resource-exhausted') || msg.includes('Quota exceeded')) {
+    quotaExceededFlag = true;
+    updateSyncStatus('offline');
+  }
+}
+
 export const firebaseService = {
   isQuotaExceeded(): boolean {
-    return false;
+    return quotaExceededFlag;
   },
 
   getSyncStatus(): SyncStatus {
@@ -744,10 +754,12 @@ export const firebaseService = {
         syncedTables.invoices = records;
         dispatchSyncedState();
       }, (err) => {
+        checkAndHandleQuotaError(err);
         console.warn('Realtime sales onSnapshot listener notice:', err);
       });
       unsubscriptions.push(unsubSales);
     } catch (e) {
+      checkAndHandleQuotaError(e);
       console.warn('Could not register sales onSnapshot:', e);
     }
 
@@ -759,10 +771,12 @@ export const firebaseService = {
         syncedTables.subscribers = records;
         dispatchSyncedState();
       }, (err) => {
+        checkAndHandleQuotaError(err);
         console.warn('Realtime subscribers onSnapshot listener notice:', err);
       });
       unsubscriptions.push(unsubSubs);
     } catch (e) {
+      checkAndHandleQuotaError(e);
       console.warn('Could not register subscribers onSnapshot:', e);
     }
 
@@ -774,10 +788,12 @@ export const firebaseService = {
         syncedTables.agents = records;
         dispatchSyncedState();
       }, (err) => {
+        checkAndHandleQuotaError(err);
         console.warn('Realtime agents onSnapshot listener notice:', err);
       });
       unsubscriptions.push(unsubAgents);
     } catch (e) {
+      checkAndHandleQuotaError(e);
       console.warn('Could not register agents onSnapshot:', e);
     }
 
@@ -789,10 +805,12 @@ export const firebaseService = {
         syncedTables.pendingRequests = records;
         dispatchSyncedState();
       }, (err) => {
+        checkAndHandleQuotaError(err);
         console.warn('Realtime requests onSnapshot listener notice:', err);
       });
       unsubscriptions.push(unsubReqs);
     } catch (e) {
+      checkAndHandleQuotaError(e);
       console.warn('Could not register requests onSnapshot:', e);
     }
 
@@ -804,10 +822,12 @@ export const firebaseService = {
           dispatchSyncedState();
         }
       }, (err) => {
+        checkAndHandleQuotaError(err);
         console.warn('Realtime metadata onSnapshot listener notice:', err);
       });
       unsubscriptions.push(unsubMeta);
     } catch (e) {
+      checkAndHandleQuotaError(e);
       console.warn('Could not register metadata onSnapshot:', e);
     }
 

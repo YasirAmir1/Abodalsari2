@@ -444,6 +444,80 @@ export default function App() {
   };
 
 
+function mergeRemoteStateWithLocal(remoteState: AppState, currentState: AppState): AppState {
+  const deletedSubs = storageService.getDeletedSubscriberIds();
+  const deletedInvoices = storageService.getDeletedInvoiceIds();
+
+  // 1. Merge Subscribers: remote + local
+  const remoteSubMap = new Map<string, Subscriber>();
+  (remoteState.subscribers || []).forEach((sub) => {
+    if (sub && sub.id && !deletedSubs.has(sub.id) && (!sub.deviceId || !deletedSubs.has(sub.deviceId))) {
+      remoteSubMap.set(sub.id, sub);
+    }
+  });
+
+  (currentState.subscribers || []).forEach((localSub) => {
+    if (!localSub || !localSub.id) return;
+    if (deletedSubs.has(localSub.id) || (localSub.deviceId && deletedSubs.has(localSub.deviceId))) return;
+
+    if (!remoteSubMap.has(localSub.id)) {
+      remoteSubMap.set(localSub.id, localSub);
+    } else {
+      const remoteSub = remoteSubMap.get(localSub.id)!;
+      if (localSub.status === 'active' && remoteSub.status !== 'active') {
+        remoteSubMap.set(localSub.id, { ...remoteSub, ...localSub });
+      }
+    }
+  });
+
+  // 2. Merge Invoices: remote + local
+  const remoteInvMap = new Map<string, Invoice>();
+  (remoteState.invoices || []).forEach((inv) => {
+    if (inv && inv.id && !deletedInvoices.has(inv.id)) {
+      remoteInvMap.set(inv.id, inv);
+    }
+  });
+
+  (currentState.invoices || []).forEach((localInv) => {
+    if (!localInv || !localInv.id || deletedInvoices.has(localInv.id)) return;
+    if (!remoteInvMap.has(localInv.id)) {
+      remoteInvMap.set(localInv.id, localInv);
+    }
+  });
+
+  // 3. Merge Pending Requests: remote + local
+  const remoteReqMap = new Map<string, PendingRenewalRequest>();
+  (remoteState.pendingRequests || []).forEach((req) => {
+    if (req && req.id && !deletedSubs.has(req.subscriberId)) {
+      remoteReqMap.set(req.id, req);
+    }
+  });
+
+  (currentState.pendingRequests || []).forEach((localReq) => {
+    if (!localReq || !localReq.id || deletedSubs.has(localReq.subscriberId)) return;
+    if (!remoteReqMap.has(localReq.id)) {
+      remoteReqMap.set(localReq.id, localReq);
+    } else {
+      const remoteReq = remoteReqMap.get(localReq.id)!;
+      if (localReq.status !== 'pending' && remoteReq.status === 'pending') {
+        remoteReqMap.set(localReq.id, localReq);
+      }
+    }
+  });
+
+  return {
+    ...remoteState,
+    subscribers: Array.from(remoteSubMap.values()),
+    invoices: Array.from(remoteInvMap.values()),
+    pendingRequests: Array.from(remoteReqMap.values()),
+    agents: remoteState.agents && remoteState.agents.length > 0 ? remoteState.agents : currentState.agents,
+    products: remoteState.products && remoteState.products.length > 0 ? remoteState.products : currentState.products,
+    pricing: remoteState.pricing && remoteState.pricing.length > 0 ? remoteState.pricing : currentState.pricing,
+    codes: remoteState.codes && remoteState.codes.length > 0 ? remoteState.codes : currentState.codes,
+    users: remoteState.users && remoteState.users.length > 0 ? remoteState.users : currentState.users
+  };
+}
+
   // Expire subscriptions against the local calendar date after the first
   // server synchronization, and recheck periodically while the app is open.
   // Invoice balances remain the ledger source, so clearing subscription fields
@@ -460,7 +534,7 @@ export default function App() {
       const debtMap = buildSubscriberDebtMap(currentState.invoices);
       const subscribers = currentState.subscribers.map((subscriber) => {
         if (subscriber.status !== 'active' || !subscriber.endDate || subscriber.endDate === '-') return subscriber;
-        if (subscriber.endDate > today) return subscriber;
+        if (subscriber.endDate >= today) return subscriber;
 
         changed = true;
         const outstandingDebt = getSubscriberOutstandingDebt(subscriber, debtMap);
@@ -514,7 +588,8 @@ export default function App() {
     const unsubscribe = syncManager.startListening((remoteState) => {
       if (!remoteState) return;
 
-      const filteredState = storageService.filterOutDeleted(remoteState);
+      const mergedState = mergeRemoteStateWithLocal(remoteState, stateRef.current);
+      const filteredState = storageService.filterOutDeleted(mergedState);
       const repairedSubs = repairSubscriberAgentOwnership(filteredState.subscribers, filteredState.agents);
       const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, filteredState.invoices);
       const stateWithAgentMetrics = {
@@ -612,7 +687,8 @@ export default function App() {
       // Direct call using getDocs to fetch the latest sales and state immediately upon login
       const freshRemote = remoteState || await firebaseService.fetchFreshRemoteState();
       if (freshRemote) {
-        const filtered = storageService.filterOutDeleted(freshRemote);
+        const merged = mergeRemoteStateWithLocal(freshRemote, stateRef.current);
+        const filtered = storageService.filterOutDeleted(merged);
         const repairedSubs = repairSubscriberAgentOwnership(filtered.subscribers, filtered.agents);
         const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, filtered.invoices);
         const updatedAgents = computeUpdatedAgents(filtered.agents, activeSubs, filtered.invoices);
@@ -656,19 +732,14 @@ export default function App() {
       // 2. Fetch fresh remote state from Firestore
       const freshRemote = await firebaseService.fetchFreshRemoteState();
       if (freshRemote) {
-        const filtered = storageService.filterOutDeleted(freshRemote);
-        const mergedSubs = filtered.subscribers.length >= currentState.subscribers.length
-          ? filtered.subscribers
-          : currentState.subscribers;
-        const mergedInvoices = filtered.invoices.length >= currentState.invoices.length
-          ? filtered.invoices
-          : currentState.invoices;
-
-        const updatedAgents = computeUpdatedAgents(filtered.agents, mergedSubs, mergedInvoices);
+        const merged = mergeRemoteStateWithLocal(freshRemote, currentState);
+        const filtered = storageService.filterOutDeleted(merged);
+        const repairedSubs = repairSubscriberAgentOwnership(filtered.subscribers, filtered.agents);
+        const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, filtered.invoices);
+        const updatedAgents = computeUpdatedAgents(filtered.agents, activeSubs, filtered.invoices);
         const stateWithMetrics: AppState = {
           ...filtered,
-          subscribers: mergedSubs,
-          invoices: mergedInvoices,
+          subscribers: activeSubs,
           agents: updatedAgents
         };
         stateRef.current = stateWithMetrics;
