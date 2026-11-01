@@ -53,7 +53,7 @@ interface SubscribersViewProps {
   invoices: Invoice[];
   agents: Agent[];
   pricing: PricingRow[];
-  onAddSubscriber: (sub: Partial<Subscriber>, isSale: boolean, paid: boolean, saleKind?: 'subscription' | 'device') => void;
+  onAddSubscriber: (sub: Partial<Subscriber>, isSale: boolean, paid: boolean, saleKind?: 'subscription' | 'device' | 'used_device' | 'new_device') => void;
   onUpdateSubscriber: (sub: Subscriber) => void;
   onDeleteSubscriber: (id: string) => void;
   onRenewSubscriber: (updatedSubscriber: Subscriber, isDebt: boolean, amount: number) => void;
@@ -217,8 +217,29 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
   const [directAddStatus, setDirectAddStatus] = useState<'active' | 'inactive'>('active');
   const [directAddDuration, setDirectAddDuration] = useState<SubscriptionDuration>('1 شهر');
   const [directAddCreateInvoice, setDirectAddCreateInvoice] = useState(false);
+  const [directAddSaleType, setDirectAddSaleType] = useState<'new_device' | 'used_device' | 'subscription'>('new_device');
   const [directAddPaymentStatus, setDirectAddPaymentStatus] = useState<'paid' | 'debt'>('paid');
   const [directAddNotes, setDirectAddNotes] = useState('');
+
+  // Dynamic pricing calculation based on directAddAgentId & directAddSaleType
+  const directAddAgentObj = agents.find((a) => a.id === directAddAgentId)
+    || (directAddAgentId === 'agent-main' ? ({ id: 'agent-main', name: 'المركز الرئيسي' } as Agent) : agents[0]);
+  const isDirectAddHQ = directAddAgentObj?.id === 'agent-main' || directAddAgentId === 'agent-main';
+  const directAddPricingRow = isDirectAddHQ
+    ? pricing.find((r) => r.agentId === 'agent-main') || pricing.find((r) => r.isReference)
+    : pricing.find((r) => r.agentId === directAddAgentId)
+      || (directAddAgentObj ? pricing.find((r) => r.agentCode === directAddAgentObj.code) : undefined)
+      || pricing.find((r) => r.isReference);
+
+  const directAddNewDevicePrice = Number(directAddPricingRow?.newDevicePrice) || 25000;
+  const directAddUsedDevicePrice = Number(directAddPricingRow?.usedDevicePrice) || 15000;
+  const directAddSubPrice = getPriceByDuration(directAddAgentId, directAddDuration, pricing);
+
+  const directAddComputedPrice = directAddSaleType === 'new_device'
+    ? directAddNewDevicePrice
+    : directAddSaleType === 'used_device'
+    ? directAddUsedDevicePrice
+    : directAddSubPrice;
 
   const handleOpenDirectAddModal = () => {
     setDirectAddName('');
@@ -229,6 +250,7 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
     setDirectAddStatus('active');
     setDirectAddDuration('1 شهر');
     setDirectAddCreateInvoice(false);
+    setDirectAddSaleType('new_device');
     setDirectAddPaymentStatus('paid');
     setDirectAddNotes('');
     setShowDirectAddModal(true);
@@ -261,11 +283,16 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
     const selectedAg = agents.find((a) => a.id === directAddAgentId)
       || (directAddAgentId === 'agent-main' ? ({ id: 'agent-main', name: 'المركز الرئيسي' } as Agent) : agents[0]);
 
-    const calculatedPrice = getPriceByDuration(selectedAg?.id || 'agent-main', directAddDuration, pricing);
     const nowStr = new Date().toISOString().split('T')[0];
     const endCalc = directAddStatus === 'active' ? calculateEndDate(nowStr, directAddDuration) : '-';
 
-    const newSubObj: Partial<Subscriber> = {
+    const packageTypeStr = directAddSaleType === 'used_device'
+      ? 'بيع جهاز مستعمل'
+      : directAddSaleType === 'new_device'
+      ? 'بيع جهاز جديد'
+      : `اشتراك ${directAddDuration}`;
+
+    const newSubObj: Partial<Subscriber> & { invoicePackageType?: string } = {
       id: `sub-${Date.now()}`,
       name: trimmedName,
       deviceId: formattedDevId,
@@ -276,19 +303,20 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
       status: directAddStatus,
       isActive: directAddStatus === 'active',
       subscriptionType: directAddDuration,
-      amount: directAddCreateInvoice ? calculatedPrice : 0,
+      amount: directAddCreateInvoice ? directAddComputedPrice : 0,
       paymentStatus: directAddCreateInvoice ? directAddPaymentStatus : 'paid',
       startDate: directAddStatus === 'active' ? nowStr : '-',
       endDate: endCalc,
-      notes: directAddNotes.trim() || 'مشترك جديد تم إضافته',
-      createdAt: nowStr
+      notes: directAddNotes.trim() || `مشترك جديد - ${packageTypeStr}`,
+      createdAt: nowStr,
+      invoicePackageType: packageTypeStr
     };
 
     onAddSubscriber(
       newSubObj,
       directAddCreateInvoice,
       directAddPaymentStatus === 'paid',
-      'subscription'
+      directAddSaleType === 'used_device' ? 'used_device' : directAddSaleType === 'new_device' ? 'device' : 'subscription'
     );
 
     setShowDirectAddModal(false);
@@ -2382,42 +2410,110 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
               </div>
 
               {/* Financial Transaction Option */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
                   <input
                     type="checkbox"
                     checked={directAddCreateInvoice}
                     onChange={(e) => setDirectAddCreateInvoice(e.target.checked)}
-                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
                   />
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
-                    تسجيل حركة مبيعات وفاتورة اشتراك لهذا المشترك
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1.5">
+                    <DollarSign className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>تسجيل حركة مبيعات وفاتورة لهذا المشترك</span>
                   </span>
                 </label>
 
                 {directAddCreateInvoice && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700 animate-in fade-in duration-200">
+                  <div className="space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700 animate-in fade-in duration-200">
+                    {/* Sale Type Selection: New Device vs Used Device vs Subscription */}
                     <div>
-                      <label className="block font-bold text-slate-600 dark:text-slate-400 mb-1 text-[11px]">
-                        طريقة السداد
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 text-xs">
+                        نوع البيع <span className="text-rose-500">*</span>
                       </label>
-                      <select
-                        value={directAddPaymentStatus}
-                        onChange={(e) => setDirectAddPaymentStatus(e.target.value as 'paid' | 'debt')}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-xs"
-                      >
-                        <option value="paid">مسدد نقداً (خالص)</option>
-                        <option value="debt">تسجيل دين بذمة المشترك</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-bold text-slate-600 dark:text-slate-400 mb-1 text-[11px]">
-                        المبلغ المعتمد
-                      </label>
-                      <div className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono font-bold text-sky-700 dark:text-sky-300 text-xs flex justify-between">
-                        <span>{getPriceByDuration(directAddAgentId, directAddDuration, pricing).toLocaleString()}</span>
-                        <span>د.ع</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDirectAddSaleType('new_device')}
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                            directAddSaleType === 'new_device'
+                              ? 'bg-sky-50 dark:bg-sky-950/60 border-sky-500 text-sky-900 dark:text-sky-200 font-black shadow-xs ring-1 ring-sky-500'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="text-xs font-bold">جهاز جديد</span>
+                          <span className="text-[11px] font-mono font-black text-sky-700 dark:text-sky-300">
+                            {directAddNewDevicePrice.toLocaleString()} د.ع
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDirectAddSaleType('used_device')}
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 ${
+                            directAddSaleType === 'used_device'
+                              ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500 text-amber-900 dark:text-amber-200 font-black shadow-xs ring-1 ring-amber-500'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="text-xs font-bold">جهاز مستعمل</span>
+                          <span className="text-[11px] font-mono font-black text-amber-700 dark:text-amber-300">
+                            {directAddUsedDevicePrice.toLocaleString()} د.ع
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDirectAddSaleType('subscription')}
+                          className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center gap-1 col-span-2 sm:col-span-1 ${
+                            directAddSaleType === 'subscription'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500 text-emerald-900 dark:text-emerald-200 font-black shadow-xs ring-1 ring-emerald-500'
+                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                          }`}
+                        >
+                          <span className="text-xs font-bold">اشتراك باقة ({directAddDuration})</span>
+                          <span className="text-[11px] font-mono font-black text-emerald-700 dark:text-emerald-300">
+                            {directAddSubPrice.toLocaleString()} د.ع
+                          </span>
+                        </button>
                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block font-bold text-slate-600 dark:text-slate-400 mb-1 text-[11px]">
+                          طريقة السداد
+                        </label>
+                        <select
+                          value={directAddPaymentStatus}
+                          onChange={(e) => setDirectAddPaymentStatus(e.target.value as 'paid' | 'debt')}
+                          className={`w-full px-3 py-2 rounded-xl border-2 font-bold text-xs bg-white dark:bg-slate-900 ${
+                            directAddPaymentStatus === 'paid'
+                              ? 'border-emerald-500 text-emerald-700 dark:text-emerald-300'
+                              : 'border-red-400 text-red-600 dark:text-red-300'
+                          }`}
+                        >
+                          <option value="paid">مسدد نقداً (خالص)</option>
+                          <option value="debt">تسجيل دين بذمة المشترك</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-600 dark:text-slate-400 mb-1 text-[11px]">
+                          السعر المعتمد النهائي
+                        </label>
+                        <div className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-50 to-blue-50 dark:from-slate-900 dark:to-sky-950/40 border border-sky-200 dark:border-sky-800 font-mono font-black text-sky-950 dark:text-sky-200 text-sm flex items-center justify-between">
+                          <span>{directAddComputedPrice.toLocaleString()}</span>
+                          <span className="text-xs font-normal text-sky-700 dark:text-sky-400">د.ع</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between bg-white dark:bg-slate-900/60 p-2 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                      <span>الأسعار المعتمدة للوكيل:</span>
+                      <span className="font-mono">
+                        جديد: {directAddNewDevicePrice.toLocaleString()} د.ع | مستعمل: {directAddUsedDevicePrice.toLocaleString()} د.ع
+                      </span>
                     </div>
                   </div>
                 )}

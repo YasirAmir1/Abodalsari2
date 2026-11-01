@@ -845,7 +845,7 @@ export default function App() {
     subData: Partial<Subscriber>,
     isSale = true,
     isPaid = false,
-    saleKind: 'subscription' | 'device' = 'subscription',
+    saleKind: 'subscription' | 'device' | 'used_device' | 'new_device' = 'subscription',
     pendingRequestId?: string
   ) => {
     const currentState = stateRef.current;
@@ -868,6 +868,7 @@ export default function App() {
     const assignedAgent = currentState.agents.find(
       (agent) => agent.id === subData.agentId || agent.name === subData.agentName
     );
+    const isDeviceOnly = (saleKind === 'device' || saleKind === 'used_device' || (saleKind as any) === 'new_device') && subData.status === 'inactive';
     const newSub: Subscriber = {
       id: newId,
       name: subData.name || 'مشترك جديد',
@@ -875,16 +876,16 @@ export default function App() {
       deviceId: cleanDevId,
       agentId: assignedAgent?.id || subData.agentId || 'agent-main',
       agentName: assignedAgent?.name || subData.agentName || 'المركز الرئيسي',
-      subscriptionType: saleKind === 'device' ? '-' : (subData.subscriptionType || '1 شهر'),
-      status: saleKind === 'device' ? 'inactive' : (subData.status || 'active'),
+      subscriptionType: subData.subscriptionType || (isDeviceOnly ? '-' : '1 شهر'),
+      status: subData.status || (isDeviceOnly ? 'inactive' : 'active'),
       paymentStatus: isPaid ? 'paid' : (subData.paymentStatus || 'debt'),
       amount: subData.amount ?? 25000,
       startDate: subData.startDate || new Date().toISOString().split('T')[0],
-      endDate: saleKind === 'device' ? '-' : (subData.endDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]),
+      endDate: subData.endDate || (isDeviceOnly ? '-' : new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]),
       address: subData.address || '',
       notes: subData.notes || '',
       createdAt: new Date().toISOString().split('T')[0],
-      isActive: saleKind === 'subscription'
+      isActive: (subData.status ? subData.status === 'active' : !isDeviceOnly)
     };
 
     let updatedInvoices = currentState.invoices;
@@ -892,6 +893,13 @@ export default function App() {
     let registeredInvoice: Invoice | null = null;
 
     if (isSale) {
+      const packageTypeStr = (subData as any).invoicePackageType
+        || (saleKind === 'used_device'
+          ? 'بيع جهاز مستعمل'
+          : saleKind === 'device' || (saleKind as any) === 'new_device'
+          ? 'بيع جهاز جديد'
+          : `اشتراك ${newSub.subscriptionType}`);
+
       registeredInvoice = {
         id: `inv-${Date.now()}`,
         invoiceNumber: `INV-${Date.now()}`,
@@ -900,7 +908,7 @@ export default function App() {
         deviceId: newSub.deviceId,
         agentId: newSub.agentId,
         agentName: newSub.agentName,
-        packageType: saleKind === 'device' ? 'بيع جهاز جديد فقط' : `اشتراك ${newSub.subscriptionType}`,
+        packageType: packageTypeStr,
         amount: newSub.amount,
         paidAmount: isPaid ? newSub.amount : 0,
         remainingAmount: isPaid ? 0 : newSub.amount,

@@ -221,16 +221,20 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
   const handleSubmitDeviceSale = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSubName.trim()) {
-      showAlert('يرجى إدخال اسم المشترك الجديد', 'خطأ في البيانات');
+      showAlert('يرجى إدخال اسم المشترك الجديد', 'خطأ في البيانات', 'warning');
       return;
     }
+    const rawDev = (newDeviceId || '').trim();
+    if (!rawDev) {
+      showAlert('يرجى إدخال رقم الجهاز الجديد (حقل إجباري)', 'حقل مطلوب', 'warning');
+      return;
+    }
+    const finalDev = rawDev.startsWith('00') ? rawDev : `00${rawDev}`;
+
     const agentPricing = pricing.find((row) => row.agentId === currentAgent.id)
       || pricing.find((row) => row.isReference)
       || pricing[0];
     const devicePrice = agentPricing?.newDevicePrice ?? 50000;
-
-    const rawDev = (newDeviceId || '').trim();
-    const finalDev = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : `00${Math.floor(100000 + Math.random() * 900000)}`;
 
     onSubmitRenewalOrder({
       subscriberId: `new-sub-${Date.now()}`,
@@ -819,14 +823,18 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">رقم الجهاز (اختياري، يولد تلقائياً إن ترك فارغاً)</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  رقم الجهاز الجديد <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
+                  required
                   value={newDeviceId}
                   onChange={(e) => setNewDeviceId(e.target.value)}
-                  placeholder="00..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono"
+                  placeholder="مثال: 00217890 أو 217890"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-mono font-bold"
                 />
+                <p className="text-[10px] text-slate-400 mt-1">يُضاف 00 تلقائياً في حال لم يتم كتابتها</p>
               </div>
 
 
