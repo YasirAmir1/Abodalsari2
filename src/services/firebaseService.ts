@@ -572,6 +572,23 @@ export const firebaseService = {
       updateSyncStatus('syncing');
       await commitOperations(operations, metadataChanges(baseState, nextState), atomic);
 
+      // Directly ensure subscribers are persisted in subscribers subcollection
+      try {
+        if (Array.isArray(nextState.subscribers) && nextState.subscribers.length > 0) {
+          const subsBatch = writeBatch(db);
+          let count = 0;
+          for (const sub of nextState.subscribers) {
+            if (sub && sub.id) {
+              const subRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), sub.id);
+              subsBatch.set(subRef, { ...sanitize(sub), tenantId: TENANT_ID }, { merge: true });
+              count++;
+              if (count >= 300) break;
+            }
+          }
+          await subsBatch.commit().catch(() => {});
+        }
+      } catch {}
+
       // Directly ensure invoices are persisted in sales subcollection
       try {
         if (Array.isArray(nextState.invoices) && nextState.invoices.length > 0) {
@@ -814,17 +831,37 @@ export const firebaseService = {
           const legacy = normalizeLegacyState(snapshot.data());
           if (legacy) {
             let changed = false;
-            if (syncedTables.invoices.length === 0 && legacy.invoices && legacy.invoices.length > 0) {
-              syncedTables.invoices = legacy.invoices as any;
-              changed = true;
-            }
-            if (syncedTables.subscribers.length === 0 && legacy.subscribers && legacy.subscribers.length > 0) {
-              syncedTables.subscribers = legacy.subscribers as any;
-              changed = true;
-            }
-            if (syncedTables.agents.length === 0 && legacy.agents && legacy.agents.length > 0) {
-              syncedTables.agents = legacy.agents as any;
-              changed = true;
+            const legacyTime = legacy.lastUpdatedTimestamp || 0;
+            const currentTime = remoteState?.lastUpdatedTimestamp || 0;
+
+            if (legacyTime > currentTime || syncedTables.subscribers.length === 0) {
+              if (legacy.subscribers && legacy.subscribers.length > 0) {
+                const subMap = new Map<string, CoreRecord>();
+                syncedTables.subscribers.forEach((s) => subMap.set(recordId(s), s));
+                (legacy.subscribers as unknown as CoreRecord[]).forEach((s) => subMap.set(recordId(s), s));
+                syncedTables.subscribers = Array.from(subMap.values());
+                changed = true;
+              }
+              if (legacy.invoices && legacy.invoices.length > 0) {
+                const invMap = new Map<string, CoreRecord>();
+                syncedTables.invoices.forEach((i) => invMap.set(recordId(i), i));
+                (legacy.invoices as unknown as CoreRecord[]).forEach((i) => invMap.set(recordId(i), i));
+                syncedTables.invoices = Array.from(invMap.values());
+                changed = true;
+              }
+              if (legacy.agents && legacy.agents.length > 0) {
+                syncedTables.agents = legacy.agents as any;
+                changed = true;
+              }
+            } else {
+              if (syncedTables.invoices.length === 0 && legacy.invoices && legacy.invoices.length > 0) {
+                syncedTables.invoices = legacy.invoices as any;
+                changed = true;
+              }
+              if (syncedTables.subscribers.length === 0 && legacy.subscribers && legacy.subscribers.length > 0) {
+                syncedTables.subscribers = legacy.subscribers as any;
+                changed = true;
+              }
             }
             if (changed) dispatchSyncedState();
           }

@@ -118,8 +118,6 @@ export const storageService = {
   },
 
   filterOutDeleted(state: AppState): AppState {
-    // This flag only protects a device's local cache immediately after
-    // "delete all". It must not hide new server records on other sessions.
     if (this.isAllSubscribersCleared() && (state.subscribers || []).length > 0) {
       this.setAllSubscribersCleared(false);
     }
@@ -130,17 +128,38 @@ export const storageService = {
       ...(state.deletedInvoiceIds || [])
     ]);
 
-    const filteredSubs = (state.subscribers || []).filter(
-      (s) => !deletedSet.has(s.id) && (!s.deviceId || !deletedSet.has(s.deviceId))
-    );
+    let deletedChanged = false;
+
+    // Active or renewed subscribers from the server must never be filtered out
+    const filteredSubs = (state.subscribers || []).filter((s) => {
+      const isAlive = s.status === 'active' || s.isActive;
+      if (isAlive) {
+        if (deletedSet.has(s.id)) {
+          deletedSet.delete(s.id);
+          deletedChanged = true;
+        }
+        if (s.deviceId && deletedSet.has(s.deviceId)) {
+          deletedSet.delete(s.deviceId);
+          deletedChanged = true;
+        }
+        return true;
+      }
+      return !deletedSet.has(s.id) && (!s.deviceId || !deletedSet.has(s.deviceId));
+    });
 
     const filteredInvoices = (state.invoices || []).filter(
-      (inv) => !deletedInvoicesSet.has(inv.id) && !deletedSet.has(inv.subscriberId) && (!inv.deviceId || !deletedSet.has(inv.deviceId))
+      (inv) => !deletedInvoicesSet.has(inv.id)
     );
 
     const filteredRequests = (state.pendingRequests || []).filter(
       (req) => !deletedSet.has(req.subscriberId) && (!req.deviceId || !deletedSet.has(req.deviceId))
     );
+
+    if (deletedChanged) {
+      try {
+        localStorage.setItem(DELETED_SUBS_KEY, JSON.stringify(Array.from(deletedSet)));
+      } catch {}
+    }
 
     return {
       ...state,

@@ -28,7 +28,12 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
 }) => {
   const [name, setName] = useState(subscriber.name);
   const [phone, setPhone] = useState(subscriber.phone);
-  const [agentId, setAgentId] = useState(forceMainCenter ? 'agent-main' : (subscriber.agentId || 'agent-main'));
+  
+  // Preserve original agent if previously set or subscriber's current agent
+  const initialAgentId = subscriber.agentId && subscriber.agentId !== 'agent-main'
+    ? subscriber.agentId
+    : (subscriber.originalAgentId || subscriber.agentId || 'agent-main');
+  const [agentId, setAgentId] = useState(initialAgentId);
 
   const [duration, setDuration] = useState<SubscriptionDuration>('1 شهر');
   const [paymentMethod, setPaymentMethod] = useState<'دين (تسجيل دين)' | 'نقد (مسدد)'>('دين (تسجيل دين)');
@@ -48,35 +53,41 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
   const [endDate, setEndDate] = useState(() => calculateEndDate(todayStr, '1 شهر'));
 
   // Calculate price based on selected agent and duration with fallback
-  const agentPricing = pricing.find((p) => p.agentId === agentId)
-    || pricing.find((p) => p.agentName?.trim().toLowerCase() === subscriber.agentName?.trim().toLowerCase())
-    || pricing.find((p) => p.isReference)
-    || pricing[0];
+  const getAgentPricing = (targetAgentId: string) => {
+    const isMain = targetAgentId === 'agent-main';
+    const targetAgent = agents.find((a) => a.id === targetAgentId);
+    if (isMain) {
+      return pricing.find((p) => p.agentId === 'agent-main') || pricing.find((p) => p.isReference) || pricing[0];
+    }
+    return (
+      pricing.find((p) => p.agentId === targetAgentId)
+      || pricing.find((p) => targetAgent?.name && p.agentName?.trim().toLowerCase() === targetAgent.name.trim().toLowerCase())
+      || pricing.find((p) => p.agentId === 'agent-main')
+      || pricing[0]
+    );
+  };
 
-  const defaultPrice =
-    duration === '1 شهر'
-      ? agentPricing?.oneMonthPrice || 22000
-      : duration === 'شهرين'
-      ? agentPricing?.twoMonthsPrice || 44000
-      : duration === '3 أشهر'
-      ? agentPricing?.threeMonthsPrice || 60000
-      : 22000;
+  const agentPricing = getAgentPricing(agentId);
 
-  const [price, setPrice] = useState<number>(defaultPrice);
+  const calculatePriceForDuration = (dur: SubscriptionDuration, targetAgentId: string): number => {
+    const p = getAgentPricing(targetAgentId);
+    if (dur === '1 شهر') return p?.oneMonthPrice || 22000;
+    if (dur === 'شهرين') return p?.twoMonthsPrice || 44000;
+    if (dur === '3 أشهر') return p?.threeMonthsPrice || 66000;
+    return p?.oneMonthPrice || 22000;
+  };
+
+  const [price, setPrice] = useState<number>(() => calculatePriceForDuration(duration, agentId));
+
+  const handleAgentChange = (newAgentId: string) => {
+    setAgentId(newAgentId);
+    setPrice(calculatePriceForDuration(duration, newAgentId));
+  };
 
   const handleDurationChange = (newDur: SubscriptionDuration) => {
     setDuration(newDur);
     setEndDate(calculateEndDate(startDate, newDur));
-
-    const newPrice =
-      newDur === '1 شهر'
-        ? agentPricing?.oneMonthPrice || 25000
-        : newDur === 'شهرين'
-        ? agentPricing?.twoMonthsPrice || 50000
-        : newDur === '3 أشهر'
-        ? agentPricing?.threeMonthsPrice || 75000
-        : agentPricing?.threeMonthsPrice || 75000;
-    setPrice(newPrice);
+    setPrice(calculatePriceForDuration(newDur, agentId));
   };
 
   const handleStartDateChange = (newStart: string) => {
@@ -86,25 +97,20 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const selectedAgent = forceMainCenter 
-      ? { id: 'agent-main', name: 'المركز الرئيسي' }
-      : (agents.find((a) => a.id === agentId)
-          || agents.find((a) => a.name === subscriber.agentName)
-          || agents[0]
-          || { id: subscriber.agentId || 'agent-main', name: subscriber.agentName || 'المركز الرئيسي' });
+    const selectedAgent = agents.find((a) => a.id === agentId)
+      || { id: agentId, name: agentId === 'agent-main' ? 'المركز الرئيسي' : (subscriber.agentName || 'المركز الرئيسي') };
     
     const isDebt = paymentMethod === 'دين (تسجيل دين)';
 
     const rawDev = (subscriber.deviceId || '').trim();
     const cleanDeviceId = rawDev ? (rawDev.startsWith('00') ? rawDev : `00${rawDev}`) : '';
 
-    const isRenewingForMain = forceMainCenter;
-    const originalAgentId = isRenewingForMain 
-      ? (subscriber.originalAgentId || (subscriber.agentId && subscriber.agentId !== 'agent-main' ? subscriber.agentId : undefined))
-      : subscriber.originalAgentId;
-    const originalAgentName = isRenewingForMain 
-      ? (subscriber.originalAgentName || (subscriber.agentName && subscriber.agentName !== 'المركز الرئيسي' ? subscriber.agentName : undefined))
-      : subscriber.originalAgentName;
+    const originalAgentId = selectedAgent.id !== 'agent-main'
+      ? selectedAgent.id
+      : (subscriber.originalAgentId || undefined);
+    const originalAgentName = selectedAgent.id !== 'agent-main'
+      ? selectedAgent.name
+      : (subscriber.originalAgentName || undefined);
 
     const updated: Subscriber = {
       ...subscriber,
@@ -178,11 +184,18 @@ export const RenewSubscriptionModal: React.FC<RenewSubscriptionModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">المالك / الوكيل *</label>
-              <div className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-100 text-xs font-bold text-slate-800 flex items-center justify-between">
-                <span>{forceMainCenter ? 'المركز الرئيسي' : (subscriber.agentName || 'المركز الرئيسي')}</span>
-                <span className="text-[10px] text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md font-bold">المركز الرئيسي</span>
-              </div>
+              <label className="block font-bold text-slate-700 mb-1">المالك / الوكيل المسؤول *</label>
+              <select
+                value={agentId}
+                onChange={(e) => handleAgentChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800 focus:ring-2 focus:ring-sky-500"
+              >
+                {agents.map((ag) => (
+                  <option key={ag.id} value={ag.id}>
+                    {ag.name} {ag.id === 'agent-main' ? '(المركز الرئيسي)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

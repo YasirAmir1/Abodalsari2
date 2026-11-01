@@ -26,7 +26,9 @@ import {
   Phone,
   Wallet,
   TrendingUp,
-  ShieldCheck
+  ShieldCheck,
+  UserPlus,
+  MapPin
 } from 'lucide-react';
 import { Agent, Invoice, PricingRow, Subscriber, SubscriptionDuration } from '../types';
 import { excelService } from '../services/excelService';
@@ -193,7 +195,9 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
   const selectedAgent = agents.find((agent) => agent.id === newSubAgentId)
     || (newSubAgentId === 'agent-main' ? agents.find((agent) => agent.id === 'agent-main') : undefined)
     || agents[0];
-  const selectedAgentPricing = selectedAgent?.id === 'agent-main' || newSubAgentId === 'agent-main'
+  const isMainCenter = selectedAgent?.id === 'agent-main' || newSubAgentId === 'agent-main' || selectedAgent?.name === 'المركز الرئيسي';
+
+  const selectedAgentPricing = isMainCenter
     ? pricing.find((row) => row.agentId === 'agent-main') || pricing.find((row) => row.isReference)
     : pricing.find((row) => row.agentId === newSubAgentId)
       || (selectedAgent ? pricing.find((row) => row.agentCode === selectedAgent.code) : undefined)
@@ -202,6 +206,94 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
         : undefined);
   const newDevicePrice = Number(selectedAgentPricing?.newDevicePrice) || 0;
   const calculatedPrice = getPriceByDuration(selectedAgent?.id || newSubAgentId, newSubType, pricing);
+
+  // Bottom Direct Add Subscriber Modal State
+  const [showDirectAddModal, setShowDirectAddModal] = useState(false);
+  const [directAddName, setDirectAddName] = useState('');
+  const [directAddDeviceId, setDirectAddDeviceId] = useState('');
+  const [directAddAgentId, setDirectAddAgentId] = useState('agent-main');
+  const [directAddPhone, setDirectAddPhone] = useState('');
+  const [directAddAddress, setDirectAddAddress] = useState('');
+  const [directAddStatus, setDirectAddStatus] = useState<'active' | 'inactive'>('active');
+  const [directAddDuration, setDirectAddDuration] = useState<SubscriptionDuration>('1 شهر');
+  const [directAddCreateInvoice, setDirectAddCreateInvoice] = useState(false);
+  const [directAddPaymentStatus, setDirectAddPaymentStatus] = useState<'paid' | 'debt'>('paid');
+  const [directAddNotes, setDirectAddNotes] = useState('');
+
+  const handleOpenDirectAddModal = () => {
+    setDirectAddName('');
+    setDirectAddDeviceId('');
+    setDirectAddAgentId(agents.find((a) => a.id === 'agent-main')?.id || agents[0]?.id || 'agent-main');
+    setDirectAddPhone('');
+    setDirectAddAddress('');
+    setDirectAddStatus('active');
+    setDirectAddDuration('1 شهر');
+    setDirectAddCreateInvoice(false);
+    setDirectAddPaymentStatus('paid');
+    setDirectAddNotes('');
+    setShowDirectAddModal(true);
+  };
+
+  const handleDirectAddSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = directAddName.trim();
+    if (!trimmedName) {
+      showAlert('يرجى إدخال اسم المشترك', 'حقل مطلوب', 'warning');
+      return;
+    }
+
+    const rawDevId = directAddDeviceId.trim();
+    if (!rawDevId) {
+      showAlert('يرجى إدخال رقم الجهاز الجديد للمشترك', 'حقل مطلوب', 'warning');
+      return;
+    }
+
+    const formattedDevId = rawDevId.startsWith('00') ? rawDevId : `00${rawDevId}`;
+
+    // Check for existing device ID duplicate
+    const isDuplicate = subscribers.some(
+      (s) => (s.deviceId || '').trim() === formattedDevId
+    );
+    if (isDuplicate) {
+      showAlert(`تنبيه: يوجد مشترك مسجل مسبقاً بنفس رقم الجهاز (${formattedDevId}).`, 'رقم جهاز مكرر', 'warning');
+    }
+
+    const selectedAg = agents.find((a) => a.id === directAddAgentId)
+      || (directAddAgentId === 'agent-main' ? ({ id: 'agent-main', name: 'المركز الرئيسي' } as Agent) : agents[0]);
+
+    const calculatedPrice = getPriceByDuration(selectedAg?.id || 'agent-main', directAddDuration, pricing);
+    const nowStr = new Date().toISOString().split('T')[0];
+    const endCalc = directAddStatus === 'active' ? calculateEndDate(nowStr, directAddDuration) : '-';
+
+    const newSubObj: Partial<Subscriber> = {
+      id: `sub-${Date.now()}`,
+      name: trimmedName,
+      deviceId: formattedDevId,
+      agentId: selectedAg?.id || 'agent-main',
+      agentName: selectedAg?.name || 'المركز الرئيسي',
+      phone: directAddPhone.trim(),
+      address: directAddAddress.trim(),
+      status: directAddStatus,
+      isActive: directAddStatus === 'active',
+      subscriptionType: directAddDuration,
+      amount: directAddCreateInvoice ? calculatedPrice : 0,
+      paymentStatus: directAddCreateInvoice ? directAddPaymentStatus : 'paid',
+      startDate: directAddStatus === 'active' ? nowStr : '-',
+      endDate: endCalc,
+      notes: directAddNotes.trim() || 'مشترك جديد تم إضافته',
+      createdAt: nowStr
+    };
+
+    onAddSubscriber(
+      newSubObj,
+      directAddCreateInvoice,
+      directAddPaymentStatus === 'paid',
+      'subscription'
+    );
+
+    setShowDirectAddModal(false);
+    showAlert(`تمت إضافة المشترك (${trimmedName}) بنجاح إلى صفحة المشتركين.`, 'إضافة مشترك جديد', 'success');
+  };
 
   const openNewSaleModal = () => {
     setNewSaleType('device');
@@ -1356,11 +1448,20 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
         </button>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <button
+            onClick={handleOpenDirectAddModal}
+            className="px-5 py-2.5 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-black shadow-sm active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            title="إضافة مشترك جديد بمعلومات المشترك والجهاز والوكيل"
+          >
+            <UserPlus className="w-4 h-4 stroke-[2.5]" />
+            <span>إضافة مشترك جديد</span>
+          </button>
+
           <label
-            className="cursor-pointer px-4 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs active:scale-95 transition-all"
+            className="cursor-pointer px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 shadow-xs active:scale-95 transition-all"
             title="استيراد قائمة المشتركين من ملف Excel"
           >
-            <Upload className="w-4 h-4" />
+            <Upload className="w-4 h-4 text-sky-600 dark:text-sky-400" />
             <span>استيراد مشتركين</span>
             <input type="file" accept=".xlsx,.xls,.csv" onChange={handleExcelImport} className="hidden" />
           </label>
@@ -1953,7 +2054,7 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
             setRenewingSubscriber(null);
           }}
           onWhatsApp={(sub) => onOpenWhatsApp(sub)}
-          forceMainCenter={true}
+          forceMainCenter={false}
         />
       )}
 
@@ -2121,6 +2222,241 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
             setShowDeleteAllModal(false);
           }}
         />
+      )}
+
+      {/* Modal: Direct Add New Subscriber */}
+      {showDirectAddModal && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in"
+          dir="rtl"
+          onClick={() => setShowDirectAddModal(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-new-subscriber-title"
+            className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[92vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5 text-sky-700 dark:text-sky-400">
+                <div className="w-10 h-10 rounded-2xl bg-sky-50 dark:bg-sky-950/40 flex items-center justify-center border border-sky-200 dark:border-sky-800">
+                  <UserPlus className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+                </div>
+                <div>
+                  <h3 id="add-new-subscriber-title" className="font-black text-lg text-slate-900 dark:text-white">
+                    إضافة مشترك جديد
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    تسجيل مشترك جديد وإسناده إلى الوكيل المسؤول
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDirectAddModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="إغلاق"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDirectAddSubmit} className="mt-5 space-y-4 text-xs">
+              {/* Subscriber Name */}
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  اسم المشترك <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: علي محمد حسن"
+                  value={directAddName}
+                  onChange={(e) => setDirectAddName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 font-bold outline-hidden transition-all"
+                />
+              </div>
+
+              {/* Device ID */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300">
+                    رقم الجهاز الجديد <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-mono">يُضاف 00 تلقائياً إن لم يُكتب</span>
+                </div>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: 00217890 أو 217890"
+                  value={directAddDeviceId}
+                  onChange={(e) => setDirectAddDeviceId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold focus:ring-2 focus:ring-sky-500 outline-hidden transition-all"
+                />
+              </div>
+
+              {/* Responsible Agent Selector */}
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  تحديد الوكيل المسؤول <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={directAddAgentId}
+                  onChange={(e) => setDirectAddAgentId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-sky-500 outline-hidden cursor-pointer"
+                >
+                  {agents.map((ag) => (
+                    <option key={ag.id} value={ag.id}>
+                      {ag.name} {ag.code ? `(${ag.code})` : ''} {ag.id === 'agent-main' ? '★ المركز الرئيسي' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Phone & Address in two columns */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    رقم هاتف المشترك
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      placeholder="0770xxxxxxx"
+                      value={directAddPhone}
+                      onChange={(e) => setDirectAddPhone(e.target.value)}
+                      className="w-full pr-9 pl-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-sky-500 outline-hidden"
+                    />
+                    <Phone className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    عنوان المشترك
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="المدينة / المنطقة / الحي"
+                      value={directAddAddress}
+                      onChange={(e) => setDirectAddAddress(e.target.value)}
+                      className="w-full pr-9 pl-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-hidden"
+                    />
+                    <MapPin className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Initial Status & Duration */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    حالة الاشتراك
+                  </label>
+                  <select
+                    value={directAddStatus}
+                    onChange={(e) => setDirectAddStatus(e.target.value as 'active' | 'inactive')}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-sky-500 outline-hidden"
+                  >
+                    <option value="active">نشط (مفعل حالياً)</option>
+                    <option value="inactive">غير نشط (مسجل فقط)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    مدة الاشتراك
+                  </label>
+                  <select
+                    value={directAddDuration}
+                    onChange={(e) => setDirectAddDuration(e.target.value as SubscriptionDuration)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold focus:ring-2 focus:ring-sky-500 outline-hidden"
+                  >
+                    <option value="1 شهر">1 شهر (30 يوماً)</option>
+                    <option value="شهرين">شهرين (60 يوماً)</option>
+                    <option value="3 أشهر">3 أشهر (90 يوماً)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Financial Transaction Option */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={directAddCreateInvoice}
+                    onChange={(e) => setDirectAddCreateInvoice(e.target.checked)}
+                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                    تسجيل حركة مبيعات وفاتورة اشتراك لهذا المشترك
+                  </span>
+                </label>
+
+                {directAddCreateInvoice && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200 dark:border-slate-700 animate-in fade-in duration-200">
+                    <div>
+                      <label className="block font-bold text-slate-600 dark:text-slate-400 mb-1 text-[11px]">
+                        طريقة السداد
+                      </label>
+                      <select
+                        value={directAddPaymentStatus}
+                        onChange={(e) => setDirectAddPaymentStatus(e.target.value as 'paid' | 'debt')}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold text-xs"
+                      >
+                        <option value="paid">مسدد نقداً (خالص)</option>
+                        <option value="debt">تسجيل دين بذمة المشترك</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-600 dark:text-slate-400 mb-1 text-[11px]">
+                        المبلغ المعتمد
+                      </label>
+                      <div className="px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono font-bold text-sky-700 dark:text-sky-300 text-xs flex justify-between">
+                        <span>{getPriceByDuration(directAddAgentId, directAddDuration, pricing).toLocaleString()}</span>
+                        <span>د.ع</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  ملاحظات إضافية (اختياري)
+                </label>
+                <input
+                  type="text"
+                  placeholder="ملاحظات حول المشترك أو التثبيت..."
+                  value={directAddNotes}
+                  onChange={(e) => setDirectAddNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-sky-500 outline-hidden"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowDirectAddModal(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold transition-colors cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 active:scale-95 text-white font-black shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>إضافة المشترك الآن</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Modal: Info / Warning Notification Modal */}

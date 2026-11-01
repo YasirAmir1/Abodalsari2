@@ -25,12 +25,43 @@ function normalizeStr(str?: string): string {
 function doesSubscriberBelongToAgent(sub: Subscriber, agent: Agent): boolean {
   if (!sub || !agent) return false;
   if (sub.agentId && agent.id && sub.agentId === agent.id) return true;
+  if (sub.originalAgentId && agent.id && sub.originalAgentId === agent.id) return true;
   const subName = normalizeStr(sub.agentName);
+  const origName = normalizeStr(sub.originalAgentName);
   const agentName = normalizeStr(agent.name);
   const agentCode = normalizeStr(agent.code);
   if (subName && agentName && (subName === agentName || subName.includes(agentName) || agentName.includes(subName))) return true;
+  if (origName && agentName && (origName === agentName || origName.includes(agentName) || agentName.includes(origName))) return true;
   if (subName && agentCode && (subName === agentCode || subName.includes(agentCode))) return true;
+  if (origName && agentCode && (origName === agentCode || origName.includes(agentCode))) return true;
   return false;
+}
+
+function repairSubscriberAgentOwnership(subscribers: Subscriber[], agents: Agent[]): Subscriber[] {
+  if (!subscribers || subscribers.length === 0) return subscribers;
+  return subscribers.map((sub) => {
+    // If the subscriber has originalAgentId that is not agent-main and was set to agent-main, restore it
+    if (sub.originalAgentId && sub.originalAgentId !== 'agent-main' && sub.agentId === 'agent-main') {
+      const targetAgent = agents.find((a) => a.id === sub.originalAgentId);
+      return {
+        ...sub,
+        agentId: sub.originalAgentId,
+        agentName: targetAgent?.name || sub.originalAgentName || sub.agentName
+      };
+    }
+    // If subscriber has originalAgentName that is not Main Center
+    if (sub.originalAgentName && sub.originalAgentName !== 'المركز الرئيسي' && (sub.agentName === 'المركز الرئيسي' || sub.agentId === 'agent-main')) {
+      const targetAgent = agents.find((a) => normalizeStr(a.name) === normalizeStr(sub.originalAgentName));
+      if (targetAgent) {
+        return {
+          ...sub,
+          agentId: targetAgent.id,
+          agentName: targetAgent.name
+        };
+      }
+    }
+    return sub;
+  });
 }
 
 function doesInvoiceBelongToAgent(inv: Invoice, agent: Agent): boolean {
@@ -214,7 +245,8 @@ export default function App() {
   const { showAlert } = useAppDialogs();
   const [state, setState] = useState<AppState>(() => {
     const loaded = storageService.loadState();
-    const activeSubs = ensureActiveSubscribersFromInvoices(loaded.subscribers, loaded.invoices);
+    const repairedSubs = repairSubscriberAgentOwnership(loaded.subscribers, loaded.agents);
+    const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, loaded.invoices);
     const freshAgents = computeUpdatedAgents(loaded.agents, activeSubs, loaded.invoices);
     return { ...loaded, subscribers: activeSubs, agents: freshAgents };
   });
@@ -483,7 +515,8 @@ export default function App() {
       if (!remoteState) return;
 
       const filteredState = storageService.filterOutDeleted(remoteState);
-      const activeSubs = ensureActiveSubscribersFromInvoices(filteredState.subscribers, filteredState.invoices);
+      const repairedSubs = repairSubscriberAgentOwnership(filteredState.subscribers, filteredState.agents);
+      const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, filteredState.invoices);
       const stateWithAgentMetrics = {
         ...filteredState,
         subscribers: activeSubs,
@@ -580,9 +613,12 @@ export default function App() {
       const freshRemote = remoteState || await firebaseService.fetchFreshRemoteState();
       if (freshRemote) {
         const filtered = storageService.filterOutDeleted(freshRemote);
-        const updatedAgents = computeUpdatedAgents(filtered.agents, filtered.subscribers, filtered.invoices);
+        const repairedSubs = repairSubscriberAgentOwnership(filtered.subscribers, filtered.agents);
+        const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, filtered.invoices);
+        const updatedAgents = computeUpdatedAgents(filtered.agents, activeSubs, filtered.invoices);
         const stateWithMetrics: AppState = {
           ...filtered,
+          subscribers: activeSubs,
           agents: updatedAgents
         };
         stateRef.current = stateWithMetrics;

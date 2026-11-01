@@ -43,6 +43,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
   
   const SYSTEM_DEFAULTS = {
     newDevice: 25000,
+    usedDevice: 15000,
     oneMonth: 22000,
     twoMonths: 44000,
     threeMonths: 66000
@@ -67,6 +68,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
       if (existing) {
         result.push({
           ...existing,
+          usedDevicePrice: existing.usedDevicePrice !== undefined ? existing.usedDevicePrice : SYSTEM_DEFAULTS.usedDevice,
           ...creds,
           agentName: agent.name || 'جهة غير مسماة',
           agentCode: agent.code || agent.id
@@ -77,6 +79,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
           agentName: agent.name || 'جهة غير مسماة',
           agentCode: agent.code || agent.id,
           newDevicePrice: SYSTEM_DEFAULTS.newDevice,
+          usedDevicePrice: SYSTEM_DEFAULTS.usedDevice,
           oneMonthPrice: SYSTEM_DEFAULTS.oneMonth,
           twoMonthsPrice: SYSTEM_DEFAULTS.twoMonths,
           threeMonthsPrice: SYSTEM_DEFAULTS.threeMonths,
@@ -109,6 +112,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
       if (original) {
         const isDifferent = 
           row.newDevicePrice !== original.newDevicePrice ||
+          row.usedDevicePrice !== original.usedDevicePrice ||
           row.oneMonthPrice !== original.oneMonthPrice ||
           row.twoMonthsPrice !== original.twoMonthsPrice ||
           row.threeMonthsPrice !== original.threeMonthsPrice ||
@@ -161,6 +165,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
     const updated = rows.map((r) => ({
       ...r,
       newDevicePrice: SYSTEM_DEFAULTS.newDevice,
+      usedDevicePrice: SYSTEM_DEFAULTS.usedDevice,
       oneMonthPrice: SYSTEM_DEFAULTS.oneMonth,
       twoMonthsPrice: SYSTEM_DEFAULTS.twoMonths,
       threeMonthsPrice: SYSTEM_DEFAULTS.threeMonths,
@@ -173,6 +178,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
     const updated = rows.map((r) => ({
       ...r,
       newDevicePrice: SYSTEM_DEFAULTS.newDevice,
+      usedDevicePrice: SYSTEM_DEFAULTS.usedDevice,
       oneMonthPrice: SYSTEM_DEFAULTS.oneMonth,
       twoMonthsPrice: SYSTEM_DEFAULTS.twoMonths,
       threeMonthsPrice: SYSTEM_DEFAULTS.threeMonths
@@ -270,10 +276,16 @@ export const PricingView: React.FC<PricingViewProps> = ({
             <Tv className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400">سعر الجهاز (مرجع)</p>
-            <p className="text-xl font-black text-slate-900 dark:text-white mt-0.5 font-mono">
-              {centerRow?.newDevicePrice?.toLocaleString() || 0} <span className="text-xs font-normal">د.ع</span>
-            </p>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400">سعر الأجهزة (الرئيسية)</p>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs font-black text-slate-900 dark:text-white font-mono">
+                جديد: {centerRow?.newDevicePrice?.toLocaleString() || 0}
+              </span>
+              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                مستعمل: {(centerRow?.usedDevicePrice ?? SYSTEM_DEFAULTS.usedDevice).toLocaleString()} د.ع
+              </span>
+            </div>
           </div>
         </div>
 
@@ -317,6 +329,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
               <tr>
                 <th className="py-4 px-5">الجهة / الوكيل المسؤول</th>
                 <th className="py-4 px-3 text-center">سعر الجهاز الجديد</th>
+                <th className="py-4 px-3 text-center">سعر بيع جهاز مستعمل</th>
                 <th className="py-4 px-3 text-center">باقة شهر واحد</th>
                 <th className="py-4 px-3 text-center">باقة شهرين</th>
                 <th className="py-4 px-3 text-center">باقة 3 أشهر</th>
@@ -370,6 +383,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
                     </td>
                     
                     <td className="py-4 px-3"><input type="number" value={row.newDevicePrice || 0} onChange={(e) => handleCellChange(index, 'newDevicePrice', Number(e.target.value))} className={`w-28 px-3 py-2 rounded-xl border text-center font-bold text-xs focus:ring-2 focus:ring-sky-500 outline-hidden bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 ${isModified ? 'border-amber-300' : ''}`} /></td>
+                    <td className="py-4 px-3"><input type="number" value={row.usedDevicePrice !== undefined ? row.usedDevicePrice : SYSTEM_DEFAULTS.usedDevice} onChange={(e) => handleCellChange(index, 'usedDevicePrice', Number(e.target.value))} className={`w-28 px-3 py-2 rounded-xl border text-center font-bold text-xs focus:ring-2 focus:ring-sky-500 outline-hidden bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 ${isModified ? 'border-amber-300' : ''}`} title="سعر بيع جهاز مستعمل" /></td>
                     <td className="py-4 px-3"><input type="number" value={row.oneMonthPrice || 0} onChange={(e) => handleCellChange(index, 'oneMonthPrice', Number(e.target.value))} className={`w-28 px-3 py-2 rounded-xl border text-center font-bold text-xs focus:ring-2 focus:ring-sky-500 outline-hidden bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 ${isModified ? 'border-amber-300' : ''}`} /></td>
                     <td className="py-4 px-3"><input type="number" value={row.twoMonthsPrice || 0} onChange={(e) => handleCellChange(index, 'twoMonthsPrice', Number(e.target.value))} className={`w-28 px-3 py-2 rounded-xl border text-center font-bold text-xs focus:ring-2 focus:ring-sky-500 outline-hidden bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 ${isModified ? 'border-amber-300' : ''}`} /></td>
                     <td className="py-4 px-3"><input type="number" value={row.threeMonthsPrice || 0} onChange={(e) => handleCellChange(index, 'threeMonthsPrice', Number(e.target.value))} className={`w-28 px-3 py-2 rounded-xl border text-center font-bold text-xs focus:ring-2 focus:ring-sky-500 outline-hidden bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 ${isModified ? 'border-amber-300' : ''}`} /></td>
@@ -408,7 +422,8 @@ export const PricingView: React.FC<PricingViewProps> = ({
           targetDescription="تأكيد التثبيت النهائي لجدول الأسعار المحدث. سيؤدي هذا الإجراء إلى تحديث السحابة وإعادة حساب المديونيات لكافة الوكلاء فوراً."
           details={[
             { label: 'عدد الجهات التي تم تعديلها', value: `${modifiedIds.size} جهة` },
-            { label: 'سعر الاشتراك (المركز)', value: `${centerRow?.oneMonthPrice?.toLocaleString()} د.ع` }
+            { label: 'سعر الاشتراك (المركز)', value: `${centerRow?.oneMonthPrice?.toLocaleString()} د.ع` },
+            { label: 'سعر بيع جهاز مستعمل (المركز)', value: `${(centerRow?.usedDevicePrice ?? SYSTEM_DEFAULTS.usedDevice).toLocaleString()} د.ع` }
           ]}
           confirmButtonText="تأكيد وحفظ التغييرات"
           onConfirm={handleConfirmSavePricing}

@@ -679,7 +679,7 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
             setRenewingSubscriber(null);
           }}
           onWhatsApp={(sub) => onOpenWhatsApp(sub)}
-          forceMainCenter={true}
+          forceMainCenter={false}
         />
       )}
 

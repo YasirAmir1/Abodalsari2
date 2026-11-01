@@ -4,14 +4,18 @@ function normalizeStr(str?: string): string {
   return str.trim().toLowerCase().replace(/\s+/g, ' ').replace(/أ/g, 'ا').replace(/إ/g, 'ا').replace(/آ/g, 'ا').replace(/ة/g, 'ه');
 }
 
-function doesSubscriberBelongToAgent(sub: { agentId?: string; agentName?: string }, agent: Agent): boolean {
+function doesSubscriberBelongToAgent(sub: { agentId?: string; agentName?: string; originalAgentId?: string; originalAgentName?: string }, agent: Agent): boolean {
   if (!sub || !agent) return false;
   if (sub.agentId && agent.id && sub.agentId === agent.id) return true;
+  if (sub.originalAgentId && agent.id && sub.originalAgentId === agent.id) return true;
   const subName = normalizeStr(sub.agentName);
+  const origName = normalizeStr(sub.originalAgentName);
   const agentName = normalizeStr(agent.name);
   const agentCode = normalizeStr(agent.code);
   if (subName && agentName && (subName === agentName || subName.includes(agentName) || agentName.includes(subName))) return true;
+  if (origName && agentName && (origName === agentName || origName.includes(agentName) || agentName.includes(origName))) return true;
   if (subName && agentCode && (subName === agentCode || subName.includes(agentCode))) return true;
+  if (origName && agentCode && (origName === agentCode || origName.includes(agentCode))) return true;
   return false;
 }
 

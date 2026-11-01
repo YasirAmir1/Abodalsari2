@@ -66,6 +66,7 @@ export interface PricingRow {
   agentName: string;
   agentCode: string;
   newDevicePrice: number;
+  usedDevicePrice?: number;
   oneMonthPrice: number;
   twoMonthsPrice: number;
   threeMonthsPrice: number;

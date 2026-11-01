@@ -25,6 +25,8 @@ export class FirebaseSyncManager {
   private generation = 0;
   private stateCallback: ((state: AppState) => void) | null = null;
 
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
   private constructor() {
     this.setupNetworkWatchers();
   }
@@ -41,20 +43,32 @@ export class FirebaseSyncManager {
 
     window.addEventListener('online', this.handleNetworkOnline);
     window.addEventListener('offline', this.handleNetworkOffline);
+    window.addEventListener('focus', this.handleWindowFocus);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
+  private handleWindowFocus = () => {
+    if (this.isListening && navigator.onLine) {
+      void this.reconcile(this.generation);
+    }
+  };
+
+  private handleVisibilityChange = () => {
+    if (this.isListening && document.visibilityState === 'visible' && navigator.onLine) {
+      void this.reconcile(this.generation);
+    }
+  };
+
   private handleNetworkOnline = () => {
-    // Active Firestore listeners reconnect automatically. Restart only after
-    // a terminal listener error has already closed the stream.
-    if (this.isListening && !this.unsubscribeFirestore) {
+    if (this.isListening) {
       this.clearReconnectTimer();
       this.startFirestoreListener(this.generation);
+      void this.reconcile(this.generation);
     }
   };
 
   private handleNetworkOffline = () => {
-    // Firestore's persistent local cache keeps reads available and queues
-    // writes while offline; retain the listener for automatic resumption.
+    this.dispatchStatus('offline');
   };
 
   public startListening(onStateUpdate: (state: AppState) => void): () => void {
@@ -72,6 +86,18 @@ export class FirebaseSyncManager {
     this.unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
       this.dispatchStatus(status);
     });
+    
+    // Force immediate remote reconciliation to ensure fast initial sync
+    this.reconcile(generation);
+    
+    // Heartbeat timer to guarantee constant real-time synchronization every 12s
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
+      if (this.isListening && navigator.onLine) {
+        void this.reconcile(generation);
+      }
+    }, 12000);
+
     this.startFirestoreListener(generation);
 
     return () => {
@@ -180,6 +206,10 @@ export class FirebaseSyncManager {
     this.generation += 1;
     this.stateCallback = null;
     this.clearReconnectTimer();
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     this.unsubscribeFirestore?.();
     this.unsubscribeFirestore = null;
     this.unsubscribeStatus?.();
