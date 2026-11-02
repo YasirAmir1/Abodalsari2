@@ -1,4 +1,67 @@
 
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import {
+  Agent,
+  DeviceCode,
+  Invoice,
+  PendingRenewalRequest,
+  PricingRow,
+  Product,
+  SecurityAlert,
+  Subscriber,
+  SubscriptionDuration,
+  SubscriptionStatus,
+  SystemUser,
+  PaymentStatus
+} from './types';
+import { RefreshCw, X } from 'lucide-react';
+import { AppState, storageService } from './services/storageService';
+import { firebaseService, auth } from './services/firebaseService';
+import { onAuthStateChanged } from 'firebase/auth';
+import { syncManager } from './services/firebase-sync';
+import { appFeatures } from './services/app-features';
+import { soundService } from './services/soundService';
+import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt, buildSubscriberDebtMap } from './utils/calculationUtils';
+import { INITIAL_AGENTS } from './data/mockData';
+
+import { Sidebar, NavTab } from './components/Sidebar';
+const LoginView = lazy(() => import('./components/LoginView').then(({ LoginView }) => ({ default: LoginView })));
+const Header = lazy(() => import('./components/Header').then(({ Header }) => ({ default: Header })));
+import { useAppDialogs } from './components/AppDialogProvider';
+
+const USER_SESSION_KEY = 'alsari_auth_user_v1';
+const DATABASE_CONNECTION_ERROR = 'تعذر الاتصال بقاعدة البيانات المباشرة. ستستأنف المزامنة عند عودة الاتصال.';
+const DashboardView = lazy(() => import('./components/DashboardView').then(({ DashboardView }) => ({ default: DashboardView })));
+const SubscribersView = lazy(() => import('./components/SubscribersView').then(({ SubscribersView }) => ({ default: SubscribersView })));
+const PendingRequestsView = lazy(() => import('./components/PendingRequestsView').then(({ PendingRequestsView }) => ({ default: PendingRequestsView })));
+const AgentsView = lazy(() => import('./components/AgentsView').then(({ AgentsView }) => ({ default: AgentsView })));
+const ProductsView = lazy(() => import('./components/ProductsView').then(({ ProductsView }) => ({ default: ProductsView })));
+const QrCodesView = lazy(() => import('./components/QrCodesView').then(({ QrCodesView }) => ({ default: QrCodesView })));
+const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
+const SalesInvoicesView = lazy(() => import('./components/SalesInvoicesView').then(({ SalesInvoicesView }) => ({ default: SalesInvoicesView })));
+const DebtsView = lazy(() => import('./components/DebtsView').then(({ DebtsView }) => ({ default: DebtsView })));
+const ActiveSubscribersView = lazy(() => import('./components/ActiveSubscribersView').then(({ ActiveSubscribersView }) => ({ default: ActiveSubscribersView })));
+const AgentPortalView = lazy(() => import('./components/AgentPortalView').then(({ AgentPortalView }) => ({ default: AgentPortalView })));
+
+const WhatsAppModal = lazy(() => import('./components/WhatsAppModal').then(({ WhatsAppModal }) => ({ default: WhatsAppModal })));
+const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(({ ReceiptModal }) => ({ default: ReceiptModal })));
+const DeviceQrModal = lazy(() => import('./components/DeviceQrModal').then(({ DeviceQrModal }) => ({ default: DeviceQrModal })));
+const InvoiceSuccessModal = lazy(() => import('./components/InvoiceSuccessModal').then(({ InvoiceSuccessModal }) => ({ default: InvoiceSuccessModal })));
+
+const componentsMap: Record<NavTab, () => Promise<any>> = {
+  dashboard: () => import('./components/DashboardView'),
+  subscribers: () => import('./components/SubscribersView'),
+  pending: () => import('./components/PendingRequestsView'),
+  agents: () => import('./components/AgentsView'),
+  products: () => import('./components/ProductsView'),
+  barcodes: () => import('./components/QrCodesView'),
+  pricing: () => import('./components/PricingView'),
+  sales: () => import('./components/SalesInvoicesView'),
+  debts: () => import('./components/DebtsView'),
+  active_subscribers: () => import('./components/ActiveSubscribersView'),
+  agent_portal: () => import('./components/AgentPortalView'),
+};
+
 function syncAgentsAndPersist(
   currentState: AppState,
   updatedSubscribers: Subscriber[],
@@ -138,33 +201,43 @@ function computeUpdatedAgents(agents: Agent[], subscribers: Subscriber[], invoic
 
 function ensureActiveSubscribersFromInvoices(subscribers: Subscriber[], invoices: Invoice[]): Subscriber[] {
   if (!invoices || invoices.length === 0 || !subscribers || subscribers.length === 0) return subscribers;
-  const renewalSubIds = new Set<string>();
-  const renewalDeviceIds = new Set<string>();
+  
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const activeInvoiceSubIds = new Set<string>();
+  const activeInvoiceDeviceIds = new Set<string>();
 
   for (let i = 0; i < invoices.length; i++) {
     const inv = invoices[i];
     if (inv && inv.packageType) {
       const pt = inv.packageType.trim().toLowerCase();
       if (pt.includes('تجديد') || pt.includes('اشتراك') || pt.includes('باقة')) {
-        if (inv.subscriberId) renewalSubIds.add(inv.subscriberId);
-        if (inv.deviceId) renewalDeviceIds.add(inv.deviceId);
+        if (inv.subscriberId) activeInvoiceSubIds.add(inv.subscriberId);
+        if (inv.deviceId) activeInvoiceDeviceIds.add(inv.deviceId);
       }
     }
   }
 
   let changed = false;
   const updated = subscribers.map((sub) => {
-    const isMatch = (sub.id && renewalSubIds.has(sub.id)) || (sub.deviceId && renewalDeviceIds.has(sub.deviceId));
+    const isMatch = (sub.id && activeInvoiceSubIds.has(sub.id)) || (sub.deviceId && activeInvoiceDeviceIds.has(sub.deviceId));
     if (isMatch && sub.status !== 'active') {
-      changed = true;
-      return {
-        ...sub,
-        status: 'active' as SubscriptionStatus,
-        isActive: true,
-        subscriptionType: sub.subscriptionType && sub.subscriptionType !== '-' ? sub.subscriptionType : ('1 شهر' as SubscriptionDuration),
-        startDate: sub.startDate && sub.startDate !== '-' ? sub.startDate : (sub.createdAt || new Date().toISOString().split('T')[0]),
-        endDate: sub.endDate && sub.endDate !== '-' ? sub.endDate : new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]
-      };
+      // Re-activate if endDate is missing, invalid, or currently valid (>= today)
+      if (!sub.endDate || sub.endDate === '-' || sub.endDate >= today) {
+        changed = true;
+        const validEndDate = (sub.endDate && sub.endDate !== '-' && sub.endDate >= today)
+          ? sub.endDate
+          : new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+        return {
+          ...sub,
+          status: 'active' as SubscriptionStatus,
+          isActive: true,
+          subscriptionType: sub.subscriptionType && sub.subscriptionType !== '-' ? sub.subscriptionType : ('1 شهر' as SubscriptionDuration),
+          startDate: sub.startDate && sub.startDate !== '-' ? sub.startDate : (sub.createdAt || today),
+          endDate: validEndDate
+        };
+      }
     }
     return sub;
   });
@@ -172,74 +245,85 @@ function ensureActiveSubscribersFromInvoices(subscribers: Subscriber[], invoices
   return changed ? updated : subscribers;
 }
 
+function mergeRemoteStateWithLocal(remoteState: AppState, currentState: AppState): AppState {
+  const deletedSubs = storageService.getDeletedSubscriberIds();
+  const deletedInvoices = storageService.getDeletedInvoiceIds();
 
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+  // 1. Merge Subscribers: remote + local
+  const remoteSubMap = new Map<string, Subscriber>();
+  (remoteState.subscribers || []).forEach((sub) => {
+    if (sub && sub.id && !deletedSubs.has(sub.id) && (!sub.deviceId || !deletedSubs.has(sub.deviceId))) {
+      remoteSubMap.set(sub.id, sub);
+    }
+  });
 
-import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import {
-  Agent,
-  DeviceCode,
-  Invoice,
-  PendingRenewalRequest,
-  PricingRow,
-  Product,
-  SecurityAlert,
-  Subscriber,
-  SubscriptionDuration,
-  SubscriptionStatus,
-  SystemUser,
-  PaymentStatus
-} from './types';
-import { RefreshCw, X } from 'lucide-react';
-import { AppState, storageService } from './services/storageService';
-import { firebaseService, auth } from './services/firebaseService';
-import { onAuthStateChanged } from 'firebase/auth';
-import { syncManager } from './services/firebase-sync';
-import { appFeatures } from './services/app-features';
-import { soundService } from './services/soundService';
-import { getInvoiceRemainingAmount, getSubscriberOutstandingDebt, buildSubscriberDebtMap } from './utils/calculationUtils';
-import { INITIAL_AGENTS } from './data/mockData';
+  (currentState.subscribers || []).forEach((localSub) => {
+    if (!localSub || !localSub.id) return;
+    if (deletedSubs.has(localSub.id) || (localSub.deviceId && deletedSubs.has(localSub.deviceId))) return;
 
-import { Sidebar, NavTab } from './components/Sidebar';
-const LoginView = lazy(() => import('./components/LoginView').then(({ LoginView }) => ({ default: LoginView })));
-const Header = lazy(() => import('./components/Header').then(({ Header }) => ({ default: Header })));
-import { useAppDialogs } from './components/AppDialogProvider';
+    if (!remoteSubMap.has(localSub.id)) {
+      remoteSubMap.set(localSub.id, localSub);
+    } else {
+      const remoteSub = remoteSubMap.get(localSub.id)!;
+      // Prefer local subscriber if active or if it has a newer/valid end date
+      if (
+        localSub.status === 'active' ||
+        (localSub.endDate && localSub.endDate !== '-' && (!remoteSub.endDate || localSub.endDate >= remoteSub.endDate))
+      ) {
+        remoteSubMap.set(localSub.id, { ...remoteSub, ...localSub });
+      } else {
+        remoteSubMap.set(localSub.id, { ...localSub, ...remoteSub });
+      }
+    }
+  });
 
-const USER_SESSION_KEY = 'alsari_auth_user_v1';
-const DATABASE_CONNECTION_ERROR = 'تعذر الاتصال بقاعدة البيانات المباشرة. ستستأنف المزامنة عند عودة الاتصال.';
-const DashboardView = lazy(() => import('./components/DashboardView').then(({ DashboardView }) => ({ default: DashboardView })));
-const SubscribersView = lazy(() => import('./components/SubscribersView').then(({ SubscribersView }) => ({ default: SubscribersView })));
-const PendingRequestsView = lazy(() => import('./components/PendingRequestsView').then(({ PendingRequestsView }) => ({ default: PendingRequestsView })));
-const AgentsView = lazy(() => import('./components/AgentsView').then(({ AgentsView }) => ({ default: AgentsView })));
-const ProductsView = lazy(() => import('./components/ProductsView').then(({ ProductsView }) => ({ default: ProductsView })));
-const QrCodesView = lazy(() => import('./components/QrCodesView').then(({ QrCodesView }) => ({ default: QrCodesView })));
-const PricingView = lazy(() => import('./components/PricingView').then(({ PricingView }) => ({ default: PricingView })));
-const SalesInvoicesView = lazy(() => import('./components/SalesInvoicesView').then(({ SalesInvoicesView }) => ({ default: SalesInvoicesView })));
-const DebtsView = lazy(() => import('./components/DebtsView').then(({ DebtsView }) => ({ default: DebtsView })));
-const ActiveSubscribersView = lazy(() => import('./components/ActiveSubscribersView').then(({ ActiveSubscribersView }) => ({ default: ActiveSubscribersView })));
-const AgentPortalView = lazy(() => import('./components/AgentPortalView').then(({ AgentPortalView }) => ({ default: AgentPortalView })));
+  // 2. Merge Invoices: remote + local
+  const remoteInvMap = new Map<string, Invoice>();
+  (remoteState.invoices || []).forEach((inv) => {
+    if (inv && inv.id && !deletedInvoices.has(inv.id)) {
+      remoteInvMap.set(inv.id, inv);
+    }
+  });
 
-const WhatsAppModal = lazy(() => import('./components/WhatsAppModal').then(({ WhatsAppModal }) => ({ default: WhatsAppModal })));
-const ReceiptModal = lazy(() => import('./components/ReceiptModal').then(({ ReceiptModal }) => ({ default: ReceiptModal })));
-const DeviceQrModal = lazy(() => import('./components/DeviceQrModal').then(({ DeviceQrModal }) => ({ default: DeviceQrModal })));
-const InvoiceSuccessModal = lazy(() => import('./components/InvoiceSuccessModal').then(({ InvoiceSuccessModal }) => ({ default: InvoiceSuccessModal })));
+  (currentState.invoices || []).forEach((localInv) => {
+    if (!localInv || !localInv.id || deletedInvoices.has(localInv.id)) return;
+    if (!remoteInvMap.has(localInv.id)) {
+      remoteInvMap.set(localInv.id, localInv);
+    }
+  });
 
-const componentsMap: Record<NavTab, () => Promise<any>> = {
-  dashboard: () => import('./components/DashboardView'),
-  subscribers: () => import('./components/SubscribersView'),
-  pending: () => import('./components/PendingRequestsView'),
-  agents: () => import('./components/AgentsView'),
-  products: () => import('./components/ProductsView'),
-  barcodes: () => import('./components/QrCodesView'),
-  pricing: () => import('./components/PricingView'),
-  sales: () => import('./components/SalesInvoicesView'),
-  debts: () => import('./components/DebtsView'),
-  active_subscribers: () => import('./components/ActiveSubscribersView'),
-  agent_portal: () => import('./components/AgentPortalView'),
-};
+  // 3. Merge Pending Requests: remote + local
+  const remoteReqMap = new Map<string, PendingRenewalRequest>();
+  (remoteState.pendingRequests || []).forEach((req) => {
+    if (req && req.id && !deletedSubs.has(req.subscriberId)) {
+      remoteReqMap.set(req.id, req);
+    }
+  });
+
+  (currentState.pendingRequests || []).forEach((localReq) => {
+    if (!localReq || !localReq.id || deletedSubs.has(localReq.subscriberId)) return;
+    if (!remoteReqMap.has(localReq.id)) {
+      remoteReqMap.set(localReq.id, localReq);
+    } else {
+      const remoteReq = remoteReqMap.get(localReq.id)!;
+      if (localReq.status !== 'pending' && remoteReq.status === 'pending') {
+        remoteReqMap.set(localReq.id, localReq);
+      }
+    }
+  });
+
+  return {
+    ...remoteState,
+    subscribers: Array.from(remoteSubMap.values()),
+    invoices: Array.from(remoteInvMap.values()),
+    pendingRequests: Array.from(remoteReqMap.values()),
+    agents: remoteState.agents && remoteState.agents.length > 0 ? remoteState.agents : currentState.agents,
+    products: remoteState.products && remoteState.products.length > 0 ? remoteState.products : currentState.products,
+    pricing: remoteState.pricing && remoteState.pricing.length > 0 ? remoteState.pricing : currentState.pricing,
+    codes: remoteState.codes && remoteState.codes.length > 0 ? remoteState.codes : currentState.codes,
+    users: remoteState.users && remoteState.users.length > 0 ? remoteState.users : currentState.users
+  };
+}
 
 export default function App() {
   const { showAlert } = useAppDialogs();
@@ -442,81 +526,6 @@ export default function App() {
       }
     });
   };
-
-
-function mergeRemoteStateWithLocal(remoteState: AppState, currentState: AppState): AppState {
-  const deletedSubs = storageService.getDeletedSubscriberIds();
-  const deletedInvoices = storageService.getDeletedInvoiceIds();
-
-  // 1. Merge Subscribers: remote + local
-  const remoteSubMap = new Map<string, Subscriber>();
-  (remoteState.subscribers || []).forEach((sub) => {
-    if (sub && sub.id && !deletedSubs.has(sub.id) && (!sub.deviceId || !deletedSubs.has(sub.deviceId))) {
-      remoteSubMap.set(sub.id, sub);
-    }
-  });
-
-  (currentState.subscribers || []).forEach((localSub) => {
-    if (!localSub || !localSub.id) return;
-    if (deletedSubs.has(localSub.id) || (localSub.deviceId && deletedSubs.has(localSub.deviceId))) return;
-
-    if (!remoteSubMap.has(localSub.id)) {
-      remoteSubMap.set(localSub.id, localSub);
-    } else {
-      const remoteSub = remoteSubMap.get(localSub.id)!;
-      if (localSub.status === 'active' && remoteSub.status !== 'active') {
-        remoteSubMap.set(localSub.id, { ...remoteSub, ...localSub });
-      }
-    }
-  });
-
-  // 2. Merge Invoices: remote + local
-  const remoteInvMap = new Map<string, Invoice>();
-  (remoteState.invoices || []).forEach((inv) => {
-    if (inv && inv.id && !deletedInvoices.has(inv.id)) {
-      remoteInvMap.set(inv.id, inv);
-    }
-  });
-
-  (currentState.invoices || []).forEach((localInv) => {
-    if (!localInv || !localInv.id || deletedInvoices.has(localInv.id)) return;
-    if (!remoteInvMap.has(localInv.id)) {
-      remoteInvMap.set(localInv.id, localInv);
-    }
-  });
-
-  // 3. Merge Pending Requests: remote + local
-  const remoteReqMap = new Map<string, PendingRenewalRequest>();
-  (remoteState.pendingRequests || []).forEach((req) => {
-    if (req && req.id && !deletedSubs.has(req.subscriberId)) {
-      remoteReqMap.set(req.id, req);
-    }
-  });
-
-  (currentState.pendingRequests || []).forEach((localReq) => {
-    if (!localReq || !localReq.id || deletedSubs.has(localReq.subscriberId)) return;
-    if (!remoteReqMap.has(localReq.id)) {
-      remoteReqMap.set(localReq.id, localReq);
-    } else {
-      const remoteReq = remoteReqMap.get(localReq.id)!;
-      if (localReq.status !== 'pending' && remoteReq.status === 'pending') {
-        remoteReqMap.set(localReq.id, localReq);
-      }
-    }
-  });
-
-  return {
-    ...remoteState,
-    subscribers: Array.from(remoteSubMap.values()),
-    invoices: Array.from(remoteInvMap.values()),
-    pendingRequests: Array.from(remoteReqMap.values()),
-    agents: remoteState.agents && remoteState.agents.length > 0 ? remoteState.agents : currentState.agents,
-    products: remoteState.products && remoteState.products.length > 0 ? remoteState.products : currentState.products,
-    pricing: remoteState.pricing && remoteState.pricing.length > 0 ? remoteState.pricing : currentState.pricing,
-    codes: remoteState.codes && remoteState.codes.length > 0 ? remoteState.codes : currentState.codes,
-    users: remoteState.users && remoteState.users.length > 0 ? remoteState.users : currentState.users
-  };
-}
 
   // Expire subscriptions against the local calendar date after the first
   // server synchronization, and recheck periodically while the app is open.
