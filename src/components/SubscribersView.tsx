@@ -92,6 +92,9 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
   const [debtThreshold, setDebtThreshold] = useState<number>(50000);
   const [onlyHighDebt, setOnlyHighDebt] = useState<boolean>(false);
   const [onlyOverdueDebt, setOnlyOverdueDebt] = useState<boolean>(false);
+  const [dateStartFilter, setDateStartFilter] = useState<string>('');
+  const [dateEndFilter, setDateEndFilter] = useState<string>('');
+  const [dateFieldFilter, setDateFieldFilter] = useState<'startDate' | 'endDate' | 'createdAt'>('startDate');
   const debtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
   const [historySubscriber, setHistorySubscriber] = useState<Subscriber | null>(null);
   const subscriberInvoiceHistory = useMemo(
@@ -602,6 +605,18 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
         if (!matchAgentId && !matchAgentName) return false;
       }
     }
+    // Date Range Filter
+    if (dateStartFilter || dateEndFilter) {
+      const rawFieldValue =
+        dateFieldFilter === 'endDate'
+          ? sub.endDate
+          : dateFieldFilter === 'createdAt'
+          ? sub.createdAt
+          : sub.startDate;
+      const subDate = rawFieldValue ? rawFieldValue.split('T')[0] : '';
+      if (dateStartFilter && (!subDate || subDate < dateStartFilter)) return false;
+      if (dateEndFilter && (!subDate || subDate > dateEndFilter)) return false;
+    }
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const matchName = sub.name.toLowerCase().includes(term);
@@ -611,7 +626,7 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
       return matchName || matchPhone || matchDevice || matchAgent;
     }
     return true;
-  }), [agentFilter, agents, debtMap, debtThreshold, onlyHighDebt, onlyOverdueDebt, searchTerm, statusFilter, subscriberDebtInfoMap, subscribersForView]);
+  }), [agentFilter, agents, dateStartFilter, dateEndFilter, dateFieldFilter, debtMap, debtThreshold, onlyHighDebt, onlyOverdueDebt, searchTerm, statusFilter, subscriberDebtInfoMap, subscribersForView]);
 
   const { activeCount, inactiveCount, expiringCount, highDebtCount, overdueDebtCount, totalOverdueDebtAmount } = useMemo(() => {
     let active = 0;
@@ -802,6 +817,8 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                 setAgentFilter('all');
                 setOnlyHighDebt(false);
                 setOnlyOverdueDebt(false);
+                setDateStartFilter('');
+                setDateEndFilter('');
               }}
               className="px-4 py-2.5 rounded-2xl bg-white/10 hover:bg-white/15 text-white text-xs font-bold transition-all border border-white/15 flex items-center gap-2 shadow-xs cursor-pointer"
               title="إعادة ضبط كافة الفلاتر وخيارات البحث"
@@ -1049,6 +1066,64 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
               </button>
             );
           })}
+        </div>
+
+        {/* Date Range Filter Bar */}
+        <div className="p-3.5 rounded-2xl border border-slate-150 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-850/50 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+              تحديد نطاق التاريخ:
+            </span>
+
+            <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1">
+              <span className="text-slate-500 font-medium">نوع التاريخ:</span>
+              <select
+                value={dateFieldFilter}
+                onChange={(e) => setDateFieldFilter(e.target.value as any)}
+                className="bg-transparent font-bold text-slate-800 dark:text-slate-200 focus:outline-hidden cursor-pointer"
+              >
+                <option value="startDate">تاريخ البدء / التفعيل</option>
+                <option value="endDate">تاريخ الانتهاء</option>
+                <option value="createdAt">تاريخ الإضافة</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1">
+                <span className="text-slate-500 font-medium">من:</span>
+                <input
+                  type="date"
+                  value={dateStartFilter}
+                  onChange={(e) => setDateStartFilter(e.target.value)}
+                  className="bg-transparent font-bold text-slate-800 dark:text-slate-200 focus:outline-hidden cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1">
+                <span className="text-slate-500 font-medium">إلى:</span>
+                <input
+                  type="date"
+                  value={dateEndFilter}
+                  onChange={(e) => setDateEndFilter(e.target.value)}
+                  className="bg-transparent font-bold text-slate-800 dark:text-slate-200 focus:outline-hidden cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+          {(dateStartFilter || dateEndFilter) && (
+            <button
+              onClick={() => {
+                setDateStartFilter('');
+                setDateEndFilter('');
+              }}
+              className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-300 font-bold border border-rose-200/70 dark:border-rose-800 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>مسح التاريخ</span>
+            </button>
+          )}
         </div>
 
         {/* Search, Count & Threshold Bar */}
