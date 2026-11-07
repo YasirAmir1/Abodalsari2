@@ -634,6 +634,35 @@ export const firebaseService = {
     return saveTask;
   },
 
+  /**
+   * Fast, direct write for an agent's pending approval request.
+   * Directly writes to `/tenants/{TENANT_ID}/requests/{request.id}` without waiting for a full state diff,
+   * guaranteeing instantaneous receipt by the Main Center via Firestore onSnapshot.
+   */
+  async sendPendingRenewalRequestDirect(newRequest: any): Promise<void> {
+    try {
+      const cleanReq = sanitize({ ...newRequest, tenantId: TENANT_ID });
+      const reqRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), newRequest.id);
+      await setDoc(reqRef, cleanReq, { merge: true });
+    } catch (e) {
+      console.warn('sendPendingRenewalRequestDirect error:', e);
+      throw e;
+    }
+  },
+
+  /**
+   * Fast, direct deletion of a pending request from `/tenants/{TENANT_ID}/requests/{requestId}`
+   */
+  async deletePendingRenewalRequestDirect(requestId: string): Promise<void> {
+    try {
+      const reqRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), requestId);
+      await deleteDoc(reqRef);
+    } catch (e) {
+      console.warn('deletePendingRenewalRequestDirect error:', e);
+      throw e;
+    }
+  },
+
   async executeApprovalTransaction({
     subscriber,
     invoice,

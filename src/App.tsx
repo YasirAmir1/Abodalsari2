@@ -597,6 +597,14 @@ export default function App() {
     const unsubscribe = syncManager.startListening((remoteState) => {
       if (!remoteState) return;
 
+      const previousPending = stateRef.current.pendingRequests || [];
+      const newPending = remoteState.pendingRequests || [];
+
+      // Check if new pending requests arrived from agents that we didn't have before
+      const hasBrandNewRequest = newPending.some(
+        (nr) => nr.status === 'pending' && !previousPending.some((pr) => pr.id === nr.id)
+      );
+
       const mergedState = mergeRemoteStateWithLocal(remoteState, stateRef.current);
       const filteredState = storageService.filterOutDeleted(mergedState);
       const repairedSubs = repairSubscriberAgentOwnership(filteredState.subscribers, filteredState.agents);
@@ -612,6 +620,17 @@ export default function App() {
 
       stateRef.current = stateWithAgentMetrics;
       setState(stateWithAgentMetrics);
+
+      // If a new pending request arrived and user is Admin / Main Center, trigger instant audio alert and toast
+      if (hasBrandNewRequest) {
+        soundService.playPendingAlert();
+        const latestNewReq = newPending.find(
+          (nr) => nr.status === 'pending' && !previousPending.some((pr) => pr.id === nr.id)
+        );
+        if (latestNewReq) {
+          showSyncToast(`🔔 ورد طلب اعتماد جديد من (${latestNewReq.agentName}) للمشترك ${latestNewReq.subscriberName}`, 6000);
+        }
+      }
     });
 
     const unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
@@ -1548,6 +1567,9 @@ export default function App() {
         ? currentState.subscribers.filter((s) => s.id !== req.subscriberId)
         : currentState.subscribers
     }, 'Could not reject the pending request:');
+
+    // Direct deletion from Firestore requests collection
+    void firebaseService.deletePendingRenewalRequestDirect(requestId).catch(() => {});
   };
 
   const handleCancelAgentPendingRequest = (requestId: string): boolean => {
@@ -1571,6 +1593,9 @@ export default function App() {
         ? currentState.subscribers.filter((subscriber) => subscriber.id !== request.subscriberId)
         : currentState.subscribers
     }, 'Could not cancel the agent pending request:');
+
+    // Direct deletion from Firestore requests collection
+    void firebaseService.deletePendingRenewalRequestDirect(requestId).catch(() => {});
     return true;
   };
 
@@ -2094,6 +2119,12 @@ export default function App() {
                   ...currentState,
                   pendingRequests: [newReq, ...currentState.pendingRequests.filter((request) => request.id !== newReq.id)]
                 }, 'Could not immediately sync the agent request:');
+
+                // Instant direct push to Firestore requests collection for sub-second arrival at HQ
+                void firebaseService.sendPendingRenewalRequestDirect(newReq).catch((err) => {
+                  console.warn('Direct pending request upload notice:', err);
+                });
+
                 soundService.playPendingAlert();
               }}
               onDeleteRequest={handleCancelAgentPendingRequest}
