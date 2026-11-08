@@ -19,11 +19,7 @@ export function useVirtualizedRows<T>(
   const scrollRef = useRef<HTMLDivElement>(null);
   const [visibleStart, setVisibleStart] = useState(0);
 
-  useEffect(() => {
-    setVisibleStart(0);
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [rows]);
-
+  // Scroll position is preserved when rows update to prevent jumping back to top
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const firstVisibleRow = Math.floor(event.currentTarget.scrollTop / rowHeight);
     const nextStart = Math.max(0, firstVisibleRow - overscan);
