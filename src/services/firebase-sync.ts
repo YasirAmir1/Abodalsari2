@@ -43,27 +43,12 @@ export class FirebaseSyncManager {
 
     window.addEventListener('online', this.handleNetworkOnline);
     window.addEventListener('offline', this.handleNetworkOffline);
-    window.addEventListener('focus', this.handleWindowFocus);
-    document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
-  private handleWindowFocus = () => {
-    if (this.isListening && navigator.onLine) {
-      void this.reconcile(this.generation);
-    }
-  };
-
-  private handleVisibilityChange = () => {
-    if (this.isListening && document.visibilityState === 'visible' && navigator.onLine) {
-      void this.reconcile(this.generation);
-    }
-  };
-
   private handleNetworkOnline = () => {
-    if (this.isListening) {
+    if (this.isListening && !firebaseService.isQuotaExceeded()) {
       this.clearReconnectTimer();
       this.startFirestoreListener(this.generation);
-      void this.reconcile(this.generation);
     }
   };
 
@@ -77,26 +62,13 @@ export class FirebaseSyncManager {
     this.stateCallback = onStateUpdate;
     const generation = ++this.generation;
 
-    // Diagnostic check: verify connectivity status
-    if (!navigator.onLine) {
-      console.warn('[FirebaseSync] Offline: sync paused');
+    if (!navigator.onLine || firebaseService.isQuotaExceeded()) {
       this.dispatchStatus('offline');
     }
 
     this.unsubscribeStatus = firebaseService.onSyncStatusChange((status) => {
       this.dispatchStatus(status);
     });
-    
-    // Force immediate remote reconciliation to ensure fast initial sync
-    this.reconcile(generation);
-    
-    // Heartbeat timer to guarantee constant real-time synchronization every 12s
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
-    this.heartbeatTimer = setInterval(() => {
-      if (this.isListening && navigator.onLine) {
-        void this.reconcile(generation);
-      }
-    }, 12000);
 
     this.startFirestoreListener(generation);
 
@@ -108,11 +80,16 @@ export class FirebaseSyncManager {
   private async startFirestoreListener(generation: number) {
     if (!this.isListening || generation !== this.generation || this.unsubscribeFirestore) return;
 
+    if (firebaseService.isQuotaExceeded()) {
+      this.dispatchStatus('offline');
+      return;
+    }
+
     // Robust connectivity check
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        console.warn('[FirebaseSync] Offline: sync paused. Waiting for connection...');
-        this.dispatchStatus('offline');
-        return;
+      console.warn('[FirebaseSync] Offline: sync paused. Waiting for connection...');
+      this.dispatchStatus('offline');
+      return;
     }
 
     try {
@@ -138,9 +115,18 @@ export class FirebaseSyncManager {
             errMessage.includes('Missing or insufficient permissions') ||
             errMessage.includes('permission-denied') ||
             errMessage.includes('insufficient permissions');
+          const isQuotaExceeded =
+            firebaseService.isQuotaExceeded() ||
+            errMessage.includes('resource-exhausted') ||
+            errMessage.toLowerCase().includes('quota exceeded');
 
-          if (isPermissionDenied) {
-            console.warn('[FirebaseSync] Firestore permission restriction: operating with local persistent storage.');
+          if (isPermissionDenied || isQuotaExceeded) {
+            console.warn(
+              isQuotaExceeded
+                ? '[FirebaseSync] Firestore quota exceeded: operating with local persistent storage.'
+                : '[FirebaseSync] Firestore permission restriction: operating with local persistent storage.'
+            );
+            this.clearReconnectTimer();
             this.dispatchStatus('offline');
             return;
           }
@@ -160,8 +146,12 @@ export class FirebaseSyncManager {
         errMessage.includes('Missing or insufficient permissions') ||
         errMessage.includes('permission-denied') ||
         errMessage.includes('insufficient permissions');
-      if (isPermissionDenied) {
-        console.warn('[FirebaseSync] Firestore permission restriction: operating with local persistent storage.');
+      const isQuotaExceeded =
+        firebaseService.isQuotaExceeded() ||
+        errMessage.includes('resource-exhausted') ||
+        errMessage.toLowerCase().includes('quota exceeded');
+      if (isPermissionDenied || isQuotaExceeded) {
+        this.clearReconnectTimer();
         this.dispatchStatus('offline');
         return;
       }
@@ -186,7 +176,7 @@ export class FirebaseSyncManager {
   }
 
   private scheduleReconnect(generation: number) {
-    if (!this.isListening || generation !== this.generation || this.reconnectTimer) return;
+    if (!this.isListening || generation !== this.generation || this.reconnectTimer || firebaseService.isQuotaExceeded()) return;
     const delay = this.reconnectDelayMs;
     this.reconnectDelayMs = Math.min(this.reconnectDelayMs * 2, 30000);
     this.reconnectTimer = setTimeout(() => {
@@ -217,10 +207,12 @@ export class FirebaseSyncManager {
   }
 
   public async resync(): Promise<AppState | null> {
+    if (firebaseService.isQuotaExceeded()) return null;
     return this.reconcile(this.generation);
   }
 
   private async reconcile(generation: number): Promise<AppState | null> {
+    if (firebaseService.isQuotaExceeded()) return null;
     const remote = await firebaseService.fetchFreshRemoteState() || await firebaseService.fetchRemoteState({ includeEmpty: true });
     if (!remote || !this.isListening || generation !== this.generation) return null;
     const filtered = storageService.filterOutDeleted(remote);

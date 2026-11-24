@@ -648,9 +648,17 @@ export default function App() {
       }
     });
 
+    const unsubscribeQuota = firebaseService.onQuotaExceeded(() => {
+      if (isMountedRef.current) {
+        if (syncToastTimerRef.current) clearTimeout(syncToastTimerRef.current);
+        setSyncToast(null);
+      }
+    });
+
     return () => {
       unsubscribe();
       unsubscribeStatus();
+      unsubscribeQuota();
     };
   }, [currentUser?.id]);
 
@@ -676,12 +684,13 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        showSyncToast('جارٍ فحص البيانات المحلية للترحيل السحابي...', 3000);
+        if (firebaseService.isQuotaExceeded()) {
+          return;
+        }
         try {
           const migrated = await storageService.migrateLocalStorageIfNeeded();
           if (migrated) {
             showSyncToast('تم ترحيل البيانات المحلية إلى السحابة بنجاح!', 4000);
-            console.log('Migration status: Success');
           }
         } catch (err) {
           console.warn('Migration status: Offline error / interruption', err);
@@ -711,27 +720,21 @@ export default function App() {
     }
     soundService.playSuccess();
 
-    try {
-      // Direct call using getDocs to fetch the latest sales and state immediately upon login
-      const freshRemote = remoteState || await firebaseService.fetchFreshRemoteState();
-      if (freshRemote) {
-        const merged = mergeRemoteStateWithLocal(freshRemote, stateRef.current);
-        const filtered = storageService.filterOutDeleted(merged);
-        const repairedSubs = repairSubscriberAgentOwnership(filtered.subscribers, filtered.agents);
-        const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, filtered.invoices);
-        const updatedAgents = computeUpdatedAgents(filtered.agents, activeSubs, filtered.invoices);
-        const stateWithMetrics: AppState = {
-          ...filtered,
-          subscribers: activeSubs,
-          agents: updatedAgents
-        };
-        stateRef.current = stateWithMetrics;
-        storageService.saveState(stateWithMetrics);
-        setState(stateWithMetrics);
-        setIsRemoteReady(true);
-      }
-    } catch (err) {
-      console.warn('Could not fetch initial cloud state on login:', err);
+    if (remoteState) {
+      const merged = mergeRemoteStateWithLocal(remoteState, stateRef.current);
+      const filtered = storageService.filterOutDeleted(merged);
+      const repairedSubs = repairSubscriberAgentOwnership(filtered.subscribers, filtered.agents);
+      const activeSubs = ensureActiveSubscribersFromInvoices(repairedSubs, filtered.invoices);
+      const updatedAgents = computeUpdatedAgents(filtered.agents, activeSubs, filtered.invoices);
+      const stateWithMetrics: AppState = {
+        ...filtered,
+        subscribers: activeSubs,
+        agents: updatedAgents
+      };
+      stateRef.current = stateWithMetrics;
+      storageService.saveState(stateWithMetrics);
+      setState(stateWithMetrics);
+      setIsRemoteReady(true);
     }
   };
 
@@ -747,6 +750,10 @@ export default function App() {
   };
 
   const handleManualSync = async () => {
+    if (firebaseService.isQuotaExceeded()) {
+      showSyncToast('تم حفظ بياناتك محلياً بنجاح.', 3000);
+      return;
+    }
     setSyncToast('جاري المزامنة مع السحابة...');
     try {
       const currentState = stateRef.current;
@@ -755,6 +762,11 @@ export default function App() {
         await firebaseService.saveRemoteState(currentState, true, false).catch((e) => {
           console.warn('Manual sync push notice:', e);
         });
+      }
+
+      if (firebaseService.isQuotaExceeded()) {
+        showSyncToast('تم حفظ بياناتك محلياً بنجاح.', 3000);
+        return;
       }
 
       // 2. Fetch fresh remote state from Firestore
@@ -909,7 +921,6 @@ export default function App() {
       return req.subscriberId !== targetSubscriber.id && (targetSubscriber.deviceId ? req.deviceId !== targetSubscriber.deviceId : true);
     });
 
-    void firebaseService.deleteInvoice(id);
     const updatedAgents = computeUpdatedAgents(currentState.agents, updatedSubscribers, updatedInvoices);
 
     const newState: AppState = {
@@ -1154,15 +1165,17 @@ export default function App() {
 
   const handleDeleteSubscriber = async (id: string) => {
     const sub = state.subscribers.find((s) => s.id === id);
+    const deletedSubIdsToRecord: string[] = [];
     if (sub) {
       storageService.addDeletedSubscriberId(sub.id);
+      deletedSubIdsToRecord.push(sub.id);
       if (sub.deviceId) {
         storageService.addDeletedSubscriberId(sub.deviceId);
+        deletedSubIdsToRecord.push(sub.deviceId);
       }
-      void firebaseService.deleteSubscriber(sub.id);
     } else {
       storageService.addDeletedSubscriberId(id);
-      void firebaseService.deleteSubscriber(id);
+      deletedSubIdsToRecord.push(id);
     }
 
     const subDeviceId = sub?.deviceId;
@@ -1171,50 +1184,31 @@ export default function App() {
       (s) => s.id !== id && (subDeviceId ? s.deviceId !== subDeviceId : true)
     );
 
-    // Completely remove invoices of deleted subscriber
-    const remainingInvoices = state.invoices.filter(
-      (inv) => {
-        const isMatch = inv.subscriberId === id || (subDeviceId && inv.deviceId === subDeviceId);
-        if (isMatch && inv.id) {
-          void firebaseService.deleteInvoice(inv.id);
-        }
-        return !isMatch;
+    // Completely remove invoices of deleted subscriber in a single state diff batch (avoids N+1 delete calls)
+    const deletedInvIds: string[] = [];
+    const remainingInvoices = state.invoices.filter((inv) => {
+      const isMatch = inv.subscriberId === id || (subDeviceId && inv.deviceId === subDeviceId);
+      if (isMatch && inv.id) {
+        storageService.addDeletedInvoiceId(inv.id);
+        deletedInvIds.push(inv.id);
       }
-    );
+      return !isMatch;
+    });
 
     // Completely remove pending requests of deleted subscriber
     const remainingPendingRequests = state.pendingRequests.filter(
       (req) => req.subscriberId !== id && (subDeviceId ? req.deviceId !== subDeviceId : true)
     );
 
-    // Recalculate agent stats
-    const updatedAgents = state.agents.map((ag) => {
-      const agSubs = remainingSubscribers.filter((s) => s.agentId === ag.id);
-      const activeSubs = agSubs.filter((s) => s.status === 'active');
-      const totalAgentDebt = agSubs.reduce(
-        (sum, subscriber) => sum + getSubscriberOutstandingDebt(subscriber, remainingInvoices),
-        0
-      );
-      const totalAgentSales = remainingInvoices
-        .filter((invoice) => invoice.agentId === ag.id)
-        .reduce((sum, invoice) => sum + getInvoiceAmount(invoice), 0);
-
-      return {
-        ...ag,
-        devicesCount: agSubs.length,
-        activeSubscriptions: activeSubs.length,
-        inactiveSubscriptions: agSubs.length - activeSubs.length,
-        totalDebt: totalAgentDebt,
-        totalSales: totalAgentSales,
-        hasDebt: totalAgentDebt > 0
-      };
-    });
+    const updatedAgents = computeUpdatedAgents(state.agents, remainingSubscribers, remainingInvoices);
 
     updateAppState({
       subscribers: remainingSubscribers,
       invoices: remainingInvoices,
       pendingRequests: remainingPendingRequests,
-      agents: updatedAgents
+      agents: updatedAgents,
+      deletedSubscriberIds: Array.from(new Set([...(state.deletedSubscriberIds || []), ...deletedSubIdsToRecord])),
+      deletedInvoiceIds: Array.from(new Set([...(state.deletedInvoiceIds || []), ...deletedInvIds]))
     }, 'Could not immediately sync subscriber deletion:');
     
     soundService.playSuccess();
@@ -1360,10 +1354,11 @@ export default function App() {
       notes: 'تجديد اشتراك رسمي معتمد'
     };
 
+    const deletedInvIds: string[] = [];
     const remainingInvoices = currentState.invoices.filter((inv) => {
       const isMatch = inv.subscriberId === finalSubscriber.id;
       if (isMatch && inv.id) {
-        void firebaseService.deleteInvoice(inv.id);
+        deletedInvIds.push(inv.id);
       }
       return !isMatch;
     });
@@ -1375,6 +1370,9 @@ export default function App() {
         subscriber.id === finalSubscriber.id ? finalSubscriber : subscriber
       ),
       invoices: updatedInvoices,
+      deletedInvoiceIds: deletedInvIds.length > 0
+        ? Array.from(new Set([...(currentState.deletedInvoiceIds || []), ...deletedInvIds]))
+        : currentState.deletedInvoiceIds,
       pendingRequests: pendingRequestId
         ? currentState.pendingRequests.filter((request) => request.id !== pendingRequestId)
         : currentState.pendingRequests
@@ -1559,17 +1557,12 @@ export default function App() {
     if (!req || req.status !== 'pending') return;
     persistStateImmediately({
       ...currentState,
-      pendingRequests: currentState.pendingRequests.map((request) =>
-        request.id === requestId ? { ...request, status: 'rejected' as const } : request
-      ),
+      pendingRequests: currentState.pendingRequests.filter((request) => request.id !== requestId),
       // If it was a 'new-sub-' ID, also remove it from subscribers if it was added as 'inactive'
-      subscribers: req?.subscriberId.startsWith('new-sub-') 
+      subscribers: req?.subscriberId.startsWith('new-sub-')
         ? currentState.subscribers.filter((s) => s.id !== req.subscriberId)
         : currentState.subscribers
     }, 'Could not reject the pending request:');
-
-    // Direct deletion from Firestore requests collection
-    void firebaseService.deletePendingRenewalRequestDirect(requestId).catch(() => {});
   };
 
   const handleCancelAgentPendingRequest = (requestId: string): boolean => {
@@ -1586,16 +1579,12 @@ export default function App() {
 
     persistStateImmediately({
       ...currentState,
-      pendingRequests: currentState.pendingRequests.map((item) =>
-        item.id === requestId ? { ...item, status: 'cancelled' as const } : item
-      ),
+      pendingRequests: currentState.pendingRequests.filter((item) => item.id !== requestId),
       subscribers: request.subscriberId.startsWith('new-sub-')
         ? currentState.subscribers.filter((subscriber) => subscriber.id !== request.subscriberId)
         : currentState.subscribers
     }, 'Could not cancel the agent pending request:');
 
-    // Direct deletion from Firestore requests collection
-    void firebaseService.deletePendingRenewalRequestDirect(requestId).catch(() => {});
     return true;
   };
 

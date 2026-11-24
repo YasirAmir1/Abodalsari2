@@ -35,11 +35,13 @@ import { excelService } from '../services/excelService';
 import { storageService } from '../services/storageService';
 import { getPriceByDuration } from '../utils/pricingUtils';
 import {
+  buildInvoicesBySubscriberIndex,
   buildSubscriberDebtMap,
   getSubscriberOutstandingDebt,
   getSubscriberDebtOverdueInfo,
   SubscriberDebtOverdueInfo
 } from '../utils/calculationUtils';
+import { createSubscriberIndex, querySubscribersWithIndex } from '../utils/dataIndex';
 import { RenewSubscriptionModal } from './RenewSubscriptionModal';
 import { DeactivateSubscriberModal } from './DeactivateSubscriberModal';
 import { DeleteSubscriberModal } from './DeleteSubscriberModal';
@@ -47,6 +49,8 @@ import { DeleteAllSubscribersModal } from './DeleteAllSubscribersModal';
 import { CustomModal } from './CustomModal';
 import { useAppDialogs } from './AppDialogProvider';
 import { useVirtualizedRows } from './useVirtualizedRows';
+import { usePagination } from './usePagination';
+import { PaginationControls } from './PaginationControls';
 
 interface SubscribersViewProps {
   subscribers: Subscriber[];
@@ -96,14 +100,14 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
   const [dateEndFilter, setDateEndFilter] = useState<string>('');
   const [dateFieldFilter, setDateFieldFilter] = useState<'startDate' | 'endDate' | 'createdAt'>('startDate');
   const debtMap = useMemo(() => buildSubscriberDebtMap(invoices), [invoices]);
+  const invoicesBySubscriberIndex = useMemo(() => buildInvoicesBySubscriberIndex(invoices), [invoices]);
   const [historySubscriber, setHistorySubscriber] = useState<Subscriber | null>(null);
   const subscriberInvoiceHistory = useMemo(
     () => historySubscriber
-      ? invoices
-          .filter((invoice) => invoice.subscriberId === historySubscriber.id)
+      ? [...(invoicesBySubscriberIndex.get(historySubscriber.id) || [])]
           .sort((first, second) => second.date.localeCompare(first.date))
       : [],
-    [historySubscriber, invoices]
+    [historySubscriber, invoicesBySubscriberIndex]
   );
 
   const subscribersForView = useMemo(() => {
@@ -583,50 +587,38 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
     return map;
   }, [subscribersForView, invoices, debtThreshold, debtMap]);
 
-  // Filter logic
-  const filteredSubscribers = useMemo(() => subscribersForView.filter((sub) => {
-    if (statusFilter !== 'all' && sub.status !== statusFilter) return false;
-    if (onlyOverdueDebt) {
-      const info = subscriberDebtInfoMap.get(sub.id);
-      if (!info?.isOverdue20Days) return false;
-    }
-    if (onlyHighDebt) {
-      const debt = getSubscriberOutstandingDebt(sub, debtMap);
-      if (debt < debtThreshold) return false;
-    }
-    if (agentFilter !== 'all') {
-      if (agentFilter === 'agent-main') {
-        const isMain = sub.agentId === 'agent-main' || sub.agentName === 'المركز الرئيسي' || !sub.agentId || sub.agentName === 'الأدمن';
-        if (!isMain) return false;
-      } else {
-        const matchAgentId = sub.agentId === agentFilter;
-        const targetAgent = agents.find((a) => a.id === agentFilter);
-        const matchAgentName = targetAgent && sub.agentName === targetAgent.name;
-        if (!matchAgentId && !matchAgentName) return false;
-      }
-    }
-    // Date Range Filter
-    if (dateStartFilter || dateEndFilter) {
-      const rawFieldValue =
-        dateFieldFilter === 'endDate'
-          ? sub.endDate
-          : dateFieldFilter === 'createdAt'
-          ? sub.createdAt
-          : sub.startDate;
-      const subDate = rawFieldValue ? rawFieldValue.split('T')[0] : '';
-      if (dateStartFilter && (!subDate || subDate < dateStartFilter)) return false;
-      if (dateEndFilter && (!subDate || subDate > dateEndFilter)) return false;
-    }
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      const matchName = sub.name.toLowerCase().includes(term);
-      const matchPhone = sub.phone.includes(term);
-      const matchDevice = sub.deviceId.includes(term);
-      const matchAgent = sub.agentName.toLowerCase().includes(term);
-      return matchName || matchPhone || matchDevice || matchAgent;
-    }
-    return true;
-  }), [agentFilter, agents, dateStartFilter, dateEndFilter, dateFieldFilter, debtMap, debtThreshold, onlyHighDebt, onlyOverdueDebt, searchTerm, statusFilter, subscriberDebtInfoMap, subscribersForView]);
+  const subscriberSearchIndex = useMemo(
+    () => createSubscriberIndex(subscribersForView),
+    [subscribersForView]
+  );
+
+  // Indexed filter & search execution
+  const filteredSubscribers = useMemo(
+    () =>
+      querySubscribersWithIndex(subscriberSearchIndex, {
+        statusFilter,
+        agentFilter,
+        agents,
+        dateFieldFilter,
+        dateStartFilter,
+        dateEndFilter,
+        searchTerm,
+        predicate: (onlyOverdueDebt || onlyHighDebt)
+          ? (sub) => {
+              if (onlyOverdueDebt) {
+                const info = subscriberDebtInfoMap.get(sub.id);
+                if (!info?.isOverdue20Days) return false;
+              }
+              if (onlyHighDebt) {
+                const debt = getSubscriberOutstandingDebt(sub, debtMap);
+                if (debt < debtThreshold) return false;
+              }
+              return true;
+            }
+          : undefined
+      }),
+    [agentFilter, agents, dateEndFilter, dateFieldFilter, dateStartFilter, debtMap, debtThreshold, onlyHighDebt, onlyOverdueDebt, searchTerm, statusFilter, subscriberDebtInfoMap, subscriberSearchIndex]
+  );
 
   const { activeCount, inactiveCount, expiringCount, highDebtCount, overdueDebtCount, totalOverdueDebtAmount } = useMemo(() => {
     let active = 0;
@@ -661,13 +653,19 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
   const totalSubscribersDebt = useMemo(() => {
     return subscribersForView.reduce((sum, s) => sum + getSubscriberOutstandingDebt(s, debtMap), 0);
   }, [subscribersForView, debtMap]);
+  const subscriberPagination = usePagination(
+    filteredSubscribers,
+    50,
+    `${statusFilter}|${agentFilter}|${onlyHighDebt}|${onlyOverdueDebt}|${dateFieldFilter}|${dateStartFilter}|${dateEndFilter}|${searchTerm}`
+  );
+
   const {
     scrollRef: subscriberTableRef,
     handleScroll: handleSubscriberTableScroll,
     visibleRows: visibleSubscribers,
     topSpacerHeight: subscriberTopSpacerHeight,
     bottomSpacerHeight: subscriberBottomSpacerHeight
-  } = useVirtualizedRows(filteredSubscribers, 64);
+  } = useVirtualizedRows(subscriberPagination.paginatedItems, 64);
 
   const handleCreateSale = (e: React.FormEvent) => {
     e.preventDefault();
@@ -872,24 +870,14 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
           </div>
 
           <div className="bg-white/5 backdrop-blur-xs p-4 rounded-2xl border border-white/10 flex items-center gap-3.5">
-            <div className={`w-11 h-11 rounded-xl ${overdueDebtCount > 0 ? 'bg-red-500/25 text-red-300 border-red-500/40 ring-1 ring-red-400/50' : 'bg-amber-500/20 text-amber-400 border-amber-500/30'} flex items-center justify-center shrink-0 border`}>
-              {overdueDebtCount > 0 ? (
-                <BellRing className="w-5 h-5 text-red-400 animate-bounce" />
-              ) : (
-                <AlertTriangle className="w-5 h-5" />
-              )}
+            <div className="w-11 h-11 rounded-xl bg-amber-500/20 text-amber-400 border-amber-500/30 flex items-center justify-center shrink-0 border">
+              <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
               <p className="text-xs font-medium text-slate-300">ديون معلقة</p>
               <p className="text-lg sm:text-xl font-black text-amber-300 mt-0.5 font-mono">
                 {totalSubscribersDebt.toLocaleString()} <span className="text-[10px] text-slate-300 font-sans">د.ع</span>
               </p>
-              {overdueDebtCount > 0 && (
-                <div className="inline-flex items-center gap-1 mt-1 text-[10px] font-bold text-red-200 bg-red-900/60 border border-red-500/40 px-2 py-0.5 rounded-full animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                  <span>{overdueDebtCount} متأخر (+20 يوم)</span>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -960,26 +948,6 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
 
           {/* Overdue & High Debt Filter Toggles */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setOnlyOverdueDebt((prev) => !prev)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
-                onlyOverdueDebt
-                  ? 'bg-red-600 text-white border-red-600 shadow-xs ring-2 ring-red-400'
-                  : 'bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300 border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40'
-              }`}
-              title="تصفية المشتركين الذين لديهم ديون متأخرة تجاوزت 20 يوماً فقط"
-            >
-              <BellRing className={`w-3.5 h-3.5 ${onlyOverdueDebt ? 'text-white' : 'text-red-600 dark:text-red-400'} animate-bounce`} />
-              <span>ديون متأخرة (+20 يوم)</span>
-              <span
-                className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-black ${
-                  onlyOverdueDebt ? 'bg-white/20 text-white' : 'bg-red-200 dark:bg-red-800 text-red-950 dark:text-red-100'
-                }`}
-              >
-                {overdueDebtCount}
-              </span>
-            </button>
-
             <button
               onClick={() => setOnlyHighDebt((prev) => !prev)}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border cursor-pointer ${
@@ -1172,43 +1140,6 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
           </div>
         </div>
 
-        {/* Visual Notification Alert Banner for Overdue Debts > 20 Days */}
-        {overdueDebtCount > 0 && (
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-red-50 via-rose-50 to-amber-50 dark:from-red-950/40 dark:via-rose-950/30 dark:to-amber-950/20 border-2 border-red-400/60 dark:border-red-800/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0 shadow-xs animate-bounce">
-                <BellRing className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-black text-red-900 dark:text-red-200 flex items-center gap-2">
-                  <span>تنبيه ديون متأخرة تجاوزت 20 يوماً:</span>
-                  <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-xs font-mono font-black">
-                    {overdueDebtCount} {overdueDebtCount === 1 ? 'مشترك' : 'مشتركين'}
-                  </span>
-                </h3>
-                <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">
-                  يوجد مشتركون بذمتهم ديون غير مسددة تجاوزت 20 يوماً بإجمالي{' '}
-                  <strong className="font-mono text-red-900 dark:text-red-100 font-black">
-                    {totalOverdueDebtAmount.toLocaleString()} د.ع
-                  </strong>
-                  . تم تمييز الصفوف باللون الأحمر وإضافة أيقونة الجرس 🔔 لتنبيه الإدارة ومتابعة التحصيل الفوري.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setOnlyOverdueDebt((prev) => !prev)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0 self-end sm:self-center ${
-                onlyOverdueDebt
-                  ? 'bg-red-700 text-white ring-2 ring-red-400'
-                  : 'bg-white dark:bg-slate-800 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-950/40'
-              }`}
-            >
-              <Bell className="w-3.5 h-3.5" />
-              <span>{onlyOverdueDebt ? 'عرض كافة المشتركين' : 'تصفية المتأخرين فقط'}</span>
-            </button>
-          </div>
-        )}
-
         {/* Table Container */}
         <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden bg-white dark:bg-slate-900">
           <div
@@ -1275,9 +1206,7 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                         <tr
                           key={sub.id}
                           className={`h-16 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0 ${
-                            isOverdue20Days
-                              ? 'bg-red-50/90 dark:bg-red-950/40 hover:bg-red-100/90 dark:hover:bg-red-950/60 border-r-4 border-r-red-600 dark:border-r-red-500 shadow-2xs'
-                              : isHighDebt
+                            isHighDebt
                               ? 'bg-rose-50/60 dark:bg-rose-950/20 hover:bg-rose-100/60 dark:hover:bg-rose-950/30 border-r-4 border-r-rose-500'
                               : isActive
                               ? 'hover:bg-emerald-50/30 dark:hover:bg-slate-850/50'
@@ -1288,37 +1217,16 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                           <td className="py-3 px-4 font-semibold text-slate-800 dark:text-slate-200">
                             <div className="flex items-center gap-3">
                               <div className="relative shrink-0">
-                                <div className={`w-9 h-9 rounded-xl ${
-                                  isOverdue20Days
-                                    ? 'bg-gradient-to-tr from-red-600 to-rose-700 ring-2 ring-red-400 shadow-xs'
-                                    : 'bg-gradient-to-tr from-sky-600 to-indigo-600 shadow-xs'
-                                } text-white font-black text-xs flex items-center justify-center`}>
+                                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 shadow-xs text-white font-black text-xs flex items-center justify-center">
                                   {sub.name ? sub.name.trim().charAt(0) : 'م'}
                                 </div>
-                                {isOverdue20Days && (
-                                  <span
-                                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xs ring-2 ring-white dark:ring-slate-900 animate-bounce"
-                                    title={`تنبيه حرج: دين متأخر تجاوز 20 يوماً (${overdueDays} يوماً)`}
-                                  >
-                                    <BellRing className="w-2.5 h-2.5" />
-                                  </span>
-                                )}
                               </div>
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span className={`font-bold text-sm ${isOverdue20Days ? 'text-red-950 dark:text-red-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                                  <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
                                     {sub.name}
                                   </span>
-                                  {isOverdue20Days && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950/80 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-700 text-[10px] font-black tracking-tight shrink-0 shadow-2xs animate-pulse"
-                                      title={`دين متأخر منذ ${overdueDays} يوماً (المبلغ المستحق: ${subDebt.toLocaleString()} د.ع)`}
-                                    >
-                                      <BellRing className="w-3 h-3 text-red-600 dark:text-red-400" />
-                                      <span>متأخر {overdueDays} يوم ({subDebt.toLocaleString()} د.ع)</span>
-                                    </span>
-                                  )}
-                                  {!isOverdue20Days && isHighDebt && (
+                                  {isHighDebt && (
                                     <span
                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 text-[10px] font-black tracking-tight shrink-0 shadow-2xs"
                                       title={`تجاوز سقف الدين (${debtThreshold.toLocaleString()} د.ع)`}
@@ -1404,15 +1312,7 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                                 {isActive && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
                                 {isActive ? 'فعال' : 'غير فعال'}
                               </span>
-                              {isOverdue20Days ? (
-                                <span
-                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-red-600 text-white shadow-xs animate-pulse"
-                                  title={`دين متأخر تجاوز 20 يوماً (${overdueDays} يوم)`}
-                                >
-                                  <Bell className="w-2.5 h-2.5" />
-                                  <span>متأخر {overdueDays} يوم</span>
-                                </span>
-                              ) : isHighDebt ? (
+                              {isHighDebt ? (
                                 <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1">
                                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
                                   <span>مطلوب</span>
@@ -1424,18 +1324,6 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
                           {/* Actions: History, Edit, WhatsApp, Deactivate (X), Delete */}
                           <td className="py-3 px-4">
                             <div className="flex items-center justify-center gap-1.5">
-                              {/* WhatsApp Reminder for Overdue Debt */}
-                              {isOverdue20Days && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleSendOverdueDebtWhatsApp(sub, subDebt, overdueDays)}
-                                  className="p-2 rounded-xl text-red-600 dark:text-red-400 bg-red-100/80 dark:bg-red-950/60 hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors border border-red-300 dark:border-red-800 cursor-pointer"
-                                  title={`إرسال تذكير بالدين المتأخر (${overdueDays} يوم) عبر واتساب`}
-                                  aria-label={`إرسال تذكير بالدين المتأخر عبر واتساب لـ ${sub.name}`}
-                                >
-                                  <BellRing className="w-4 h-4 text-red-600 dark:text-red-400" />
-                                </button>
-                              )}
 
                               {isAdmin && (
                                 <button
@@ -1504,6 +1392,18 @@ const SubscribersViewComponent: React.FC<SubscribersViewProps> = ({
               </tbody>
             </table>
           </div>
+
+          <PaginationControls
+            currentPage={subscriberPagination.currentPage}
+            pageSize={subscriberPagination.pageSize}
+            totalItems={subscriberPagination.totalItems}
+            totalPages={subscriberPagination.totalPages}
+            startIndex={subscriberPagination.startIndex}
+            endIndex={subscriberPagination.endIndex}
+            onPageChange={subscriberPagination.setPage}
+            onPageSizeChange={subscriberPagination.setPageSize}
+            itemLabel="مشترك"
+          />
 
           {/* Table Footer Legend */}
           <div className="p-3 bg-slate-50 dark:bg-slate-850/60 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500 dark:text-slate-400">

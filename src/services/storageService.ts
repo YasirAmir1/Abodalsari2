@@ -37,6 +37,7 @@ const STORAGE_KEY = 'alsari_broadcasting_v1';
 const DELETED_SUBS_KEY = 'alsari_deleted_subscribers_v1';
 const DELETED_INVOICES_KEY = 'alsari_deleted_invoices_v1';
 const ALL_CLEARED_KEY = 'alsari_all_subscribers_cleared_v1';
+const MIGRATED_TO_FIRESTORE_KEY = 'alsari_firestore_migrated_v2';
 
 export const storageService = {
   isAllSubscribersCleared(): boolean {
@@ -256,18 +257,37 @@ export const storageService = {
 
   async migrateLocalStorageIfNeeded(): Promise<boolean> {
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        const parsed: AppState = JSON.parse(data);
-        const { firebaseService } = await import('./firebaseService');
-        await firebaseService.saveRemoteState(parsed, true, false);
-        localStorage.removeItem(STORAGE_KEY);
-        localStorage.removeItem(DELETED_SUBS_KEY);
-        localStorage.removeItem(DELETED_INVOICES_KEY);
-        localStorage.removeItem(ALL_CLEARED_KEY);
-        console.log('Successfully migrated localStorage data to Firestore and cleared localStorage.');
-        return true;
+      if (localStorage.getItem(MIGRATED_TO_FIRESTORE_KEY) === 'true') {
+        return false;
       }
+      const data = localStorage.getItem(STORAGE_KEY);
+      if (!data) {
+        localStorage.setItem(MIGRATED_TO_FIRESTORE_KEY, 'true');
+        return false;
+      }
+
+      const { firebaseService } = await import('./firebaseService');
+      if (firebaseService.isQuotaExceeded()) {
+        return false;
+      }
+
+      // Check if Firestore already contains tenant data before doing a migration write
+      const existingRemote = await firebaseService.fetchFreshRemoteState();
+      if (firebaseService.isQuotaExceeded()) {
+        return false;
+      }
+      if (existingRemote && (existingRemote.subscribers.length > 0 || existingRemote.invoices.length > 0)) {
+        localStorage.setItem(MIGRATED_TO_FIRESTORE_KEY, 'true');
+        return false;
+      }
+
+      const parsed: AppState = JSON.parse(data);
+      await firebaseService.saveRemoteState(parsed, true, false);
+      if (firebaseService.isQuotaExceeded()) {
+        return false;
+      }
+      localStorage.setItem(MIGRATED_TO_FIRESTORE_KEY, 'true');
+      return true;
     } catch (err) {
       console.error('Failed to migrate localStorage data to Firestore:', err);
     }

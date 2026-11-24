@@ -42,6 +42,8 @@ import { getPriceByDuration } from '../utils/pricingUtils';
 import { buildSubscriberDebtMap, calculateAgentSubscriberDebt } from '../utils/calculationUtils';
 import { useAppDialogs } from './AppDialogProvider';
 import { useVirtualizedRows } from './useVirtualizedRows';
+import { usePagination } from './usePagination';
+import { PaginationControls } from './PaginationControls';
 
 const SubscriberDetail: React.FC<{ label: string; value: React.ReactNode; className?: string }> = ({
   label,
@@ -152,13 +154,19 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
     }
     return matches;
   }, [agentSubs, subSearchQuery]);
+  const agentPagination = usePagination(
+    filteredAgentSubs,
+    50,
+    `${currentAgent.id}|${subscriberBroadcastFilter}|${subscriberPaymentFilter}|${tableSearchQuery}`
+  );
+
   const {
     scrollRef: agentSubscribersTableRef,
     handleScroll: handleAgentSubscribersTableScroll,
     visibleRows: visibleAgentSubs,
     topSpacerHeight: agentSubscribersTopSpacerHeight,
     bottomSpacerHeight: agentSubscribersBottomSpacerHeight
-  } = useVirtualizedRows(filteredAgentSubs, 64, 650, 8, expandedSubscriberId ? Number.MAX_SAFE_INTEGER : 80);
+  } = useVirtualizedRows(agentPagination.paginatedItems, 64, 650, 8, expandedSubscriberId ? Number.MAX_SAFE_INTEGER : 80);
   const agentPendingRequests = useMemo(
     () => pendingRequests.filter((request) =>
       request.status === 'pending' &&
@@ -669,6 +677,17 @@ export const AgentPortalView: React.FC<AgentPortalViewProps> = ({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          currentPage={agentPagination.currentPage}
+          pageSize={agentPagination.pageSize}
+          totalItems={agentPagination.totalItems}
+          totalPages={agentPagination.totalPages}
+          startIndex={agentPagination.startIndex}
+          endIndex={agentPagination.endIndex}
+          onPageChange={agentPagination.setPage}
+          onPageSizeChange={agentPagination.setPageSize}
+          itemLabel="مشترك"
+        />
       </div>
 
       {/* Modal: Submit Electronic Renewal Order */}

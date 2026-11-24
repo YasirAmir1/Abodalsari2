@@ -1,31 +1,81 @@
-import { getApps, initializeApp } from 'firebase/app';
+import { getApps, initializeApp, onLog } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import {
   arrayUnion,
   collection,
   deleteDoc,
+  disableNetwork,
   doc,
+  enableNetwork,
   getDocs,
   getDoc,
-  getDocsFromServer,
-  getDocFromServer,
   getFirestore,
   initializeFirestore,
+  limit,
   onSnapshot,
+  orderBy,
   persistentLocalCache,
   persistentMultipleTabManager,
+  query,
   runTransaction,
   serverTimestamp,
   setDoc,
-  writeBatch
+  startAfter,
+  where,
+  writeBatch,
+  type QueryConstraint,
+  type QueryDocumentSnapshot
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { AppState } from './storageService';
 import type { Agent, Invoice, Subscriber } from '../types';
 import { INITIAL_AGENTS } from '../data/mockData';
+import { cacheService } from './cacheService';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const databaseId = firebaseConfig.firestoreDatabaseId || '(default)';
+
+const QUOTA_COOLDOWN_KEY = 'alsari_firestore_quota_cooldown_v1';
+const QUOTA_COOLDOWN_MS = 12 * 60 * 60 * 1000; // Cooldown within same UTC day
+
+function currentUtcDateKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function readQuotaCooldownActive(): boolean {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    const raw = localStorage.getItem(QUOTA_COOLDOWN_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { utcDate?: string; until?: number };
+    if (parsed.utcDate !== currentUtcDateKey() || typeof parsed.until !== 'number' || Date.now() >= parsed.until) {
+      localStorage.removeItem(QUOTA_COOLDOWN_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function persistQuotaCooldown() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(
+      QUOTA_COOLDOWN_KEY,
+      JSON.stringify({ utcDate: currentUtcDateKey(), until: Date.now() + QUOTA_COOLDOWN_MS })
+    );
+  } catch {}
+}
+
+function clearQuotaCooldown() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(QUOTA_COOLDOWN_KEY);
+  } catch {}
+}
+
+const initialQuotaCooldownActive = readQuotaCooldownActive();
 
 export const db = (() => {
   try {
@@ -38,6 +88,29 @@ export const db = (() => {
     return getFirestore(app, databaseId);
   }
 })();
+
+if (initialQuotaCooldownActive) {
+  void disableNetwork(db).catch(() => {});
+}
+
+// Intercept Firestore PersistentStream internal errors (RESOURCE_EXHAUSTED triggers internal backoff
+// retries without rejecting promises or firing onSnapshot's error callback immediately).
+try {
+  onLog(({ message, args }) => {
+    const combined = [
+      message || '',
+      ...args.map((a) => (a instanceof Error ? `${a.message} ${(a as { code?: string }).code || ''}` : String(a ?? '')))
+    ].join(' ');
+    const lower = combined.toLowerCase();
+    if (
+      lower.includes('resource-exhausted') ||
+      lower.includes('quota exceeded') ||
+      lower.includes('using maximum backoff delay')
+    ) {
+      checkAndHandleQuotaError(new Error(combined));
+    }
+  }, { level: 'error' });
+} catch {}
 
 export const auth = getAuth(app);
 
@@ -117,7 +190,9 @@ const broadcastChannel: BroadcastChannel | null = (() => {
   return null;
 })();
 
-let currentSyncStatus: SyncStatus = typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'syncing';
+let currentSyncStatus: SyncStatus = initialQuotaCooldownActive || (typeof navigator !== 'undefined' && !navigator.onLine)
+  ? 'offline'
+  : 'syncing';
 let remoteStreamReady = false;
 let activeRemoteSubscriptions = 0;
 let tenantHasRemoteData = false;
@@ -144,6 +219,7 @@ function updateSyncStatus(status: SyncStatus) {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
+    if (quotaExceededFlag) return;
     updateSyncStatus(remoteStreamReady ? 'connected' : 'syncing');
   });
   window.addEventListener('offline', () => updateSyncStatus('offline'));
@@ -348,13 +424,22 @@ type WriteOperation =
   | { type: 'delete'; ref: ReturnType<typeof doc> };
 
 async function commitOperations(operations: WriteOperation[], metadata: Record<string, unknown>, _atomic = false) {
+  if (quotaExceededFlag) return;
+  const hasMetadataFields = Object.keys(metadata).some(
+    (k) => !['tenantId', 'schemaVersion', 'migrationComplete', 'lastUpdatedTimestamp'].includes(k)
+  );
+  if (operations.length === 0 && !hasMetadataFields) return;
+
   const allOperations: WriteOperation[] = [
     ...operations,
-    { type: 'set', ref: TENANT_METADATA_REF, data: { ...metadata, updatedAt: serverTimestamp() }, merge: true }
+    ...(hasMetadataFields
+      ? [{ type: 'set' as const, ref: TENANT_METADATA_REF, data: { ...metadata, updatedAt: serverTimestamp() }, merge: true }]
+      : [])
   ];
   // Break into safe chunks under Firestore's 500 write limit
   const batchLimit = 350;
   for (let offset = 0; offset < allOperations.length; offset += batchLimit) {
+    if (quotaExceededFlag) return;
     const chunk = allOperations.slice(offset, offset + batchLimit);
     const batch = writeBatch(db);
     chunk.forEach((operation) => {
@@ -365,16 +450,22 @@ async function commitOperations(operations: WriteOperation[], metadata: Record<s
     try {
       await batch.commit();
     } catch (batchErr) {
+      checkAndHandleQuotaError(batchErr);
+      if (quotaExceededFlag) return;
       console.warn('Batch commit failed, falling back to direct individual document writes:', batchErr);
       // Fallback: commit individually so individual documents (like sales) succeed even if one fails
       for (const op of chunk) {
+        if (quotaExceededFlag) return;
         try {
           if (op.type === 'delete') {
             await deleteDoc(op.ref);
           } else {
             await setDoc(op.ref, op.data, { merge: true });
           }
-        } catch {}
+        } catch (opErr) {
+          checkAndHandleQuotaError(opErr);
+          if (quotaExceededFlag) return;
+        }
       }
     }
   }
@@ -418,19 +509,56 @@ function diffOperations(previous: AppState, next: AppState): WriteOperation[] {
   return operations;
 }
 
-let quotaExceededFlag = false;
+let quotaExceededFlag = initialQuotaCooldownActive;
+const quotaListeners = new Set<() => void>();
 
 function checkAndHandleQuotaError(err: unknown) {
   const msg = err instanceof Error ? err.message : String(err || '');
-  if (msg.includes('resource-exhausted') || msg.includes('Quota exceeded')) {
+  const lower = msg.toLowerCase();
+  const code = (err as { code?: string } | null)?.code;
+  if (
+    code === 'resource-exhausted' ||
+    lower.includes('resource-exhausted') ||
+    lower.includes('quota exceeded') ||
+    lower.includes('using maximum backoff delay')
+  ) {
+    const firstTrigger = !quotaExceededFlag;
     quotaExceededFlag = true;
+    persistQuotaCooldown();
     updateSyncStatus('offline');
+    if (firstTrigger) {
+      void disableNetwork(db).catch(() => {});
+      quotaListeners.forEach((listener) => {
+        try { listener(); } catch {}
+      });
+    }
   }
 }
 
 export const firebaseService = {
   isQuotaExceeded(): boolean {
     return quotaExceededFlag;
+  },
+
+  async tryReconnectAfterQuota(): Promise<boolean> {
+    clearQuotaCooldown();
+    quotaExceededFlag = false;
+    try {
+      await enableNetwork(db);
+      updateSyncStatus(remoteStreamReady ? 'connected' : 'syncing');
+      return true;
+    } catch (err) {
+      checkAndHandleQuotaError(err);
+      return !quotaExceededFlag;
+    }
+  },
+
+  onQuotaExceeded(callback: () => void): () => void {
+    quotaListeners.add(callback);
+    if (quotaExceededFlag) {
+      try { callback(); } catch {}
+    }
+    return () => quotaListeners.delete(callback);
   },
 
   getSyncStatus(): SyncStatus {
@@ -465,95 +593,221 @@ export const firebaseService = {
     return () => broadcastChannel.removeEventListener('message', handler);
   },
 
-  async fetchFreshRemoteState(): Promise<AppState | null> {
-    try {
-      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-      if (isOffline) {
-        return remoteState ? sanitize(remoteState) : null;
-      }
+  async fetchFreshRemoteState(forceRefresh = false): Promise<AppState | null> {
+    if (quotaExceededFlag) {
+      return remoteState ? sanitize(remoteState) : null;
+    }
 
-      // Explicitly call getDocs on all Firestore collections for immediate, fresh state
-      const [salesSnap, subsSnap, agentsSnap, reqsSnap, usersSnap, metaSnap, legacySnap] = await Promise.all([
-        getDocs(collection(db, 'tenants', TENANT_ID, 'sales')).catch((e) => {
-          console.warn('getDocs sales warning:', e);
-          return { docs: [] } as any;
-        }),
-        getDocs(collection(db, 'tenants', TENANT_ID, 'subscribers')).catch((e) => {
-          console.warn('getDocs subscribers warning:', e);
-          return { docs: [] } as any;
-        }),
-        getDocs(collection(db, 'tenants', TENANT_ID, 'agents')).catch((e) => {
-          console.warn('getDocs agents warning:', e);
-          return { docs: [] } as any;
-        }),
-        getDocs(collection(db, 'tenants', TENANT_ID, 'requests')).catch((e) => {
-          console.warn('getDocs requests warning:', e);
-          return { docs: [] } as any;
-        }),
-        getDocs(collection(db, 'tenants', TENANT_ID, 'users')).catch(() => ({ docs: [] } as any)),
-        getDoc(TENANT_METADATA_REF).catch(() => null),
-        getDoc(LEGACY_STATE_REF).catch(() => null)
-      ]);
+    const stateCacheKey = `remote_state_${TENANT_ID}`;
+    const metadataCacheKey = `metadata_${TENANT_ID}`;
 
-      const metadata = metaSnap && metaSnap.exists?.() ? metaSnap.data() as Record<string, unknown> : {};
-      const legacy = legacySnap && legacySnap.exists?.() ? normalizeLegacyState(legacySnap.data()) : null;
-
-      let salesRecords = recordsFromSnapshot(salesSnap);
-      let subsRecords = recordsFromSnapshot(subsSnap);
-      let agentsRecords = recordsFromSnapshot(agentsSnap);
-      let reqsRecords = recordsFromSnapshot(reqsSnap);
-      let usersRecords = recordsFromSnapshot(usersSnap);
-
-      // If sales collection was empty, check legacy state
-      if (salesRecords.length === 0 && legacy?.invoices && legacy.invoices.length > 0) {
-        salesRecords = legacy.invoices as unknown as CoreRecord[];
-      }
-      // If subscribers collection was empty, check legacy state
-      if (subsRecords.length === 0 && legacy?.subscribers && legacy.subscribers.length > 0) {
-        subsRecords = legacy.subscribers as unknown as CoreRecord[];
-      }
-      // If agents collection was empty, check legacy state
-      if (agentsRecords.length === 0 && legacy?.agents && legacy.agents.length > 0) {
-        agentsRecords = legacy.agents as unknown as CoreRecord[];
-      }
-
-      // Merge users: from users subcollection, metadata, and legacy
-      let mergedUsers: any[] = Array.isArray(metadata.users) ? metadata.users : [];
-      if (usersRecords.length > 0) {
-        const userMap = new Map<string, any>();
-        mergedUsers.forEach(u => userMap.set(String(u.id || u.username), u));
-        usersRecords.forEach(u => userMap.set(String(u.id || u.username), u));
-        mergedUsers = Array.from(userMap.values());
-      }
-      if (mergedUsers.length === 0 && legacy?.users && legacy.users.length > 0) {
-        mergedUsers = legacy.users;
-      }
-      if (mergedUsers.length > 0) {
-        metadata.users = mergedUsers;
-      }
-
-      const tables: Record<CoreStateKey, CoreRecord[]> = {
-        subscribers: subsRecords,
-        agents: agentsRecords,
-        invoices: salesRecords,
-        pendingRequests: reqsRecords
-      };
-
-      const builtState = stateFromRemoteTables(tables, metadata);
-      const hasData = salesRecords.length > 0 || subsRecords.length > 0 || agentsRecords.length > 0 || (metaSnap && metaSnap.exists?.()) || Boolean(legacy);
-
-      if (hasData) {
-        remoteState = sanitize(builtState);
+    if (!forceRefresh) {
+      const cachedState = cacheService.get<AppState>(stateCacheKey);
+      if (cachedState) {
+        remoteState = sanitize(cachedState);
         tenantHasRemoteData = true;
         remoteStreamReady = true;
-        updateSyncStatus('connected');
-        return sanitize(builtState);
+        return sanitize(cachedState);
       }
+    }
 
-      return remoteState ? sanitize(remoteState) : null;
-    } catch (err) {
-      console.warn('fetchFreshRemoteState error:', err);
-      return remoteState ? sanitize(remoteState) : null;
+    const inFlight = (this as { _inFlightFetch?: Promise<AppState | null> })._inFlightFetch;
+    if (inFlight) return inFlight;
+
+    const fetchTask = (async (): Promise<AppState | null> => {
+      try {
+        const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+        if (isOffline) {
+          return remoteState ? sanitize(remoteState) : null;
+        }
+
+        const cachedMeta = !forceRefresh ? cacheService.get<Record<string, unknown>>(metadataCacheKey) : null;
+
+        // Eagerly load primary tenant collections (and metadata only on cache miss)
+        const [salesSnap, subsSnap, agentsSnap, reqsSnap, metaSnap] = await Promise.all([
+          getDocs(collection(db, 'tenants', TENANT_ID, 'sales')).catch((e) => {
+            checkAndHandleQuotaError(e);
+            return { docs: [] } as any;
+          }),
+          getDocs(collection(db, 'tenants', TENANT_ID, 'subscribers')).catch((e) => {
+            checkAndHandleQuotaError(e);
+            return { docs: [] } as any;
+          }),
+          getDocs(collection(db, 'tenants', TENANT_ID, 'agents')).catch((e) => {
+            checkAndHandleQuotaError(e);
+            return { docs: [] } as any;
+          }),
+          getDocs(collection(db, 'tenants', TENANT_ID, 'requests')).catch((e) => {
+            checkAndHandleQuotaError(e);
+            return { docs: [] } as any;
+          }),
+          cachedMeta
+            ? Promise.resolve(null)
+            : getDoc(TENANT_METADATA_REF).catch((e) => {
+                checkAndHandleQuotaError(e);
+                return null;
+              })
+        ]);
+
+        const metadata = cachedMeta
+          ? { ...cachedMeta }
+          : (metaSnap && metaSnap.exists?.() ? metaSnap.data() as Record<string, unknown> : {});
+
+        if (!cachedMeta && metaSnap && metaSnap.exists?.()) {
+          cacheService.set(metadataCacheKey, metadata, 5 * 60 * 1000, true);
+        }
+
+        let salesRecords = recordsFromSnapshot(salesSnap);
+        let subsRecords = recordsFromSnapshot(subsSnap);
+        let agentsRecords = recordsFromSnapshot(agentsSnap);
+        const reqsRecords = recordsFromSnapshot(reqsSnap);
+
+        // Only query legacy state or users subcollection if primary tenant collections/metadata are missing
+        const needsLegacyFallback = salesRecords.length === 0 && subsRecords.length === 0 && agentsRecords.length === 0;
+        const needsUsersFallback = !Array.isArray(metadata.users) || metadata.users.length === 0;
+
+        let legacy: AppState | null = null;
+        let usersRecords: CoreRecord[] = [];
+        if ((needsLegacyFallback || needsUsersFallback) && !quotaExceededFlag) {
+          const [usersSnap, legacySnap] = await Promise.all([
+            needsUsersFallback
+              ? getDocs(collection(db, 'tenants', TENANT_ID, 'users')).catch((e) => {
+                  checkAndHandleQuotaError(e);
+                  return { docs: [] } as any;
+                })
+              : Promise.resolve({ docs: [] } as any),
+            needsLegacyFallback && shouldMigrateLegacyState
+              ? getDoc(LEGACY_STATE_REF).catch((e) => {
+                  checkAndHandleQuotaError(e);
+                  return null;
+                })
+              : Promise.resolve(null)
+          ]);
+          usersRecords = recordsFromSnapshot(usersSnap);
+          legacy = legacySnap && legacySnap.exists?.() ? normalizeLegacyState(legacySnap.data()) : null;
+        }
+
+        if (salesRecords.length === 0 && legacy?.invoices && legacy.invoices.length > 0) {
+          salesRecords = legacy.invoices as unknown as CoreRecord[];
+        }
+        if (subsRecords.length === 0 && legacy?.subscribers && legacy.subscribers.length > 0) {
+          subsRecords = legacy.subscribers as unknown as CoreRecord[];
+        }
+        if (agentsRecords.length === 0 && legacy?.agents && legacy.agents.length > 0) {
+          agentsRecords = legacy.agents as unknown as CoreRecord[];
+        }
+
+        let mergedUsers: any[] = Array.isArray(metadata.users) ? metadata.users : [];
+        if (usersRecords.length > 0) {
+          const userMap = new Map<string, any>();
+          mergedUsers.forEach(u => userMap.set(String(u.id || u.username), u));
+          usersRecords.forEach(u => userMap.set(String(u.id || u.username), u));
+          mergedUsers = Array.from(userMap.values());
+        }
+        if (mergedUsers.length === 0 && legacy?.users && legacy.users.length > 0) {
+          mergedUsers = legacy.users;
+        }
+        if (mergedUsers.length > 0) {
+          metadata.users = mergedUsers;
+        }
+
+        const tables: Record<CoreStateKey, CoreRecord[]> = {
+          subscribers: subsRecords,
+          agents: agentsRecords,
+          invoices: salesRecords,
+          pendingRequests: reqsRecords
+        };
+
+        const builtState = stateFromRemoteTables(tables, metadata);
+        const hasData = salesRecords.length > 0 || subsRecords.length > 0 || agentsRecords.length > 0 || Boolean(cachedMeta) || (metaSnap && metaSnap.exists?.()) || Boolean(legacy);
+
+        if (hasData) {
+          const sanitized = sanitize(builtState);
+          remoteState = sanitized;
+          tenantHasRemoteData = true;
+          remoteStreamReady = true;
+          cacheService.set(stateCacheKey, sanitized, 30 * 1000, false);
+          if (!quotaExceededFlag) updateSyncStatus('connected');
+          return sanitized;
+        }
+
+        return remoteState ? sanitize(remoteState) : null;
+      } catch (err) {
+        checkAndHandleQuotaError(err);
+        console.warn('fetchFreshRemoteState error:', err);
+        return remoteState ? sanitize(remoteState) : null;
+      } finally {
+        delete (this as { _inFlightFetch?: Promise<AppState | null> })._inFlightFetch;
+      }
+    })();
+
+    (this as { _inFlightFetch?: Promise<AppState | null> })._inFlightFetch = fetchTask;
+    return fetchTask;
+  },
+
+  async fetchSubscribersPage(options: {
+    pageSize?: number;
+    cursor?: QueryDocumentSnapshot | null;
+    agentId?: string;
+    status?: string;
+  } = {}): Promise<{ items: Subscriber[]; lastDoc: QueryDocumentSnapshot | null; hasMore: boolean }> {
+    const pageSize = options.pageSize ?? 50;
+    if (quotaExceededFlag) {
+      return { items: [], lastDoc: null, hasMore: false };
+    }
+    try {
+      const constraints: QueryConstraint[] = [where('tenantId', '==', TENANT_ID)];
+      if (options.agentId && options.agentId !== 'all') {
+        constraints.push(where('agentId', '==', options.agentId));
+      }
+      if (options.status && options.status !== 'all') {
+        constraints.push(where('status', '==', options.status));
+      }
+      constraints.push(orderBy('startDate', 'desc'));
+      if (options.cursor) {
+        constraints.push(startAfter(options.cursor));
+      }
+      constraints.push(limit(pageSize));
+
+      const q = query(collection(db, 'tenants', TENANT_ID, 'subscribers'), ...constraints);
+      const snap = await getDocs(q);
+      const items = recordsFromSnapshot(snap) as unknown as Subscriber[];
+      const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+      return { items, lastDoc, hasMore: snap.docs.length === pageSize };
+    } catch (e) {
+      checkAndHandleQuotaError(e);
+      return { items: [], lastDoc: null, hasMore: false };
+    }
+  },
+
+  async fetchInvoicesPage(options: {
+    pageSize?: number;
+    cursor?: QueryDocumentSnapshot | null;
+    agentId?: string;
+  } = {}): Promise<{ items: Invoice[]; lastDoc: QueryDocumentSnapshot | null; hasMore: boolean }> {
+    const pageSize = options.pageSize ?? 50;
+    if (quotaExceededFlag) {
+      return { items: [], lastDoc: null, hasMore: false };
+    }
+    try {
+      const constraints: QueryConstraint[] = [where('tenantId', '==', TENANT_ID)];
+      if (options.agentId && options.agentId !== 'all') {
+        constraints.push(where('agentId', '==', options.agentId));
+      }
+      constraints.push(orderBy('date', 'desc'));
+      if (options.cursor) {
+        constraints.push(startAfter(options.cursor));
+      }
+      constraints.push(limit(pageSize));
+
+      const q = query(collection(db, 'tenants', TENANT_ID, 'sales'), ...constraints);
+      const snap = await getDocs(q);
+      const items = recordsFromSnapshot(snap) as unknown as Invoice[];
+      const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+      return { items, lastDoc, hasMore: snap.docs.length === pageSize };
+    } catch (e) {
+      checkAndHandleQuotaError(e);
+      return { items: [], lastDoc: null, hasMore: false };
     }
   },
 
@@ -572,65 +826,61 @@ export const firebaseService = {
     const requestedPayload = JSON.stringify(requestedState);
     if (requestedPayload === lastSavedPayload && JSON.stringify(sanitize(remoteState)) === lastSavedPayload) return;
 
+    if (quotaExceededFlag) {
+      remoteState = requestedState;
+      tenantHasRemoteData = true;
+      lastSavedPayload = requestedPayload;
+      return;
+    }
+
     const saveTask = saveQueue.then(async () => {
+      if (quotaExceededFlag) {
+        remoteState = requestedState;
+        tenantHasRemoteData = true;
+        lastSavedPayload = requestedPayload;
+        return;
+      }
+
       remoteStreamReady = true;
+
+      if (!remoteState && !quotaExceededFlag) {
+        await this.fetchFreshRemoteState().catch(() => null);
+        if (quotaExceededFlag) {
+          remoteState = requestedState;
+          tenantHasRemoteData = true;
+          lastSavedPayload = requestedPayload;
+          return;
+        }
+      }
 
       const baseState = remoteState || emptyState();
       const nextTimestamp = requestedState.lastUpdatedTimestamp || Date.now();
       const nextState: AppState = { ...requestedState, lastUpdatedTimestamp: nextTimestamp };
       const operations = diffOperations(baseState, nextState);
-      updateSyncStatus('syncing');
-      await commitOperations(operations, metadataChanges(baseState, nextState), atomic);
+      const metaDiff = metadataChanges(baseState, nextState);
+      const hasMetaChanges = Object.keys(metaDiff).some(
+        (k) => !['tenantId', 'schemaVersion', 'migrationComplete', 'lastUpdatedTimestamp'].includes(k)
+      );
 
-      // Directly ensure subscribers are persisted in subscribers subcollection
-      try {
-        if (Array.isArray(nextState.subscribers) && nextState.subscribers.length > 0) {
-          const subsBatch = writeBatch(db);
-          let count = 0;
-          for (const sub of nextState.subscribers) {
-            if (sub && sub.id) {
-              const subRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), sub.id);
-              subsBatch.set(subRef, { ...sanitize(sub), tenantId: TENANT_ID }, { merge: true });
-              count++;
-              if (count >= 300) break;
-            }
-          }
-          await subsBatch.commit().catch(() => {});
-        }
-      } catch {}
-
-      // Directly ensure invoices are persisted in sales subcollection
-      try {
-        if (Array.isArray(nextState.invoices) && nextState.invoices.length > 0) {
-          const salesBatch = writeBatch(db);
-          let count = 0;
-          for (const inv of nextState.invoices) {
-            if (inv && inv.id) {
-              const invRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), inv.id);
-              salesBatch.set(invRef, { ...sanitize(inv), tenantId: TENANT_ID }, { merge: true });
-              count++;
-              if (count >= 300) break;
-            }
-          }
-          await salesBatch.commit().catch(() => {});
-        }
-      } catch {}
-
-      // Double-persist to single-document legacy state for bulletproof cross-client access
-      try {
-        await setDoc(LEGACY_STATE_REF, {
-          payload: JSON.stringify(nextState),
-          lastUpdatedTimestamp: nextTimestamp,
-          updatedAt: serverTimestamp()
-        }, { merge: true }).catch(() => {});
-      } catch {}
+      if (operations.length > 0 || hasMetaChanges) {
+        updateSyncStatus('syncing');
+        await commitOperations(operations, metaDiff, atomic);
+      }
 
       remoteState = applyDesiredChanges(baseState, nextState);
       tenantHasRemoteData = true;
       lastSavedPayload = JSON.stringify(sanitize(remoteState));
-      updateSyncStatus('connected');
+      cacheService.set(`remote_state_${TENANT_ID}`, remoteState, 30 * 1000, false);
+      if (hasMetaChanges) {
+        cacheService.set(`metadata_${TENANT_ID}`, metadataFor(remoteState, true), 5 * 60 * 1000, true);
+      }
+      if (!quotaExceededFlag) {
+        updateSyncStatus('connected');
+      }
     });
-    saveQueue = saveTask.catch(() => {});
+    saveQueue = saveTask.catch((e) => {
+      checkAndHandleQuotaError(e);
+    });
     return saveTask;
   },
 
@@ -642,9 +892,12 @@ export const firebaseService = {
   async sendPendingRenewalRequestDirect(newRequest: any): Promise<void> {
     try {
       const cleanReq = sanitize({ ...newRequest, tenantId: TENANT_ID });
+      if (quotaExceededFlag) return;
       const reqRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), newRequest.id);
       await setDoc(reqRef, cleanReq, { merge: true });
     } catch (e) {
+      checkAndHandleQuotaError(e);
+      if (quotaExceededFlag) return;
       console.warn('sendPendingRenewalRequestDirect error:', e);
       throw e;
     }
@@ -655,9 +908,12 @@ export const firebaseService = {
    */
   async deletePendingRenewalRequestDirect(requestId: string): Promise<void> {
     try {
+      if (quotaExceededFlag) return;
       const reqRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), requestId);
       await deleteDoc(reqRef);
     } catch (e) {
+      checkAndHandleQuotaError(e);
+      if (quotaExceededFlag) return;
       console.warn('deletePendingRenewalRequestDirect error:', e);
       throw e;
     }
@@ -681,7 +937,21 @@ export const firebaseService = {
     const nextTimestamp = requestedState.lastUpdatedTimestamp || Date.now();
     const nextState: AppState = { ...requestedState, lastUpdatedTimestamp: nextTimestamp };
 
+    if (quotaExceededFlag) {
+      remoteState = nextState;
+      tenantHasRemoteData = true;
+      lastSavedPayload = JSON.stringify(sanitize(remoteState));
+      return;
+    }
+
     const saveTask = saveQueue.then(async () => {
+      if (quotaExceededFlag) {
+        remoteState = nextState;
+        tenantHasRemoteData = true;
+        lastSavedPayload = JSON.stringify(sanitize(remoteState));
+        return;
+      }
+
       updateSyncStatus('syncing');
       const subDocRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), subscriber.id);
       const reqDocRef = doc(collection(db, 'tenants', TENANT_ID, 'requests'), requestId);
@@ -704,41 +974,59 @@ export const firebaseService = {
           transaction.set(metaDocRef, { ...metadataChanges(remoteState || emptyState(), nextState), updatedAt: serverTimestamp() }, { merge: true });
         });
       } catch (txError) {
-        console.warn('Firestore runTransaction fallback to batch write:', txError);
-        const batch = writeBatch(db);
-        batch.set(subDocRef, { ...sanitize(subscriber), tenantId: TENANT_ID }, { merge: true });
-        batch.set(reqDocRef, sanitize(resolvedRequestData), { merge: true });
-        batch.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
-        batch.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
-        batch.set(metaDocRef, { ...metadataChanges(remoteState || emptyState(), nextState), updatedAt: serverTimestamp() }, { merge: true });
-        await batch.commit();
+        checkAndHandleQuotaError(txError);
+        if (!quotaExceededFlag) {
+          console.warn('Firestore runTransaction fallback to batch write:', txError);
+          try {
+            const batch = writeBatch(db);
+            batch.set(subDocRef, { ...sanitize(subscriber), tenantId: TENANT_ID }, { merge: true });
+            batch.set(reqDocRef, sanitize(resolvedRequestData), { merge: true });
+            batch.set(invDocRef, { ...sanitize(invoice), tenantId: TENANT_ID });
+            batch.set(agentDocRef, { ...sanitize(agent), tenantId: TENANT_ID }, { merge: true });
+            batch.set(metaDocRef, { ...metadataChanges(remoteState || emptyState(), nextState), updatedAt: serverTimestamp() }, { merge: true });
+            await batch.commit();
+          } catch (batchErr) {
+            checkAndHandleQuotaError(batchErr);
+            if (!quotaExceededFlag) throw batchErr;
+          }
+        }
       }
 
       remoteState = nextState;
       tenantHasRemoteData = true;
       lastSavedPayload = JSON.stringify(sanitize(remoteState));
-      updateSyncStatus('connected');
+      if (!quotaExceededFlag) {
+        updateSyncStatus('connected');
+      }
     });
 
-    saveQueue = saveTask.catch(() => {});
+    saveQueue = saveTask.catch((e) => {
+      checkAndHandleQuotaError(e);
+    });
     return saveTask;
   },
 
   async deleteInvoice(id: string): Promise<void> {
+    if (quotaExceededFlag) return;
     try {
       const invRef = doc(collection(db, 'tenants', TENANT_ID, 'sales'), id);
       await commitOperations([{ type: 'delete', ref: invRef }], {});
     } catch (e) {
+      checkAndHandleQuotaError(e);
+      if (quotaExceededFlag) return;
       console.error('Failed to delete remote invoice:', e);
-      throw e; // Propagate error so UI can show toast/alert
+      throw e;
     }
   },
 
   async deleteSubscriber(id: string): Promise<void> {
+    if (quotaExceededFlag) return;
     try {
       const subRef = doc(collection(db, 'tenants', TENANT_ID, 'subscribers'), id);
       await commitOperations([{ type: 'delete', ref: subRef }], {});
     } catch (e) {
+      checkAndHandleQuotaError(e);
+      if (quotaExceededFlag) return;
       console.error('Failed to delete remote subscriber:', e);
       throw e;
     }
@@ -750,6 +1038,33 @@ export const firebaseService = {
   ): () => void {
     activeRemoteSubscriptions += 1;
     const unsubscriptions: Array<() => void> = [];
+    const firestoreUnsubs: Array<() => void> = [];
+
+    const teardownFirestoreListeners = () => {
+      while (firestoreUnsubs.length > 0) {
+        const unsub = firestoreUnsubs.pop();
+        try { unsub?.(); } catch {}
+      }
+    };
+
+    // Always listen to same-browser broadcast channel even when offline or quota exceeded
+    unsubscriptions.push(this.subscribeToLocalBroadcast((state) => {
+      callback(state, 'local_broadcast');
+    }));
+
+    if (quotaExceededFlag) {
+      updateSyncStatus('offline');
+      onSyncError?.(new Error('Quota exceeded'));
+      return () => {
+        unsubscriptions.forEach((u) => { try { u(); } catch {} });
+        activeRemoteSubscriptions = Math.max(0, activeRemoteSubscriptions - 1);
+      };
+    }
+
+    unsubscriptions.push(this.onQuotaExceeded(() => {
+      teardownFirestoreListeners();
+      onSyncError?.(new Error('Quota exceeded'));
+    }));
 
     // Internal state buffer initialized from currently known remoteState or emptyState
     const syncedTables: Record<CoreStateKey, CoreRecord[]> = {
@@ -766,13 +1081,27 @@ export const firebaseService = {
       remoteState = sanitize(currentState);
       tenantHasRemoteData = true;
       remoteStreamReady = true;
-      updateSyncStatus('connected');
+      cacheService.set(`remote_state_${TENANT_ID}`, remoteState, 30 * 1000, false);
+      cacheService.set(`metadata_${TENANT_ID}`, syncedMetadata, 5 * 60 * 1000, true);
+      if (!quotaExceededFlag) {
+        updateSyncStatus('connected');
+      }
       if (!isInitialReadyDispatched) {
         isInitialReadyDispatched = true;
         resolveInitialReady?.(remoteState);
         onServerReady?.();
       }
       callback(remoteState, source);
+    };
+
+    const handleListenerError = (label: string, err: unknown) => {
+      checkAndHandleQuotaError(err);
+      if (quotaExceededFlag) {
+        teardownFirestoreListeners();
+        onSyncError?.(err);
+        return;
+      }
+      console.warn(`Realtime ${label} onSnapshot listener notice:`, err);
     };
 
     // 1. Real-time onSnapshot listener for 'sales' (invoices) - immediate multi-device sync
@@ -782,14 +1111,10 @@ export const firebaseService = {
         const records = recordsFromSnapshot(snapshot);
         syncedTables.invoices = records;
         dispatchSyncedState();
-      }, (err) => {
-        checkAndHandleQuotaError(err);
-        console.warn('Realtime sales onSnapshot listener notice:', err);
-      });
-      unsubscriptions.push(unsubSales);
+      }, (err) => handleListenerError('sales', err));
+      firestoreUnsubs.push(unsubSales);
     } catch (e) {
-      checkAndHandleQuotaError(e);
-      console.warn('Could not register sales onSnapshot:', e);
+      handleListenerError('sales', e);
     }
 
     // 2. Real-time onSnapshot listener for 'subscribers'
@@ -799,14 +1124,10 @@ export const firebaseService = {
         const records = recordsFromSnapshot(snapshot);
         syncedTables.subscribers = records;
         dispatchSyncedState();
-      }, (err) => {
-        checkAndHandleQuotaError(err);
-        console.warn('Realtime subscribers onSnapshot listener notice:', err);
-      });
-      unsubscriptions.push(unsubSubs);
+      }, (err) => handleListenerError('subscribers', err));
+      firestoreUnsubs.push(unsubSubs);
     } catch (e) {
-      checkAndHandleQuotaError(e);
-      console.warn('Could not register subscribers onSnapshot:', e);
+      handleListenerError('subscribers', e);
     }
 
     // 3. Real-time onSnapshot listener for 'agents'
@@ -816,14 +1137,10 @@ export const firebaseService = {
         const records = recordsFromSnapshot(snapshot);
         syncedTables.agents = records;
         dispatchSyncedState();
-      }, (err) => {
-        checkAndHandleQuotaError(err);
-        console.warn('Realtime agents onSnapshot listener notice:', err);
-      });
-      unsubscriptions.push(unsubAgents);
+      }, (err) => handleListenerError('agents', err));
+      firestoreUnsubs.push(unsubAgents);
     } catch (e) {
-      checkAndHandleQuotaError(e);
-      console.warn('Could not register agents onSnapshot:', e);
+      handleListenerError('agents', e);
     }
 
     // 4. Real-time onSnapshot listener for 'requests'
@@ -833,96 +1150,49 @@ export const firebaseService = {
         const records = recordsFromSnapshot(snapshot);
         syncedTables.pendingRequests = records;
         dispatchSyncedState();
-      }, (err) => {
-        checkAndHandleQuotaError(err);
-        console.warn('Realtime requests onSnapshot listener notice:', err);
-      });
-      unsubscriptions.push(unsubReqs);
+      }, (err) => handleListenerError('requests', err));
+      firestoreUnsubs.push(unsubReqs);
     } catch (e) {
-      checkAndHandleQuotaError(e);
-      console.warn('Could not register requests onSnapshot:', e);
+      handleListenerError('requests', e);
     }
 
     // 5. Real-time onSnapshot listener for tenant metadata (users, products, pricing, codes)
+    let usersFallbackAttached = false;
+    const attachUsersFallbackListener = () => {
+      if (usersFallbackAttached || quotaExceededFlag) return;
+      usersFallbackAttached = true;
+      try {
+        const usersRef = collection(db, 'tenants', TENANT_ID, 'users');
+        const unsubUsers = onSnapshot(usersRef, (snapshot) => {
+          if (!snapshot.empty) {
+            const userRecords = recordsFromSnapshot(snapshot);
+            syncedMetadata.users = userRecords;
+            dispatchSyncedState();
+          }
+        }, (err) => handleListenerError('users', err));
+        firestoreUnsubs.push(unsubUsers);
+      } catch (e) {
+        handleListenerError('users', e);
+      }
+    };
+
     try {
       const unsubMeta = onSnapshot(TENANT_METADATA_REF, (snapshot) => {
         if (snapshot.exists()) {
-          syncedMetadata = { ...syncedMetadata, ...snapshot.data() };
+          const data = snapshot.data();
+          syncedMetadata = { ...syncedMetadata, ...data };
           dispatchSyncedState();
-        }
-      }, (err) => {
-        checkAndHandleQuotaError(err);
-        console.warn('Realtime metadata onSnapshot listener notice:', err);
-      });
-      unsubscriptions.push(unsubMeta);
-    } catch (e) {
-      checkAndHandleQuotaError(e);
-      console.warn('Could not register metadata onSnapshot:', e);
-    }
-
-    // 6. Real-time onSnapshot listener for users collection
-    try {
-      const usersRef = collection(db, 'tenants', TENANT_ID, 'users');
-      const unsubUsers = onSnapshot(usersRef, (snapshot) => {
-        if (!snapshot.empty) {
-          const userRecords = recordsFromSnapshot(snapshot);
-          syncedMetadata.users = userRecords;
-          dispatchSyncedState();
-        }
-      }, () => {});
-      unsubscriptions.push(unsubUsers);
-    } catch {}
-
-    // 7. Real-time onSnapshot listener for legacy state doc (app_state/global_state)
-    try {
-      const unsubLegacy = onSnapshot(LEGACY_STATE_REF, (snapshot) => {
-        if (snapshot.exists()) {
-          const legacy = normalizeLegacyState(snapshot.data());
-          if (legacy) {
-            let changed = false;
-            const legacyTime = legacy.lastUpdatedTimestamp || 0;
-            const currentTime = remoteState?.lastUpdatedTimestamp || 0;
-
-            if (legacyTime > currentTime || syncedTables.subscribers.length === 0) {
-              if (legacy.subscribers && legacy.subscribers.length > 0) {
-                const subMap = new Map<string, CoreRecord>();
-                syncedTables.subscribers.forEach((s) => subMap.set(recordId(s), s));
-                (legacy.subscribers as unknown as CoreRecord[]).forEach((s) => subMap.set(recordId(s), s));
-                syncedTables.subscribers = Array.from(subMap.values());
-                changed = true;
-              }
-              if (legacy.invoices && legacy.invoices.length > 0) {
-                const invMap = new Map<string, CoreRecord>();
-                syncedTables.invoices.forEach((i) => invMap.set(recordId(i), i));
-                (legacy.invoices as unknown as CoreRecord[]).forEach((i) => invMap.set(recordId(i), i));
-                syncedTables.invoices = Array.from(invMap.values());
-                changed = true;
-              }
-              if (legacy.agents && legacy.agents.length > 0) {
-                syncedTables.agents = legacy.agents as any;
-                changed = true;
-              }
-            } else {
-              if (syncedTables.invoices.length === 0 && legacy.invoices && legacy.invoices.length > 0) {
-                syncedTables.invoices = legacy.invoices as any;
-                changed = true;
-              }
-              if (syncedTables.subscribers.length === 0 && legacy.subscribers && legacy.subscribers.length > 0) {
-                syncedTables.subscribers = legacy.subscribers as any;
-                changed = true;
-              }
-            }
-            if (changed) dispatchSyncedState();
+          if (!Array.isArray(data.users) || data.users.length === 0) {
+            attachUsersFallbackListener();
           }
+        } else {
+          attachUsersFallbackListener();
         }
-      }, () => {});
-      unsubscriptions.push(unsubLegacy);
-    } catch {}
-
-    // 8. Same-browser broadcast channel listener
-    unsubscriptions.push(this.subscribeToLocalBroadcast((state) => {
-      callback(state, 'local_broadcast');
-    }));
+      }, (err) => handleListenerError('metadata', err));
+      firestoreUnsubs.push(unsubMeta);
+    } catch (e) {
+      handleListenerError('metadata', e);
+    }
 
     // Trigger initial ready callback if we already have data
     setTimeout(() => {
@@ -932,6 +1202,7 @@ export const firebaseService = {
     }, 400);
 
     return () => {
+      teardownFirestoreListeners();
       unsubscriptions.forEach((u) => { try { u(); } catch {} });
       activeRemoteSubscriptions = Math.max(0, activeRemoteSubscriptions - 1);
     };

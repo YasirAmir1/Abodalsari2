@@ -84,20 +84,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, agents, onLogin }) 
       }
 
       if (matchedUser) {
-        let remoteState: AppState | undefined = undefined;
-        try {
-          // Explicitly call getDocs on Firestore to retrieve the freshest sales and data upon login
-          const fetched = await Promise.race([
-            firebaseService.fetchFreshRemoteState(),
-            new Promise<AppState | null>((resolve) => setTimeout(() => resolve(null), 10000))
-          ]);
-          if (fetched) remoteState = fetched;
-        } catch (fetchErr) {
-          console.warn('Login getDocs fetch warning:', fetchErr);
-        }
-
         setIsLoading(false);
-        onLogin(matchedUser, remoteState);
+        onLogin(matchedUser);
         return;
       }
 

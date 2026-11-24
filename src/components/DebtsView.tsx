@@ -28,7 +28,10 @@ import { excelService } from '../services/excelService';
 import { useAppDialogs } from './AppDialogProvider';
 import { SecurityActionModal } from './SecurityActionModal';
 import { useVirtualizedRows } from './useVirtualizedRows';
+import { usePagination } from './usePagination';
+import { PaginationControls } from './PaginationControls';
 import {
+  buildInvoicesBySubscriberIndex,
   getSubscriberOutstandingDebt,
   buildSubscriberDebtMap,
   calculateAgentSubscriberDebt,
@@ -217,13 +220,19 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
     return true;
   }), [debtSearchTerm, debtSubscribers, selectedAgentFilter, agents]);
 
+  const debtPagination = usePagination(
+    filteredDebtSubscribers,
+    50,
+    `${selectedAgentFilter}|${debtSearchTerm}`
+  );
+
   const {
     scrollRef: debtSubscribersTableRef,
     handleScroll: handleDebtSubscribersTableScroll,
     visibleRows: visibleDebtSubscribers,
     topSpacerHeight: debtSubscribersTopSpacerHeight,
     bottomSpacerHeight: debtSubscribersBottomSpacerHeight
-  } = useVirtualizedRows(filteredDebtSubscribers, 64);
+  } = useVirtualizedRows(debtPagination.paginatedItems, 64);
 
   const handleExportExcel = () => {
     if (activeTab === 'agents') {
@@ -239,11 +248,12 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
       }));
       excelService.exportDebts(exportData, 'ديون_الوكلاء_المستحقة.xlsx');
     } else {
+      const invoicesBySub = buildInvoicesBySubscriberIndex(invoices);
       const exportData = debtSubscribers.map((sub) => {
-        const subscriberInvoices = invoices.filter((invoice) => invoice.subscriberId === sub.id);
+        const subscriberInvoices = invoicesBySub.get(sub.id) || [];
         const invoiceAmount = subscriberInvoices.reduce((sum, invoice) => sum + (Number(invoice.amount) || 0), 0);
         const invoicePaid = subscriberInvoices.reduce((sum, invoice) => sum + (Number(invoice.paidAmount) || 0), 0);
-        const remainingAmount = getSubscriberOutstandingDebt(sub, invoices);
+        const remainingAmount = getSubscriberOutstandingDebt(sub, debtMap);
         return {
           name: sub.name,
           agentName: sub.agentName,
@@ -712,50 +722,23 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                         {visibleDebtSubscribers.map((sub) => {
                           const overdueInfo = getSubscriberDebtOverdueInfo(sub, invoices, 50000, debtMap);
                           const outstandingDebt = overdueInfo.debtAmount;
-                          const isOverdue20Days = overdueInfo.isOverdue20Days;
-                          const overdueDays = overdueInfo.overdueDays;
 
                           return (
                             <tr
                               key={sub.id}
-                              className={`h-16 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0 ${
-                                isOverdue20Days
-                                  ? 'bg-red-50/90 dark:bg-red-950/40 hover:bg-red-100/90 dark:hover:bg-red-950/60 border-r-4 border-r-red-600 dark:border-r-red-500'
-                                  : 'hover:bg-slate-50/80 dark:hover:bg-slate-850/50'
-                              }`}
+                              className="h-16 transition-colors border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50/80 dark:hover:bg-slate-850/50"
                             >
                               <td className="py-3.5 px-4">
                                 <div className="flex items-center gap-2.5">
                                   <div className="relative shrink-0">
-                                    <div className={`w-8 h-8 rounded-lg ${
-                                      isOverdue20Days
-                                        ? 'bg-gradient-to-tr from-red-600 to-rose-700 ring-2 ring-red-400'
-                                        : 'bg-gradient-to-tr from-rose-500 to-amber-500'
-                                    } text-white font-black text-xs flex items-center justify-center`}>
+                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-rose-500 to-amber-500 text-white font-black text-xs flex items-center justify-center">
                                       {sub.name ? sub.name.trim().charAt(0) : 'م'}
                                     </div>
-                                    {isOverdue20Days && (
-                                      <span
-                                        className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xs ring-1 ring-white dark:ring-slate-900 animate-bounce"
-                                        title={`تنبيه: دين متأخر تجاوز 20 يوماً (${overdueDays} يوماً)`}
-                                      >
-                                        <BellRing className="w-2 h-2" />
-                                      </span>
-                                    )}
                                   </div>
                                   <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className={`font-bold text-sm ${isOverdue20Days ? 'text-red-950 dark:text-red-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                                    <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
                                       {sub.name}
                                     </span>
-                                    {isOverdue20Days && (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full bg-red-100 dark:bg-red-950/80 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-700 text-[10px] font-black shrink-0 animate-pulse"
-                                        title={`دين متأخر منذ ${overdueDays} يوماً`}
-                                      >
-                                        <Bell className="w-2.5 h-2.5 text-red-600" />
-                                        <span>متأخر {overdueDays} يوم</span>
-                                      </span>
-                                    )}
                                   </div>
                                 </div>
                               </td>
@@ -849,6 +832,17 @@ export const DebtsView: React.FC<DebtsViewProps> = ({
                   </tbody>
                 </table>
               </div>
+              <PaginationControls
+                currentPage={debtPagination.currentPage}
+                pageSize={debtPagination.pageSize}
+                totalItems={debtPagination.totalItems}
+                totalPages={debtPagination.totalPages}
+                startIndex={debtPagination.startIndex}
+                endIndex={debtPagination.endIndex}
+                onPageChange={debtPagination.setPage}
+                onPageSizeChange={debtPagination.setPageSize}
+                itemLabel="مشترك مدين"
+              />
             </div>
           </div>
         )}

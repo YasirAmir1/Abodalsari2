@@ -26,6 +26,9 @@ import { excelService } from '../services/excelService';
 import { DeleteSubscriberModal } from './DeleteSubscriberModal';
 import { RenewSubscriptionModal } from './RenewSubscriptionModal';
 import { buildSubscriberDebtMap, getSubscriberOutstandingDebt, getSubscriberDebtOverdueInfo } from '../utils/calculationUtils';
+import { createSubscriberIndex, querySubscribersWithIndex } from '../utils/dataIndex';
+import { usePagination } from './usePagination';
+import { PaginationControls } from './PaginationControls';
 
 interface ActiveSubscribersViewProps {
   subscribers: Subscriber[];
@@ -117,48 +120,38 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
     return days;
   };
 
-  // Filtered subscribers based on Search, Agent, Payment status, and Date Range
-  const filteredSubscribers = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    return activeSubscribers.filter((sub) => {
-      // Agent filter
-      if (agentFilter !== 'all') {
-        const subAgentId = sub.agentId || 'agent-main';
-        if (subAgentId !== agentFilter) return false;
-      }
+  const activeSubscriberIndex = useMemo(
+    () => createSubscriberIndex(activeSubscribers),
+    [activeSubscribers]
+  );
 
-      // Payment status filter
-      if (paymentFilter !== 'all') {
-        const debt = getSubscriberOutstandingDebt(sub, debtMap);
-        if (paymentFilter === 'paid' && debt > 0) return false;
-        if (paymentFilter === 'debt' && debt <= 0) return false;
-      }
+  // Indexed filtering based on Search, Agent, Payment status, and Date Range
+  const filteredSubscribers = useMemo(
+    () =>
+      querySubscribersWithIndex(activeSubscriberIndex, {
+        agentFilter,
+        agents,
+        dateFieldFilter,
+        dateStartFilter,
+        dateEndFilter,
+        searchTerm,
+        predicate: paymentFilter !== 'all'
+          ? (sub) => {
+              const debt = getSubscriberOutstandingDebt(sub, debtMap);
+              if (paymentFilter === 'paid' && debt > 0) return false;
+              if (paymentFilter === 'debt' && debt <= 0) return false;
+              return true;
+            }
+          : undefined
+      }),
+    [activeSubscriberIndex, agents, searchTerm, agentFilter, paymentFilter, dateStartFilter, dateEndFilter, dateFieldFilter, debtMap]
+  );
 
-      // Date Range Filter
-      if (dateStartFilter || dateEndFilter) {
-        const rawFieldValue =
-          dateFieldFilter === 'endDate'
-            ? sub.endDate
-            : dateFieldFilter === 'createdAt'
-            ? sub.createdAt
-            : sub.startDate;
-        const subDate = rawFieldValue ? rawFieldValue.split('T')[0] : '';
-        if (dateStartFilter && (!subDate || subDate < dateStartFilter)) return false;
-        if (dateEndFilter && (!subDate || subDate > dateEndFilter)) return false;
-      }
-
-      // Search filter
-      if (query) {
-        const matchName = sub.name?.toLowerCase().includes(query);
-        const matchDevice = sub.deviceId?.toLowerCase().includes(query);
-        const matchPhone = sub.phone?.includes(query);
-        const matchAgent = sub.agentName?.toLowerCase().includes(query);
-        return matchName || matchDevice || matchPhone || matchAgent;
-      }
-
-      return true;
-    });
-  }, [activeSubscribers, searchTerm, agentFilter, paymentFilter, dateStartFilter, dateEndFilter, dateFieldFilter, debtMap]);
+  const activePagination = usePagination(
+    filteredSubscribers,
+    50,
+    `${searchTerm}|${agentFilter}|${paymentFilter}|${dateFieldFilter}|${dateStartFilter}|${dateEndFilter}`
+  );
 
   const handleExportActiveSubscribersExcel = () => {
     excelService.exportSubscribers(activeSubscribers, `مشتركو_الساري_الفعالون_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -504,11 +497,9 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  filteredSubscribers.map((s) => {
+                  activePagination.paginatedItems.map((s) => {
                     const overdueInfo = getSubscriberDebtOverdueInfo(s, invoices, 50000, debtMap);
                     const subDebt = overdueInfo.debtAmount;
-                    const isOverdue20Days = overdueInfo.isOverdue20Days;
-                    const overdueDays = overdueInfo.overdueDays;
                     const isHighDebt = overdueInfo.isHighDebt;
                     const daysRemaining = getRemainingDaysInfo(s.endDate);
                     const isExpiringSoon = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
@@ -517,9 +508,7 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
                       <tr
                         key={s.id}
                         className={`group transition-colors ${
-                          isOverdue20Days
-                            ? 'bg-red-50/90 dark:bg-red-950/40 hover:bg-red-100/90 dark:hover:bg-red-950/60 border-r-4 border-r-red-600 dark:border-r-red-500'
-                            : isHighDebt
+                          isHighDebt
                             ? 'bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-50 dark:hover:bg-rose-950/30'
                             : 'hover:bg-sky-50/40 dark:hover:bg-slate-850/60'
                         }`}
@@ -528,36 +517,15 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
                             <div className="relative shrink-0">
-                              <div className={`w-9 h-9 rounded-xl ${
-                                isOverdue20Days
-                                  ? 'bg-gradient-to-tr from-red-600 to-rose-700 ring-2 ring-red-400'
-                                  : 'bg-gradient-to-tr from-sky-600 to-indigo-600'
-                              } text-white font-black text-xs flex items-center justify-center shadow-xs`}>
+                              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
                                 {s.name ? s.name.trim().charAt(0) : 'م'}
                               </div>
-                              {isOverdue20Days && (
-                                <span
-                                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xs ring-2 ring-white dark:ring-slate-900 animate-bounce"
-                                  title={`دين متأخر تجاوز 20 يوماً (${overdueDays} يوماً)`}
-                                >
-                                  <BellRing className="w-2.5 h-2.5" />
-                                </span>
-                              )}
                             </div>
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <p className={`font-black text-sm truncate ${isOverdue20Days ? 'text-red-950 dark:text-red-100' : 'text-slate-900 dark:text-slate-100'}`}>
+                                <p className="font-black text-sm truncate text-slate-900 dark:text-slate-100">
                                   {s.name}
                                 </p>
-                                {isOverdue20Days && (
-                                  <span
-                                    className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full bg-red-100 dark:bg-red-950/80 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-700 text-[10px] font-black shrink-0 animate-pulse"
-                                    title={`دين متأخر منذ ${overdueDays} يوماً بمبلغ ${subDebt.toLocaleString()} د.ع`}
-                                  >
-                                    <BellRing className="w-2.5 h-2.5 text-red-600" />
-                                    <span>متأخر {overdueDays} يوم</span>
-                                  </span>
-                                )}
                               </div>
                               {s.phone && (
                                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1 mt-0.5">
@@ -710,6 +678,17 @@ export const ActiveSubscribersView: React.FC<ActiveSubscribersViewProps> = ({
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            currentPage={activePagination.currentPage}
+            pageSize={activePagination.pageSize}
+            totalItems={activePagination.totalItems}
+            totalPages={activePagination.totalPages}
+            startIndex={activePagination.startIndex}
+            endIndex={activePagination.endIndex}
+            onPageChange={activePagination.setPage}
+            onPageSizeChange={activePagination.setPageSize}
+            itemLabel="مشترك فعال"
+          />
         </div>
       </div>
 

@@ -8,9 +8,36 @@ export const getInvoiceRemainingAmount = (invoice: Invoice): number => {
   return Math.max(0, amount - paid);
 };
 
+const debtMapCache = new WeakMap<Invoice[], Map<string, number>>();
+const invoicesBySubscriberCache = new WeakMap<Invoice[], Map<string, Invoice[]>>();
+
+export const buildInvoicesBySubscriberIndex = (invoices: Invoice[] = []): Map<string, Invoice[]> => {
+  if (!invoices || invoices.length === 0) return new Map<string, Invoice[]>();
+  const cached = invoicesBySubscriberCache.get(invoices);
+  if (cached) return cached;
+
+  const map = new Map<string, Invoice[]>();
+  for (let i = 0; i < invoices.length; i++) {
+    const inv = invoices[i];
+    if (inv && inv.subscriberId) {
+      let list = map.get(inv.subscriberId);
+      if (!list) {
+        list = [];
+        map.set(inv.subscriberId, list);
+      }
+      list.push(inv);
+    }
+  }
+  invoicesBySubscriberCache.set(invoices, map);
+  return map;
+};
+
 export const buildSubscriberDebtMap = (invoices: Invoice[] = []): Map<string, number> => {
+  if (!invoices || invoices.length === 0) return new Map<string, number>();
+  const cached = debtMapCache.get(invoices);
+  if (cached) return cached;
+
   const map = new Map<string, number>();
-  if (!invoices) return map;
   for (let i = 0; i < invoices.length; i++) {
     const inv = invoices[i];
     if (inv && inv.subscriberId) {
@@ -19,6 +46,7 @@ export const buildSubscriberDebtMap = (invoices: Invoice[] = []): Map<string, nu
       map.set(inv.subscriberId, current + remaining);
     }
   }
+  debtMapCache.set(invoices, map);
   return map;
 };
 
@@ -33,15 +61,14 @@ export const getSubscriberOutstandingDebt = (
     return 0;
   }
 
-  // 2. Check if subscriber has invoices
+  // 2. Check if subscriber has invoices using O(1) cached debt map lookup
   if (invoicesOrDebtMap instanceof Map) {
     if (invoicesOrDebtMap.has(subscriber.id)) {
       return Math.max(0, invoicesOrDebtMap.get(subscriber.id) || 0);
     }
   } else if (Array.isArray(invoicesOrDebtMap) && invoicesOrDebtMap.length > 0) {
-    const hasInvoices = invoicesOrDebtMap.some((inv) => inv && inv.subscriberId === subscriber.id);
-    if (hasInvoices) {
-      const debtMap = buildSubscriberDebtMap(invoicesOrDebtMap);
+    const debtMap = buildSubscriberDebtMap(invoicesOrDebtMap);
+    if (debtMap.has(subscriber.id)) {
       return Math.max(0, debtMap.get(subscriber.id) || 0);
     }
   }
@@ -163,28 +190,73 @@ function getInvoiceAmount(invoice: Invoice): number {
 
 export function computeUpdatedAgents(agents: any[], subscribers: Subscriber[], invoices: Invoice[]): any[] {
   const debtMap = buildSubscriberDebtMap(invoices);
-  return agents.map((agent) => {
-    const agentSubscribers = subscribers.filter((sub) => doesSubscriberBelongToAgent(sub, agent));
-    const activeSubscribers = agentSubscribers.filter((sub) => sub.status === 'active');
-    const inactiveSubscribers = agentSubscribers.filter((sub) => sub.status !== 'active');
-    const agentInvoices = invoices.filter((inv) => doesInvoiceBelongToAgent(inv, agent));
+  const subsByAgentIndex = new Map<number, Subscriber[]>();
+  const invoicesByAgentIndex = new Map<number, Invoice[]>();
 
-    let invoiceSales = 0;
-    for (let i = 0; i < agentInvoices.length; i++) {
-      invoiceSales += getInvoiceAmount(agentInvoices[i]);
+  // Pre-build lookup index for exact IDs and normalized names/codes once
+  const agentIdToIndex = new Map<string, number>();
+  const normalizedAgents = agents.map((agent, idx) => {
+    if (agent?.id) agentIdToIndex.set(agent.id, idx);
+    subsByAgentIndex.set(idx, []);
+    invoicesByAgentIndex.set(idx, []);
+    return {
+      idx,
+      name: normalizeStr(agent?.name),
+      code: normalizeStr(agent?.code)
+    };
+  });
+
+  const findAgentIndex = (recordAgentId?: string, recordAgentName?: string): number => {
+    if (recordAgentId && agentIdToIndex.has(recordAgentId)) {
+      return agentIdToIndex.get(recordAgentId)!;
     }
+    const normName = normalizeStr(recordAgentName);
+    if (!normName) return -1;
+    for (let i = 0; i < normalizedAgents.length; i++) {
+      const a = normalizedAgents[i];
+      if (a.name && (normName === a.name || normName.includes(a.name) || a.name.includes(normName))) {
+        return a.idx;
+      }
+      if (a.code && (normName === a.code || normName.includes(a.code))) {
+        return a.idx;
+      }
+    }
+    return -1;
+  };
 
+  for (let i = 0; i < subscribers.length; i++) {
+    const sub = subscribers[i];
+    if (!sub) continue;
+    const idx = findAgentIndex(sub.agentId, sub.agentName);
+    if (idx !== -1) subsByAgentIndex.get(idx)!.push(sub);
+  }
+
+  for (let i = 0; i < invoices.length; i++) {
+    const inv = invoices[i];
+    if (!inv) continue;
+    const idx = findAgentIndex(inv.agentId, inv.agentName);
+    if (idx !== -1) invoicesByAgentIndex.get(idx)!.push(inv);
+  }
+
+  return agents.map((agent, idx) => {
+    const agentSubscribers = subsByAgentIndex.get(idx) || [];
+    const agentInvoices = invoicesByAgentIndex.get(idx) || [];
+
+    let activeCount = 0;
     let subscriberDebt = 0;
     const countedSubIds = new Set<string>();
     for (let i = 0; i < agentSubscribers.length; i++) {
       const sub = agentSubscribers[i];
+      if (sub.status === 'active') activeCount++;
       subscriberDebt += getSubscriberOutstandingDebt(sub, debtMap);
       if (sub.id) countedSubIds.add(sub.id);
     }
 
+    let invoiceSales = 0;
     let additionalInvoiceDebt = 0;
     for (let i = 0; i < agentInvoices.length; i++) {
       const inv = agentInvoices[i];
+      invoiceSales += getInvoiceAmount(inv);
       if (!inv.subscriberId || !countedSubIds.has(inv.subscriberId)) {
         additionalInvoiceDebt += getInvoiceRemainingAmount(inv);
       }
@@ -206,8 +278,8 @@ export function computeUpdatedAgents(agents: any[], subscribers: Subscriber[], i
     return {
       ...agent,
       devicesCount: agentSubscribers.length,
-      activeSubscriptions: activeSubscribers.length,
-      inactiveSubscriptions: inactiveSubscribers.length,
+      activeSubscriptions: activeCount,
+      inactiveSubscriptions: agentSubscribers.length - activeCount,
       totalSales,
       totalDebt,
       totalPaid,
@@ -219,7 +291,17 @@ export function computeUpdatedAgents(agents: any[], subscribers: Subscriber[], i
 export function getSalesChartData(invoices: Invoice[] = []) {
   const daysInArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const chartData = [];
-  
+
+  // Single-pass aggregation by YYYY-MM-DD date prefix
+  const dailyTotals = new Map<string, number>();
+  for (let i = 0; i < invoices.length; i++) {
+    const inv = invoices[i];
+    if (inv?.date && inv.date.length >= 10) {
+      const key = inv.date.slice(0, 10);
+      dailyTotals.set(key, (dailyTotals.get(key) || 0) + (Number(inv.amount) || 0));
+    }
+  }
+
   // Get last 7 days including today
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -227,16 +309,11 @@ export function getSalesChartData(invoices: Invoice[] = []) {
   for (let i = 6; i >= 0; i--) {
     const targetDate = new Date(today);
     targetDate.setDate(today.getDate() - i);
-    
+
     const dateStr = targetDate.toISOString().split('T')[0];
     const dayName = daysInArabic[targetDate.getDay()];
-    
-    // Sum invoice amounts for this date
-    const dailyTotal = invoices
-      .filter(inv => inv.date && inv.date.startsWith(dateStr))
-      .reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);
-      
-    // Format label (e.g., 315k or 15k)
+    const dailyTotal = dailyTotals.get(dateStr) || 0;
+
     let label = '0';
     if (dailyTotal >= 1000) {
       label = (dailyTotal / 1000).toFixed(dailyTotal % 1000 === 0 ? 0 : 1) + 'k';
@@ -334,16 +411,16 @@ export const getSubscriberDebtOverdueInfo = (
 
   const candidateDates: { date: Date; dateStr: string; reason: string }[] = [];
 
-  // 1. Look for unpaid invoices belonging to this subscriber
+  // 1. Look for unpaid invoices belonging to this subscriber via O(1) indexed lookup
   if (Array.isArray(invoices) && invoices.length > 0) {
-    const subInvoices = invoices.filter(
-      (inv) =>
+    const subInvoiceList = buildInvoicesBySubscriberIndex(invoices).get(subscriber.id) || [];
+    for (let i = 0; i < subInvoiceList.length; i++) {
+      const inv = subInvoiceList[i];
+      if (
         inv &&
-        inv.subscriberId === subscriber.id &&
-        (getInvoiceRemainingAmount(inv) > 0 || inv.paymentStatus === 'debt' || inv.paymentStatus === 'partial')
-    );
-    for (const inv of subInvoices) {
-      if (inv.date) {
+        (getInvoiceRemainingAmount(inv) > 0 || inv.paymentStatus === 'debt' || inv.paymentStatus === 'partial') &&
+        inv.date
+      ) {
         const d = new Date(inv.date);
         if (!isNaN(d.getTime())) {
           d.setHours(0, 0, 0, 0);

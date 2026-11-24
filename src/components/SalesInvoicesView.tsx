@@ -17,10 +17,13 @@ import {
   ArrowDownRight
 } from 'lucide-react';
 import { calculateTotalSales } from '../utils/calculationUtils';
+import { createInvoiceIndex, queryInvoicesWithIndex } from '../utils/dataIndex';
 import { Agent, Invoice, Subscriber } from '../types';
 import { excelService } from '../services/excelService';
 import { SecurityActionModal } from './SecurityActionModal';
 import { useVirtualizedRows } from './useVirtualizedRows';
+import { usePagination } from './usePagination';
+import { PaginationControls } from './PaginationControls';
 
 interface SalesInvoicesViewProps {
   invoices: Invoice[];
@@ -42,20 +45,17 @@ const SalesInvoicesViewComponent: React.FC<SalesInvoicesViewProps> = ({
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [deletingInvoice, setDeletingInvoice] = useState<Invoice | null>(null);
 
-  const filteredInvoices = useMemo(() => invoices.filter((inv) => {
-    if (agentFilter !== 'all' && inv.agentId !== agentFilter) return false;
-    if (paymentFilter !== 'all' && inv.paymentStatus !== paymentFilter) return false;
-    if (searchTerm) {
-      const term = searchTerm.trim().toLowerCase();
-      return (
-        inv.subscriberName.toLowerCase().includes(term) ||
-        inv.deviceId.includes(term) ||
-        inv.invoiceNumber.toLowerCase().includes(term) ||
-        inv.agentName.toLowerCase().includes(term)
-      );
-    }
-    return true;
-  }), [agentFilter, invoices, paymentFilter, searchTerm]);
+  const invoiceIndex = useMemo(() => createInvoiceIndex(invoices), [invoices]);
+
+  const filteredInvoices = useMemo(
+    () =>
+      queryInvoicesWithIndex(invoiceIndex, {
+        agentFilter,
+        paymentFilter,
+        searchTerm
+      }),
+    [agentFilter, invoiceIndex, paymentFilter, searchTerm]
+  );
 
   const stats = useMemo(() => {
     const totalSales = calculateTotalSales(invoices);
@@ -64,13 +64,19 @@ const SalesInvoicesViewComponent: React.FC<SalesInvoicesViewProps> = ({
     return { totalSales, totalPaid, totalDebt };
   }, [invoices]);
 
+  const invoicePagination = usePagination(
+    filteredInvoices,
+    50,
+    `${agentFilter}|${paymentFilter}|${searchTerm}`
+  );
+
   const {
     scrollRef: invoicesTableRef,
     handleScroll: handleInvoicesTableScroll,
     visibleRows: visibleInvoices,
     topSpacerHeight: invoicesTopSpacerHeight,
     bottomSpacerHeight: invoicesBottomSpacerHeight
-  } = useVirtualizedRows(filteredInvoices, 64);
+  } = useVirtualizedRows(invoicePagination.paginatedItems, 64);
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -305,6 +311,17 @@ const SalesInvoicesViewComponent: React.FC<SalesInvoicesViewProps> = ({
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          currentPage={invoicePagination.currentPage}
+          pageSize={invoicePagination.pageSize}
+          totalItems={invoicePagination.totalItems}
+          totalPages={invoicePagination.totalPages}
+          startIndex={invoicePagination.startIndex}
+          endIndex={invoicePagination.endIndex}
+          onPageChange={invoicePagination.setPage}
+          onPageSizeChange={invoicePagination.setPageSize}
+          itemLabel="فاتورة"
+        />
       </div>
 
       {/* Deletion Confirmation Modal */}
